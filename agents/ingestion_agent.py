@@ -85,10 +85,30 @@ class IngestionAgent:
                     all_files.append(self.extract_nodes_from_file(full_path))
         return all_files
 
+    def save_to_json(self, files: List[FileNode], output_path: str):
+        import json
+        with open(output_path, 'w', encoding='utf-8') as f:
+            data = [pf.model_dump() for pf in files]
+            json.dump(data, f, indent=4)
+
 if __name__ == "__main__":
     agent = IngestionAgent(".")
     # Using relative path to ignore site-packages and big directories when testing
     parsed_files = agent.ingest_repository()
-    print(f"Ingested {len(parsed_files)} Python files.")
+    
+    output_dir = "data"
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "ingested_data.json")
+    
+    agent.save_to_json(parsed_files, output_file)
+    
+    print(f"Ingested {len(parsed_files)} Python files. Detailed map saved to '{output_file}'\n")
     for pf in parsed_files:
-        print(f"- {pf.file_path}: {len(pf.imports)} imports, {len(pf.nodes)} top-level nodes")
+        print(f"=== File: {pf.file_path} ===")
+        if pf.imports:
+            print(f"  Imports: {', '.join(pf.imports)}")
+        for node in pf.nodes:
+            print(f"  - [{node.node_type.upper()}] {node.name} (Lines {node.start_line}-{node.end_line})")
+            for child in node.children:
+                print(f"      -> [METHOD] {child['name']} (Lines {child['start_line']}-{child['end_line']})")
+        print()
