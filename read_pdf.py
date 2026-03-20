@@ -1,15 +1,10 @@
 import sys
-import subprocess
 
-def install_and_import(package):
-    try:
-        __import__(package)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-    finally:
-        globals()[package] = __import__(package)
-
-install_and_import('pypdf')
+try:
+    import pypdf
+except ImportError as exc:
+    print("Missing dependency 'pypdf'. Install dependencies with: env/bin/pip install -r requirements.txt")
+    raise SystemExit(1) from exc
 
 def extract_text(pdf_path):
     try:

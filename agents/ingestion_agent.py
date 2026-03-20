@@ -4,11 +4,45 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import ast
 from typing import List
-from models.code_element import CodeNode, FileNode
+from models.code_element import CodeNode, FileNode, IngestionPayload, MethodNode
 
 class IngestionAgent:
     def __init__(self, root_dir: str):
-        self.root_dir = root_dir
+        self.root_dir = os.path.abspath(root_dir)
+        self.excluded_dirs = {
+            ".git",
+            ".hg",
+            ".svn",
+            "__pycache__",
+            "node_modules",
+            "venv",
+            ".venv",
+            "env",
+            "site-packages",
+        }
+        self.excluded_filenames = {
+            ".env",
+            ".env.local",
+            ".env.development",
+            ".env.test",
+            ".env.production",
+            ".python-version",
+        }
+        self.excluded_suffixes = {
+            ".pyc",
+            ".pyo",
+        }
+
+    def _is_excluded_path(self, path: str) -> bool:
+        parts = set(path.split(os.sep))
+        return any(part in parts for part in self.excluded_dirs)
+
+    def _is_excluded_file(self, filename: str) -> bool:
+        if filename in self.excluded_filenames:
+            return True
+        if filename.startswith('.'):
+            return True
+        return any(filename.endswith(suffix) for suffix in self.excluded_suffixes)
 
     def extract_nodes_from_file(self, file_path: str) -> FileNode:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -31,9 +65,17 @@ class IngestionAgent:
                     for n in node.names:
                         imports.append(n.name)
                 elif isinstance(node, ast.ImportFrom):
-                    module = node.module or ''
+                    prefix = '.' * node.level
+                    module = f"{prefix}{node.module or ''}"
                     for n in node.names:
-                        imports.append(f"{module}.{n.name}")
+                        if module:
+                            separator = '' if module.endswith('.') else '.'
+                            import_name = f"{module}{separator}{n.name}"
+                        else:
+                            import_name = n.name
+                        imports.append(import_name)
+
+        imports = sorted(set(imports))
         
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -43,21 +85,22 @@ class IngestionAgent:
                 code_content = "\n".join(lines[start_line-1:end_line])
                 docstring = ast.get_docstring(node)
                 
-                children = []
+                children: List[MethodNode] = []
                 if isinstance(node, ast.ClassDef):
                     for child in node.body:
                         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                             c_start = child.lineno
                             c_end = getattr(child, 'end_lineno', c_start)
                             c_code = "\n".join(lines[c_start-1:c_end])
-                            children.append({
-                                'name': child.name,
-                                'node_type': 'method',
-                                'start_line': c_start,
-                                'end_line': c_end,
-                                'docstring': ast.get_docstring(child),
-                                'code_content': c_code
-                            })
+                            children.append(
+                                MethodNode(
+                                    name=child.name,
+                                    start_line=c_start,
+                                    end_line=c_end,
+                                    docstring=ast.get_docstring(child),
+                                    code_content=c_code,
+                                )
+                            )
 
                 c_node = CodeNode(
                     name=node.name,
@@ -75,21 +118,28 @@ class IngestionAgent:
 
     def ingest_repository(self) -> List[FileNode]:
         all_files = []
-        for root, _, files in os.walk(self.root_dir):
-            for file in files:
+        for root, dirs, files in os.walk(self.root_dir):
+            dirs[:] = sorted(
+                d for d in dirs if d not in self.excluded_dirs and not d.startswith('.')
+            )
+            if self._is_excluded_path(root):
+                continue
+
+            for file in sorted(files):
+                if self._is_excluded_file(file):
+                    continue
                 if file.endswith('.py'):
-                    # Skip hidden directories and virtual environments
-                    if any(part.startswith('.') and part != '.' for part in root.split(os.sep)) or 'venv' in root.split(os.sep):
-                        continue
                     full_path = os.path.join(root, file)
+                    if self._is_excluded_path(full_path):
+                        continue
                     all_files.append(self.extract_nodes_from_file(full_path))
-        return all_files
+        return sorted(all_files, key=lambda file_node: file_node.file_path)
 
     def save_to_json(self, files: List[FileNode], output_path: str):
         import json
+        payload = IngestionPayload(root_dir=self.root_dir, files=files)
         with open(output_path, 'w', encoding='utf-8') as f:
-            data = [pf.model_dump() for pf in files]
-            json.dump(data, f, indent=4)
+            json.dump(payload.model_dump(), f, indent=4)
 
 if __name__ == "__main__":
     agent = IngestionAgent(".")
@@ -110,5 +160,8 @@ if __name__ == "__main__":
         for node in pf.nodes:
             print(f"  - [{node.node_type.upper()}] {node.name} (Lines {node.start_line}-{node.end_line})")
             for child in node.children:
-                print(f"      -> [METHOD] {child['name']} (Lines {child['start_line']}-{child['end_line']})")
+                    print(
+                        f"      -> [METHOD] {child.name} "
+                        f"(Lines {child.start_line}-{child.end_line})"
+                    )
         print()

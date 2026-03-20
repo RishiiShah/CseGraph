@@ -13,9 +13,18 @@ __pycache__/
 *$py.class
 *.so
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
+build/
+dist/
+*.egg-info/
+*.log
+junit.xml
 
 # IDEs
 .idea/
@@ -26,5 +35,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+.python-version
 
 data/
