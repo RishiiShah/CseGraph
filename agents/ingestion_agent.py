@@ -142,8 +142,14 @@ class IngestionAgent:
             json.dump(payload.model_dump(), f, indent=4)
 
 if __name__ == "__main__":
-    agent = IngestionAgent(".")
-    # Using relative path to ignore site-packages and big directories when testing
+    default_root = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "tests",
+        "fixtures",
+        "sandboxes",
+        "baseline_import_resolution",
+    )
+    agent = IngestionAgent(default_root)
     parsed_files = agent.ingest_repository()
     
     output_dir = "data"

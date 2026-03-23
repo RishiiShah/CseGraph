@@ -123,8 +123,8 @@ class LinkingAgent:
                 return node_id
         return candidates[0]
 
-    def build_graph(self, files: Optional[List[FileNode]] = None) -> LinkGraph:
-        parsed_files = files if files is not None else self._collect_repository_files()
+    def build_graph(self) -> LinkGraph:
+        parsed_files = self._collect_repository_files()
         module_to_file, symbol_to_node_ids, node_to_file_id = self._build_symbol_indices(parsed_files)
 
         nodes: Dict[str, GraphNode] = {}
@@ -257,7 +257,14 @@ class LinkingAgent:
 
 
 if __name__ == "__main__":
-    agent = LinkingAgent(".")
+    default_root = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "tests",
+        "fixtures",
+        "sandboxes",
+        "baseline_import_resolution",
+    )
+    agent = LinkingAgent(default_root)
     graph = agent.build_graph()
 
     output_dir = "data"

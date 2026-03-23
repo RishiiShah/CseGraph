@@ -16,7 +16,8 @@ class TestLinkingBehavior(unittest.TestCase):
             PROJECT_ROOT,
             "tests",
             "fixtures",
-            "sample_repo",
+            "sandboxes",
+            "baseline_import_resolution",
         )
         cls.agent = LinkingAgent(cls.fixture_root)
         cls.graph = cls.agent.build_graph()
@@ -39,8 +40,8 @@ class TestLinkingBehavior(unittest.TestCase):
     def test_same_file_symbol_preferred_for_call_resolution(self) -> None:
         self.assertTrue(
             self._find_edge(
-                source="symbol::pkg/a.py::function::caller",
-                target="symbol::pkg/a.py::function::process",
+                source="symbol::pkg/utils.py::function::caller",
+                target="symbol::pkg/utils.py::function::process",
                 relation="calls",
             )
         )

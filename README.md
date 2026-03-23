@@ -55,6 +55,36 @@ Use your virtual environment Python executable:
    env/bin/python -m unittest discover -s tests -v
    ```
 
+5. Run sandbox benchmark (single run):
+   ```bash
+   env/bin/python benchmark_sandboxes.py
+   ```
+   Outputs:
+   - `data/sandbox_benchmark.json`
+   - `data/sandbox_benchmark.csv`
+
+6. Run repeated benchmark experiments with CI-friendly aggregates:
+   ```bash
+   env/bin/python benchmark_repeated.py --repeats 5
+   ```
+   Outputs:
+   - `data/sandbox_benchmark_runs.json`
+   - `data/sandbox_benchmark_summary.json`
+   - `data/sandbox_benchmark_summary.csv`
+
+7. Generate plots + markdown summary:
+   ```bash
+   env/bin/python report_plots.py
+   ```
+   Outputs:
+   - `data/plots/*.png`
+   - `data/plots/benchmark_summary.md`
+
+8. One-command full report generation (benchmark + repeated + plots):
+   ```bash
+   env/bin/python run_full_report.py --repeats 5
+   ```
+
 ## Notes
 
 - Repository filtering and file exclusions are centralized in the ingestion stage.

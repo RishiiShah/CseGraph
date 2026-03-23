@@ -5,6 +5,9 @@ from agents.ingestion_agent import IngestionAgent
 from agents.linking_agent import LinkingAgent
 
 
+DEFAULT_SCAN_ROOT = "tests/fixtures/sandboxes/baseline_import_resolution"
+
+
 def run_pipeline(root_dir: str, output_dir: str) -> None:
     abs_root = os.path.abspath(root_dir)
     abs_output_dir = os.path.abspath(output_dir)
@@ -16,7 +19,7 @@ def run_pipeline(root_dir: str, output_dir: str) -> None:
     ingestion_agent.save_to_json(parsed_files, ingested_output)
 
     linking_agent = LinkingAgent(abs_root)
-    graph = linking_agent.build_graph(files=parsed_files)
+    graph = linking_agent.build_graph()
     graph_output = os.path.join(abs_output_dir, "link_graph.json")
     linking_agent.save_graph(graph, graph_output)
 
@@ -35,8 +38,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--root-dir",
-        default=".",
-        help="Repository root to analyze (default: current directory).",
+        default=DEFAULT_SCAN_ROOT,
+        help=(
+            "Repository root to analyze "
+            f"(default: {DEFAULT_SCAN_ROOT})."
+        ),
     )
     parser.add_argument(
         "--output-dir",
