@@ -10,14 +10,18 @@ Implemented components:
   - file -> symbol containment edges,
   - local import edges,
   - symbol call edges.
+- **Compression Agent**: compresses the link graph into memory-aware summaries with:
+  - node-level summaries (purpose, dependencies, dependents),
+  - high-degree hub identification,
+  - multi-radius context slices for efficient retrieval.
 
-Both agents use Python AST parsing and avoid executing source files. Outputs are written to the `data/` directory.
+All agents use Python AST parsing and avoid executing source files. Outputs are written to the `data/` directory.
 
 ## Flow of Development
 
 1. **Ingestion Agent**: parses repository files into typed structural elements.
 2. **Linking Agent**: builds a semantic link graph from ingestion output.
-3. **Compression Agent** (Upcoming): summarizes selected graph/context slices.
+3. **Compression Agent** (Done): compresses graph into efficient summaries and context slices.
 4. **Context Sufficiency Estimator (CSE)** (Upcoming): decides whether retrieved context is sufficient.
 5. **Code Generation Agent** (Upcoming): generates code only after sufficiency checks pass.
 
@@ -42,20 +46,28 @@ Use your virtual environment Python executable:
    ```
    Output: `data/link_graph.json`
 
-3. Run the full pipeline (ingestion -> linking):
+3. Run the full pipeline (ingestion -> linking -> compression):
    ```bash
    env/bin/python run_pipeline.py
    ```
    Outputs:
    - `data/ingested_data.json`
    - `data/link_graph.json`
+   - `data/compressed_graph.json`
 
-4. Run graph integrity tests:
+4. Run compression on an existing link graph:
+   ```bash
+   env/bin/python agents/compression_agent.py
+   ```
+   Outputs:
+   - `data/compressed_graph.json`
+
+5. Run graph integrity tests:
    ```bash
    env/bin/python -m unittest discover -s tests -v
    ```
 
-5. Run sandbox benchmark (single run):
+6. Run sandbox benchmark (single run):
    ```bash
    env/bin/python benchmark_sandboxes.py
    ```
@@ -63,7 +75,7 @@ Use your virtual environment Python executable:
    - `data/sandbox_benchmark.json`
    - `data/sandbox_benchmark.csv`
 
-6. Run repeated benchmark experiments with CI-friendly aggregates:
+7. Run repeated benchmark experiments with CI-friendly aggregates:
    ```bash
    env/bin/python benchmark_repeated.py --repeats 5
    ```
@@ -72,7 +84,7 @@ Use your virtual environment Python executable:
    - `data/sandbox_benchmark_summary.json`
    - `data/sandbox_benchmark_summary.csv`
 
-7. Generate plots + markdown summary:
+8. Generate plots + markdown summary:
    ```bash
    env/bin/python report_plots.py
    ```
@@ -80,7 +92,7 @@ Use your virtual environment Python executable:
    - `data/plots/*.png`
    - `data/plots/benchmark_summary.md`
 
-8. One-command full report generation (benchmark + repeated + plots):
+9. One-command full report generation (benchmark + repeated + plots):
    ```bash
    env/bin/python run_full_report.py --repeats 5
    ```

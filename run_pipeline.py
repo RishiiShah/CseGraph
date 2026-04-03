@@ -3,6 +3,7 @@ import os
 
 from agents.ingestion_agent import IngestionAgent
 from agents.linking_agent import LinkingAgent
+from agents.compression_agent import CompressionAgent
 
 
 DEFAULT_SCAN_ROOT = "tests/fixtures/sandboxes/baseline_import_resolution"
@@ -23,12 +24,22 @@ def run_pipeline(root_dir: str, output_dir: str) -> None:
     graph_output = os.path.join(abs_output_dir, "link_graph.json")
     linking_agent.save_graph(graph, graph_output)
 
+    compressor = CompressionAgent(graph_output)
+    compressed = compressor.compress()
+    compressed_output = os.path.join(abs_output_dir, "compressed_graph.json")
+    compressor.save_compressed(compressed, compressed_output)
+
     print(f"Ingestion complete: {len(parsed_files)} files -> '{ingested_output}'")
     print(
         "Linking complete: "
         f"{graph.summary.file_count} files, "
         f"{graph.summary.symbol_count} symbols, "
         f"{graph.summary.edge_count} edges -> '{graph_output}'"
+    )
+    print(
+        "Compression complete: "
+        f"{len(compressed.node_summaries)} summaries, "
+        f"{len(compressed.context_slices)} context slices -> '{compressed_output}'"
     )
 
 
