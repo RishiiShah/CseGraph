@@ -32,6 +32,10 @@ class SufficiencyMetrics(BaseModel):
         ...,
         description="Cosine similarity between query and context (0.0-1.0)",
     )
+    model_confidence: float = Field(
+        ...,
+        description="Confidence score estimating the likelihood of correct generation (0.0-1.0)",
+    )
 
 
 class SufficiencyResult(BaseModel):
@@ -50,6 +54,10 @@ class SufficiencyResult(BaseModel):
     context_node_ids: List[str] = Field(
         default_factory=list,
         description="Node IDs included in the final context",
+    )
+    raw_code_nodes: List[str] = Field(
+        default_factory=list,
+        description="Node IDs that were replaced with raw source code due to low confidence",
     )
     expansion_rounds: int = Field(
         ..., description="Number of expansion rounds executed"
