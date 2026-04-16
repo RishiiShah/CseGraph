@@ -88,6 +88,32 @@ def _scatter_plot(
     plt.close()
 
 
+def _strategy_scatter_plot(
+    x_values: list[float],
+    y_values: list[float],
+    labels: list[str],
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    output_path: str,
+) -> None:
+    """Scatter plot with one labeled, strategy-coloured point per strategy."""
+    plt.figure(figsize=(7, 6))
+    x_range = (max(x_values) - min(x_values)) if len(x_values) > 1 else 1.0
+    offset = x_range * 0.02 if x_range > 0 else 1.0
+    for x, y, label in zip(x_values, y_values, labels):
+        color = STRATEGY_COLORS.get(label, "#888888")
+        plt.scatter([x], [y], s=150, color=color, zorder=3)
+        plt.text(x + offset, y, label, fontsize=10, color=color)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.grid(linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180)
+    plt.close()
+
+
 def _stacked_edge_plot(rows: list[dict[str, str]], output_path: str) -> None:
     sandboxes = _to_str(rows, "sandbox")
     import_edges = _to_float(rows, "import_edges")
@@ -199,11 +225,296 @@ def _write_report_summary(
             )
 
 
+STRATEGY_COLORS = {
+    "adaptive": "#1f77b4",
+    "full_context": "#ff7f0e",
+    "static_rag": "#2ca02c",
+}
+
+
+def _grouped_bar_plot(
+    metric_names: list[str],
+    series_dict: dict[str, list[float | None]],
+    title: str,
+    ylabel: str,
+    output_path: str,
+    y_max: float | None = 1.0,
+) -> None:
+    import numpy as np
+
+    strategies = list(series_dict.keys())
+    n_metrics = len(metric_names)
+    n_strategies = len(strategies)
+    x = np.arange(n_metrics)
+    total_width = 0.7
+    bar_width = total_width / n_strategies
+
+    plt.figure(figsize=(10, 5))
+    for i, strategy in enumerate(strategies):
+        values = series_dict[strategy]
+        offsets = x - total_width / 2 + bar_width / 2 + i * bar_width
+        bars = plt.bar(
+            offsets,
+            [v if v is not None else 0 for v in values],
+            width=bar_width,
+            label=strategy,
+            color=STRATEGY_COLORS.get(strategy, "#888888"),
+        )
+        for bar, value in zip(bars, values):
+            if value is not None:
+                plt.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height(),
+                    f"{value:.2f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=7,
+                )
+
+    plt.xticks(x, metric_names, rotation=15, ha="right")
+    plt.title(title)
+    plt.ylabel(ylabel)
+    if y_max is not None:
+        plt.ylim(0, y_max)
+    plt.legend()
+    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180)
+    plt.close()
+
+
+def generate_baseline_plots(
+    comparison_csv: str,
+    summary_json: str,
+    output_dir: str,
+) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Load summary JSON.  _compute_summary now returns
+    # {"global": {strategy: {...}}, "per_sandbox": {...}}.
+    # Fall back to the flat structure from older runs so old files still work.
+    raw: dict = {}
+    if not summary_json or not os.path.exists(summary_json):
+        summary = {}
+    else:
+        with open(summary_json, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        summary = raw.get("global", raw)
+
+    # Load comparison CSV rows
+    if comparison_csv and os.path.exists(comparison_csv):
+        csv_rows = _read_csv_rows(comparison_csv)
+    else:
+        csv_rows = []
+
+    strategies = ["adaptive", "full_context", "static_rag"]
+
+    # --- Plot 1: baseline_context_nodes.png ---
+    node_names = []
+    node_values = []
+    for s in strategies:
+        if s in summary and summary[s].get("context_node_count") is not None:
+            node_names.append(s)
+            node_values.append(float(summary[s]["context_node_count"]))
+    if node_names:
+        _bar_plot(
+            node_names,
+            node_values,
+            "Mean Context Node Count by Strategy",
+            "Mean Nodes",
+            os.path.join(output_dir, "baseline_context_nodes.png"),
+        )
+
+    # --- Plot 2: baseline_token_efficiency.png ---
+    token_names = []
+    token_values = []
+    for s in strategies:
+        if s in summary and summary[s].get("prompt_tokens") is not None:
+            token_names.append(s)
+            token_values.append(float(summary[s]["prompt_tokens"]))
+    if token_names:
+        codegen_skipped = any(
+            summary.get(s, {}).get("prompt_tokens") is None for s in strategies
+        )
+        title = "Mean Prompt Tokens by Strategy"
+        if codegen_skipped:
+            title += " (codegen skipped for some strategies)"
+        _bar_plot(
+            token_names,
+            token_values,
+            title,
+            "Mean Prompt Tokens",
+            os.path.join(output_dir, "baseline_token_efficiency.png"),
+        )
+
+    # --- Plot 3: baseline_cse_metrics.png ---
+    cse_metric_keys = [
+        "dep_completeness",
+        "entity_coverage",
+        "semantic_overlap",
+        "model_confidence",
+    ]
+    cse_series: dict[str, list[float | None]] = {}
+    any_cse_data = False
+    for s in strategies:
+        row_vals: list[float | None] = []
+        for mk in cse_metric_keys:
+            val = summary.get(s, {}).get(mk)
+            row_vals.append(float(val) if val is not None else None)
+        cse_series[s] = row_vals
+        if any(v is not None for v in row_vals):
+            any_cse_data = True
+
+    if any_cse_data:
+        _grouped_bar_plot(
+            cse_metric_keys,
+            cse_series,
+            "CSE Metrics by Strategy",
+            "Score (0–1)",
+            os.path.join(output_dir, "baseline_cse_metrics.png"),
+        )
+
+    # --- Plot 4: baseline_compile_rate.png ---
+    compile_names = []
+    compile_values = []
+    for s in strategies:
+        val = summary.get(s, {}).get("compile_success_rate")
+        if val is not None:
+            compile_names.append(s)
+            compile_values.append(float(val))
+    if compile_names:
+        _bar_plot(
+            compile_names,
+            compile_values,
+            "Compile Success Rate by Strategy",
+            "Compile Success Rate",
+            os.path.join(output_dir, "baseline_compile_rate.png"),
+        )
+
+    # --- Plot 5: baseline_unit_test_pass_rate.png ---
+    ut_names = []
+    ut_values = []
+    for s in strategies:
+        val = summary.get(s, {}).get("unit_test_pass_rate")
+        if val is not None:
+            ut_names.append(s)
+            ut_values.append(float(val))
+    if ut_names:
+        _bar_plot(
+            ut_names,
+            ut_values,
+            "Unit Test Pass Rate by Strategy (Correctness)",
+            "Pass Rate",
+            os.path.join(output_dir, "baseline_unit_test_pass_rate.png"),
+        )
+
+    # --- Plot 6: baseline_expansion_rounds.png ---
+    exp_names = []
+    exp_values = []
+    for s in strategies:
+        val = summary.get(s, {}).get("expansion_rounds")
+        if val is not None:
+            exp_names.append(s)
+            exp_values.append(float(val))
+    if exp_names:
+        _bar_plot(
+            exp_names,
+            exp_values,
+            "Mean Expansion Rounds by Strategy",
+            "Mean Rounds",
+            os.path.join(output_dir, "baseline_expansion_rounds.png"),
+        )
+
+    # --- Plots 7 & 8: per-sandbox breakdowns ---
+    per_sandbox: dict = raw.get("per_sandbox", {})
+    if per_sandbox:
+        sandbox_names = sorted(per_sandbox.keys())
+
+        # Plot 7: context_node_count per sandbox × strategy
+        node_series: dict[str, list[float | None]] = {}
+        for s in strategies:
+            node_series[s] = [
+                float(per_sandbox[sb].get(s, {}).get("context_node_count"))
+                if per_sandbox[sb].get(s, {}).get("context_node_count") is not None
+                else None
+                for sb in sandbox_names
+            ]
+        if any(any(v is not None for v in vals) for vals in node_series.values()):
+            _grouped_bar_plot(
+                sandbox_names,
+                node_series,
+                "Context Nodes per Sandbox by Strategy",
+                "Context Nodes",
+                os.path.join(output_dir, "per_sandbox_context_nodes.png"),
+                y_max=None,
+            )
+
+        # Plot 8: entity_coverage per sandbox × strategy
+        cov_series: dict[str, list[float | None]] = {}
+        for s in strategies:
+            cov_series[s] = [
+                float(per_sandbox[sb].get(s, {}).get("entity_coverage"))
+                if per_sandbox[sb].get(s, {}).get("entity_coverage") is not None
+                else None
+                for sb in sandbox_names
+            ]
+        if any(any(v is not None for v in vals) for vals in cov_series.values()):
+            _grouped_bar_plot(
+                sandbox_names,
+                cov_series,
+                "Entity Coverage per Sandbox by Strategy",
+                "Entity Coverage Score",
+                os.path.join(output_dir, "per_sandbox_entity_coverage.png"),
+            )
+
+        # Plot 9: unit_test_pass_rate per sandbox × strategy
+        ut_series: dict[str, list[float | None]] = {}
+        for s in strategies:
+            ut_series[s] = [
+                float(per_sandbox[sb].get(s, {}).get("unit_test_pass_rate"))
+                if per_sandbox[sb].get(s, {}).get("unit_test_pass_rate") is not None
+                else None
+                for sb in sandbox_names
+            ]
+        if any(any(v is not None for v in vals) for vals in ut_series.values()):
+            _grouped_bar_plot(
+                sandbox_names,
+                ut_series,
+                "Unit Test Pass Rate per Sandbox by Strategy",
+                "Pass Rate",
+                os.path.join(output_dir, "per_sandbox_unit_test_pass_rate.png"),
+            )
+
+    # Plot 10: efficiency scatter — mean prompt tokens vs mean unit test pass rate
+    eff_x: list[float] = []
+    eff_y: list[float] = []
+    eff_labels: list[str] = []
+    for s in strategies:
+        pt = summary.get(s, {}).get("prompt_tokens")
+        ut = summary.get(s, {}).get("unit_test_pass_rate")
+        if pt is not None and ut is not None:
+            eff_x.append(float(pt))
+            eff_y.append(float(ut))
+            eff_labels.append(s)
+    if eff_x:
+        _strategy_scatter_plot(
+            eff_x,
+            eff_y,
+            eff_labels,
+            "Token Efficiency vs Correctness by Strategy",
+            "Mean Prompt Tokens",
+            "Mean Unit Test Pass Rate",
+            os.path.join(output_dir, "efficiency_scatter.png"),
+        )
+
+
 def generate_plots(
     input_csv: str,
     input_json: str,
     repeated_summary_json: str | None,
     output_dir: str,
+    comparison_csv: str | None = None,
+    comparison_summary_json: str | None = None,
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
     rows = _read_csv_rows(input_csv)
@@ -290,6 +601,14 @@ def generate_plots(
         os.path.join(output_dir, "benchmark_summary.md"),
     )
 
+    if (
+        comparison_csv
+        and comparison_summary_json
+        and os.path.exists(comparison_csv)
+        and os.path.exists(comparison_summary_json)
+    ):
+        generate_baseline_plots(comparison_csv, comparison_summary_json, output_dir)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -318,6 +637,16 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_DIR,
         help=f"Output directory for plots and summary (default: {DEFAULT_OUTPUT_DIR}).",
     )
+    parser.add_argument(
+        "--baseline-csv",
+        default=None,
+        help="Path to baseline_comparison.csv (optional).",
+    )
+    parser.add_argument(
+        "--baseline-summary",
+        default=None,
+        help="Path to baseline_summary.json (optional).",
+    )
     return parser.parse_args()
 
 
@@ -328,5 +657,9 @@ if __name__ == "__main__":
         args.input_json,
         args.repeated_summary_json,
         args.output_dir,
+        comparison_csv=args.baseline_csv,
+        comparison_summary_json=args.baseline_summary,
     )
+    if args.baseline_csv and args.baseline_summary:
+        generate_baseline_plots(args.baseline_csv, args.baseline_summary, args.output_dir)
     print(f"Saved plots and summary under '{args.output_dir}'")
