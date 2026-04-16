@@ -1,6 +1,6 @@
 # Adaptive Memory-Aware Multi-Agent System
 
-Implementation of **"Adaptive Memory-Aware Multi-Agent System with Context Sufficiency Estimation for Repository-Level Code Generation"** — Hitanshu Oza, Rishab Shah (Rutgers University).
+Implementation of **"Adaptive Memory-Aware Multi-Agent System with Context Sufficiency Estimation for Repository-Level Code Generation"** — Hitanshu Oza, Rishabh Shah (Rutgers University).
 
 ---
 
