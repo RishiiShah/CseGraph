@@ -17,13 +17,18 @@ Logic Approach) and §3.3 (Validation Metrics).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
 import re
 import sys
 from collections import defaultdict, deque
-from typing import Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
+
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Allow running from agents/ directly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,6 +36,60 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.compressed_graph import CompressedGraph
 from models.cse_result import SufficiencyMetrics, SufficiencyQuery, SufficiencyResult
 from models.link_graph import GraphEdge, GraphNode, LinkGraph
+from system_profile import build_system_profile, embedding_device
+
+# ---------------------------------------------------------------------------
+# Sentence-embedding model — lazy singleton, loaded on first use.
+# Device (mps / cuda / cpu) is derived from the system profile so embeddings
+# run on whatever accelerator is available.
+# ---------------------------------------------------------------------------
+_EMBED_MODEL = None          # SentenceTransformer instance | False (unavailable)
+_EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"  # fast 33M-param model; good on code identifiers
+_EMBED_CACHE: Dict[str, "np.ndarray"] = {}    # text-hash → embedding vector
+_EMBED_DEVICE: Optional[str] = None           # resolved once on first model load
+
+
+def _get_embed_model():
+    """Return the singleton SentenceTransformer on the right device, or None.
+
+    The device (mps / cuda / cpu) is resolved once from the system profile and
+    cached so subsequent calls don't re-probe hardware.
+    """
+    global _EMBED_MODEL, _EMBED_DEVICE
+    if _EMBED_MODEL is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            if _EMBED_DEVICE is None:
+                _EMBED_DEVICE = embedding_device(build_system_profile())
+            _EMBED_MODEL = SentenceTransformer(_EMBED_MODEL_NAME, device=_EMBED_DEVICE)
+            print(f"[CSEAgent] Embedding model loaded on device={_EMBED_DEVICE}")
+        except Exception:
+            _EMBED_MODEL = False  # don't retry
+    return _EMBED_MODEL if _EMBED_MODEL is not False else None
+
+
+def _embed(texts: List[str]) -> Optional["np.ndarray"]:
+    """Encode a list of texts to a (N, D) numpy array, using an in-memory cache."""
+    model = _get_embed_model()
+    if model is None or not texts:
+        return None
+    results: List["np.ndarray"] = []
+    to_encode: List[Tuple[int, str]] = []
+    for i, t in enumerate(texts):
+        key = hashlib.md5(t.encode()).hexdigest()
+        if key in _EMBED_CACHE:
+            results.append((i, _EMBED_CACHE[key]))
+        else:
+            to_encode.append((i, t, key))
+
+    if to_encode:
+        vecs = model.encode([t for _, t, _ in to_encode], show_progress_bar=False)
+        for (i, t, key), vec in zip(to_encode, vecs):
+            _EMBED_CACHE[key] = vec
+            results.append((i, vec))
+
+    results.sort(key=lambda x: x[0])
+    return np.stack([v for _, v in results])
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +129,7 @@ class CSEAgent:
     DEP_THRESHOLD: float = 0.80        # dependency_completeness
     ENTITY_THRESHOLD: float = 0.80     # entity_coverage
     SEMANTIC_THRESHOLD: float = 0.50   # semantic_overlap (hard threshold)
-    SEMANTIC_THRESHOLD_RELAXED: float = 0.05  # used when dep+ent both pass
+    SEMANTIC_THRESHOLD_RELAXED: float = 0.0   # not gated when dep+ent both pass
     CONFIDENCE_THRESHOLD: float = 0.70  # model_confidence (lowered: structural metrics dominate)
 
     # ---- Expansion budget -------------------------------------------------
@@ -83,7 +142,31 @@ class CSEAgent:
     TIER1_TARGET: float = 0.75  # 75 % of file imports
     # Tier 2 is purely budget-limited — no ratio target
 
-    def __init__(self, link_graph_path: str, compressed_graph_path: str) -> None:
+    # ---- Recompression trigger --------------------------------------------
+    CONFIDENCE_DROP_THRESHOLD: float = 0.15  # drop > 15% triggers resummary
+
+    def __init__(
+        self,
+        link_graph_path: str,
+        compressed_graph_path: str,
+        resummary_fn: Optional[Callable[[str], str]] = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        link_graph_path:
+            Path to the serialised LinkGraph JSON.
+        compressed_graph_path:
+            Path to the serialised CompressedGraph JSON.
+        resummary_fn:
+            Optional callable ``(node_id: str) -> str`` that regenerates a
+            fresh summary for a given node.  When provided, a confidence drop
+            of more than ``CONFIDENCE_DROP_THRESHOLD`` between expansion rounds
+            triggers re-summarisation of newly added context nodes in-memory,
+            implementing the proposal's "recompress on confidence drop" rule.
+            Typically ``CompressionAgent._generate_node_summary`` is passed here.
+        """
+        self._resummary_fn = resummary_fn
         self.link_graph = self._load_link_graph(link_graph_path)
         self.compressed_graph = self._load_compressed_graph(compressed_graph_path)
 
@@ -135,8 +218,27 @@ class CSEAgent:
         # Always seed Tier 0 (direct call targets) at 100 %
         context_ids = self._ensure_tier0(query.target_node_id, context_ids)
 
+        prev_confidence: Optional[float] = None
+        prev_context_set: Set[str] = set(context_ids)
+        recompressed_rounds: int = 0
+
         for round_num in range(self.MAX_ROUNDS):
             metrics = self._compute_all_metrics(query, context_ids, raw_code_ids)
+
+            # --- Confidence-drop → recompress newly added nodes ---------------
+            # If confidence fell by more than CONFIDENCE_DROP_THRESHOLD since the
+            # last round, the newly pulled-in nodes likely have poor template
+            # summaries.  Regenerate them in-memory (proposal §3.2: "recompress").
+            if (
+                prev_confidence is not None
+                and prev_confidence - metrics.model_confidence > self.CONFIDENCE_DROP_THRESHOLD
+                and self._resummary_fn is not None
+            ):
+                newly_added = set(context_ids) - prev_context_set
+                self._recompress_nodes(newly_added)
+                recompressed_rounds += 1
+                # Re-evaluate metrics with fresh summaries
+                metrics = self._compute_all_metrics(query, context_ids, raw_code_ids)
 
             if self._all_pass(metrics):
                 return self._build_result(
@@ -147,12 +249,16 @@ class CSEAgent:
                     rounds=round_num,
                     reason="All thresholds met",
                     query=query,
+                    recompressed_rounds=recompressed_rounds,
                 )
 
             # --- Confidence fallback: replace Tier-0 summaries with raw code ---
             if metrics.model_confidence < self.CONFIDENCE_THRESHOLD:
                 tier0_nodes = self._get_tier0_nodes(query.target_node_id)
                 raw_code_ids.update(tier0_nodes & set(context_ids))
+
+            prev_confidence = metrics.model_confidence
+            prev_context_set = set(context_ids)
 
             # --- Structural expansion by tier --------------------------------
             # Also expand when confidence is low: adding more context nodes
@@ -183,6 +289,7 @@ class CSEAgent:
                 else "Max expansion rounds reached"
             ),
             query=query,
+            recompressed_rounds=recompressed_rounds,
         )
 
     def pick_representative_target(self) -> Tuple[str, str, str]:
@@ -190,22 +297,60 @@ class CSEAgent:
 
         Returns ``(node_id, file_path, rich_query_text)``.
         """
-        best_id = ""
-        best_degree = -1
-        for node_id, node in self._node_lookup.items():
-            if node.type == "file":
-                continue
-            degree = len(self._outgoing.get(node_id, [])) + len(
-                self._incoming.get(node_id, [])
-            )
-            if degree > best_degree:
-                best_degree = degree
-                best_id = node_id
-        if not best_id:
-            best_id = self.link_graph.nodes[0].id if self.link_graph.nodes else ""
-        file_path = self._node_lookup[best_id].file_path if best_id else ""
-        rich_query = self._build_rich_query(best_id) if best_id else ""
-        return best_id, file_path, rich_query
+        targets = self.pick_top_n_targets(n=1)
+        if targets:
+            return targets[0]
+        return "", "", ""
+
+    def pick_top_n_targets(self, n: int = 3) -> List[Tuple[str, str, str]]:
+        """Return up to n non-file nodes by degree, preferring file diversity.
+
+        Selects the highest-degree node from each file first (one per file),
+        then fills remaining slots with the next highest-degree nodes overall.
+
+        Returns a list of ``(node_id, file_path, rich_query_text)`` tuples.
+        """
+        scored = sorted(
+            [
+                (
+                    len(self._outgoing.get(nid, [])) + len(self._incoming.get(nid, [])),
+                    nid,
+                )
+                for nid, node in self._node_lookup.items()
+                if node.type != "file"
+            ],
+            reverse=True,
+        )
+
+        chosen: List[str] = []
+        seen_files: Set[str] = set()
+
+        # First pass: one per file for diversity
+        for _, nid in scored:
+            if len(chosen) >= n:
+                break
+            fp = self._node_lookup[nid].file_path
+            if fp not in seen_files:
+                seen_files.add(fp)
+                chosen.append(nid)
+
+        # Second pass: fill remaining slots with next highest-degree nodes
+        if len(chosen) < n:
+            chosen_set = set(chosen)
+            for _, nid in scored:
+                if len(chosen) >= n:
+                    break
+                if nid not in chosen_set:
+                    chosen.append(nid)
+                    chosen_set.add(nid)
+
+        if not chosen and self.link_graph.nodes:
+            chosen = [self.link_graph.nodes[0].id]
+
+        return [
+            (nid, self._node_lookup[nid].file_path, self._build_rich_query(nid))
+            for nid in chosen
+        ]
 
     def _build_rich_query(self, node_id: str) -> str:
         """Build a semantically rich query from node metadata and neighbours.
@@ -421,27 +566,37 @@ class CSEAgent:
     def _compute_entity_coverage(
         self, query_text: str, context_node_names: Set[str]
     ) -> float:
-        """Fraction of query-extracted entities present in context (case-insensitive)."""
+        """Fraction of query-extracted entities present in context (case-insensitive).
+
+        Only tokens that actually match a node name somewhere in the full graph are
+        counted as code entities.  Plain English words that happen to be capitalised
+        (e.g. "Add", "Fix") are discarded, so natural-language task descriptions are
+        not penalised when no explicit symbol references are made.
+        """
         entities = self._extract_query_entities(query_text)
         if not entities:
             return 1.0
-        lower_names = {n.lower() for n in context_node_names}
-        found = sum(1 for e in entities if e.lower() in lower_names)
-        return found / len(entities)
+
+        # Keep only tokens that match an actual symbol in the codebase
+        all_node_names_lower = {n.name.lower() for n in self.link_graph.nodes}
+        code_entities = {e for e in entities if e.lower() in all_node_names_lower}
+
+        if not code_entities:
+            # Natural-language task with no explicit symbol references — not penalised
+            return 1.0
+
+        lower_context = {n.lower() for n in context_node_names}
+        found = sum(1 for e in code_entities if e.lower() in lower_context)
+        return found / len(code_entities)
 
     def _code_tokenize(self, text: str) -> List[str]:
         """Tokenise text into lowercase sub-tokens with code-identifier awareness.
 
-        Handles:
-          - CamelCase splits:  ``CSVLoader``  → ``csv loader``
-          - snake_case splits: ``run_pipeline`` → ``run pipeline``
-          - Dot/slash splits:  ``core/pipeline.py`` → ``core pipeline py``
-          - Short stop words filtered (``in``, ``by``, ``to``, etc.)
+        Used by StaticRAGAgent for BM25 node ranking. Handles CamelCase,
+        snake_case, and dot/slash splits; filters short stop words.
         """
-        # Split on uppercase boundaries for CamelCase
         text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
         text = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", text)
-        # Replace any non-alphanumeric character with a space
         text = re.sub(r"[^a-zA-Z0-9]+", " ", text)
         tokens = [t.lower() for t in text.split() if len(t) > 1]
         _STOP = {
@@ -452,82 +607,57 @@ class CSEAgent:
         }
         return [t for t in tokens if t not in _STOP]
 
-    def _compute_bm25_similarity(
-        self, query_tokens: List[str], doc_token_lists: List[List[str]]
+    def _compute_tfidf_similarity(
+        self, query_text: str, context_summaries: List[str]
     ) -> float:
-        """BM25 score of query against a corpus of tokenised documents.
+        """TF-IDF cosine similarity: query vs mean of context summary vectors."""
+        corpus = [query_text] + context_summaries
+        try:
+            vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b")
+            tfidf_matrix = vectorizer.fit_transform(corpus)
+        except ValueError:
+            return 0.0
+        query_vec = tfidf_matrix[0]
+        mean_summary_vec = np.asarray(tfidf_matrix[1:].mean(axis=0))
+        sim = cosine_similarity(query_vec, mean_summary_vec)[0][0]
+        return float(min(1.0, max(0.0, sim)))
 
-        Each summary is one document. The raw BM25 score is normalised by the
-        theoretical maximum (all query terms present at saturation) to yield a
-        value in [0, 1].
+    def _compute_embedding_similarity(
+        self, query_text: str, context_summaries: List[str]
+    ) -> Optional[float]:
+        """Sentence-embedding cosine similarity: query vs mean of context embeddings.
 
-        Parameters (standard Okapi BM25):
-          k1 = 1.5  — term-frequency saturation
-          b  = 0.75 — document-length normalisation
+        Returns None when the embedding model is unavailable so the caller can
+        fall back to TF-IDF only.
         """
-        if not doc_token_lists or not query_tokens:
-            return 0.0
-
-        k1, b = 1.5, 0.75
-        N = len(doc_token_lists)
-        avg_dl = sum(len(d) for d in doc_token_lists) / N
-
-        # Document frequency per term across the corpus
-        df: Dict[str, int] = defaultdict(int)
-        for doc in doc_token_lists:
-            for t in set(doc):
-                df[t] += 1
-
-        # Score query against the *union* of all docs (treat context as one slab)
-        combined_tokens: List[str] = []
-        for doc in doc_token_lists:
-            combined_tokens.extend(doc)
-        dl = len(combined_tokens)
-
-        tf: Dict[str, float] = defaultdict(float)
-        for t in combined_tokens:
-            tf[t] += 1.0
-
-        score = 0.0
-        max_score = 0.0
-        for qt in set(query_tokens):
-            n_t = df.get(qt, 0)
-            idf = math.log((N - n_t + 0.5) / (n_t + 0.5) + 1.0)
-            # BM25 tf component
-            tf_d = tf.get(qt, 0.0)
-            tf_bm25 = (tf_d * (k1 + 1.0)) / (
-                tf_d + k1 * (1.0 - b + b * dl / max(avg_dl, 1.0))
-            )
-            score += idf * tf_bm25
-            # Theoretical max: tf → ∞ saturates at (k1 + 1)
-            max_score += idf * (k1 + 1.0)
-
-        if max_score == 0.0:
-            return 0.0
-        return min(1.0, score / max_score)
+        vecs = _embed([query_text] + context_summaries)
+        if vecs is None:
+            return None
+        query_vec = vecs[0:1]           # (1, D)
+        mean_ctx_vec = vecs[1:].mean(axis=0, keepdims=True)  # (1, D)
+        sim = cosine_similarity(query_vec, mean_ctx_vec)[0][0]
+        return float(min(1.0, max(0.0, sim)))
 
     def _compute_semantic_overlap(
         self, query_text: str, context_summaries: List[str]
     ) -> float:
-        """BM25 similarity with code-aware tokenisation.
+        """Blended semantic similarity: 0.6 * embedding + 0.4 * TF-IDF.
 
-        Replaces TF-IDF cosine similarity. Improvements over TF-IDF:
-          - CamelCase/snake_case identifiers are split before matching, so
-            ``CSVLoader`` in context matches ``csv`` and ``loader`` in query.
-          - BM25 handles term-frequency saturation and variable document length,
-            reducing the bias towards longer summaries.
-          - No sklearn dependency.
+        Embedding cosine (sentence-transformers) captures what the code *does*.
+        TF-IDF cosine captures exact identifier names, which matter a lot in code
+        (e.g. the query mentions ``CSEAgent`` and the summary contains it).
+        Blending keeps both signals. Falls back to TF-IDF only when the
+        embedding model is not installed.
         """
-        if not context_summaries:
+        if not context_summaries or not query_text:
             return 0.0
 
-        query_tokens = self._code_tokenize(query_text)
-        doc_token_lists = [self._code_tokenize(s) for s in context_summaries]
+        tfidf_sim = self._compute_tfidf_similarity(query_text, context_summaries)
+        emb_sim = self._compute_embedding_similarity(query_text, context_summaries)
 
-        if not query_tokens:
-            return 0.0
-
-        return self._compute_bm25_similarity(query_tokens, doc_token_lists)
+        if emb_sim is None:
+            return tfidf_sim
+        return 0.6 * emb_sim + 0.4 * tfidf_sim
 
     def _compute_model_confidence(
         self,
@@ -646,6 +776,73 @@ class CSEAgent:
         except Exception:
             return ""
 
+    def _recompress_nodes(self, node_ids: Set[str]) -> None:
+        """Regenerate summaries for *node_ids* via ``self._resummary_fn``.
+
+        Called when a confidence drop of > ``CONFIDENCE_DROP_THRESHOLD`` is
+        detected between rounds, indicating that newly pulled-in nodes have
+        low-quality template summaries.  Updates ``self.compressed_graph``
+        in-memory; does not touch disk.
+        """
+        if self._resummary_fn is None or not node_ids:
+            return
+        for nid in node_ids:
+            fresh = self._resummary_fn(nid)
+            if not fresh:
+                continue
+            if nid in self.compressed_graph.node_summaries:
+                self.compressed_graph.node_summaries[nid].summary = fresh
+            elif nid in self._node_lookup:
+                node = self._node_lookup[nid]
+                from models.compressed_graph import NodeSummary as _NS
+                self.compressed_graph.node_summaries[nid] = _NS(
+                    node_id=nid,
+                    name=node.name,
+                    node_type=node.type,
+                    file_path=node.file_path,
+                    summary=fresh,
+                )
+
+    def expand_for_query(
+        self,
+        query: SufficiencyQuery,
+        context_ids: List[str],
+        raw_code_ids: List[str],
+        reason_prefix: str = "Logprob-triggered re-expansion",
+    ) -> SufficiencyResult:
+        """One additional expansion step beyond the normal evaluation loop.
+
+        Used externally — typically after a logprob signal of low generation
+        confidence — to widen the context and return a new SufficiencyResult
+        ready for a fresh codegen call.
+
+        Parameters
+        ----------
+        query:
+            The original SufficiencyQuery (target + text unchanged).
+        context_ids:
+            Node IDs from the previous evaluation round to expand from.
+        raw_code_ids:
+            Raw-code node set from the previous evaluation (preserved).
+        reason_prefix:
+            Prefix for the ``reason`` field in the returned result.
+        """
+        expanded_ids = self._expand_by_tier(
+            query.target_node_id,
+            context_ids,
+            expansion_round=self.MAX_ROUNDS,  # one step beyond normal budget
+        )
+        metrics = self._compute_all_metrics(query, expanded_ids, set(raw_code_ids))
+        return self._build_result(
+            is_sufficient=self._all_pass(metrics),
+            metrics=metrics,
+            context_ids=expanded_ids,
+            raw_code_ids=raw_code_ids,
+            rounds=self.MAX_ROUNDS + 1,
+            reason=f"{reason_prefix}: {len(expanded_ids)} context nodes",
+            query=query,
+        )
+
     def _all_pass(self, metrics: SufficiencyMetrics) -> bool:
         structural_ok = (
             metrics.dependency_completeness >= self.DEP_THRESHOLD
@@ -671,6 +868,7 @@ class CSEAgent:
         rounds: int,
         reason: str,
         query: SufficiencyQuery,
+        recompressed_rounds: int = 0,
     ) -> SufficiencyResult:
         return SufficiencyResult(
             is_sufficient=is_sufficient,
@@ -687,6 +885,7 @@ class CSEAgent:
             },
             reason=reason,
             query=query,
+            recompressed_rounds=recompressed_rounds,
         )
 
 

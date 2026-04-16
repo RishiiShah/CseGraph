@@ -76,3 +76,10 @@ class SufficiencyResult(BaseModel):
     query: SufficiencyQuery = Field(
         ..., description="The original query that was evaluated"
     )
+    recompressed_rounds: int = Field(
+        0,
+        description=(
+            "Number of expansion rounds where a >15% confidence drop triggered "
+            "in-memory re-summarisation of newly added context nodes"
+        ),
+    )
