@@ -94,6 +94,52 @@ echo GROQ_API_KEY=your_key_here > .env
 
 ---
 
+## Local Model Setup (Optional)
+
+To use local GGUF models instead of Groq API for code generation:
+
+### 1. Download GGUF Models
+
+The system supports Qwen models. Download the desired quantized model:
+
+```bash
+# Create codermodel directory if it doesn't exist
+mkdir -p codermodel
+
+# Option A: Qwen 3.5 4B model (faster, lower memory)
+wget -O codermodel/Qwen3.5-4B.Q4_K_M.gguf \
+  https://huggingface.co/Qwen/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B.Q4_K_M.gguf
+
+# Option B: Qwen 3.5 9B model (better quality, more memory intensive)
+wget -O codermodel/Qwen3.5-9B.Q4_K_M.gguf \
+  https://huggingface.co/Qwen/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B.Q4_K_M.gguf
+```
+
+### 2. Automatic Detection
+
+Once models are placed in `codermodel/`, the pipeline automatically:
+- Detects available hardware (Metal/CUDA/ROCm/CPU)
+- Selects the best-available model
+- Loads it without requiring a Groq API key
+
+### 3. Run Without Groq API
+
+```bash
+# Pipeline will use local model if available (no GROQ_API_KEY needed)
+env/bin/python run_pipeline.py --all-sandboxes
+```
+
+**Note:** If no local model is found in `codermodel/`, the pipeline falls back to Groq API (requires `GROQ_API_KEY`).
+
+### 4. Hardware Support
+
+- **Apple Silicon (Metal)**: Optimized GPU acceleration via Metal
+- **NVIDIA (CUDA)**: GPU acceleration if CUDA toolkit is available
+- **AMD (ROCm)**: GPU acceleration if ROCm is installed
+- **CPU**: Falls back to CPU if no GPU is available
+
+---
+
 ## Run Commands
 
 ### Full pipeline
