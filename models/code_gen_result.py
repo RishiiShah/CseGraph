@@ -45,3 +45,6 @@ class CodeGenResult(BaseModel):
     cse_rounds: int = Field(
         ..., description="Number of CSE expansion rounds that ran before generation"
     )
+    mean_logprob: Optional[float] = Field(
+        None, description="Mean log-probability of generated tokens (lower = less confident)"
+    )

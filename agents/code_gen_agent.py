@@ -1,7 +1,13 @@
 """Code Generation Agent — code_gen_agent.py
 
-Takes a validated SufficiencyResult from the CSE and uses a Groq-hosted LLM
-to generate Python source code conditioned on the verified context.
+Takes a validated SufficiencyResult from the CSE and generates Python source code
+conditioned on the verified context.
+
+Backend priority
+----------------
+1. Local GGUF model (Qwen3, Code Llama, …) via llama-cpp-python — auto-selected
+   from ``codermodel/`` by available RAM/VRAM using system_profile.
+2. Groq API (LLaMA 3.3 70B) — fallback when no local model fits in memory.
 
 Flow
 ----
@@ -10,16 +16,13 @@ Flow
    - System role: code generation assistant with context-awareness instructions.
    - Context block: compressed summaries for all context_node_ids.
    - Raw code block: verbatim source for raw_code_nodes (low-confidence nodes).
-   - Task: the original query_text.
-3. Call Groq API with the chosen model.
+   - Task: the original query_text (user-supplied intent).
+3. Run inference via local GGUF → Groq fallback.
 4. Return CodeGenResult with generated code + usage metadata.
 
-Environment
------------
-Set GROQ_API_KEY in your environment before running:
-    export GROQ_API_KEY=<your_key>          (Linux/Mac)
-    set GROQ_API_KEY=<your_key>             (Windows CMD)
-    $env:GROQ_API_KEY="<your_key>"          (PowerShell)
+Environment (Groq fallback only)
+---------------------------------
+    export GROQ_API_KEY=<your_key>
 """
 
 from __future__ import annotations
@@ -35,19 +38,20 @@ from models.code_gen_result import CodeGenResult
 from models.compressed_graph import CompressedGraph
 from models.cse_result import SufficiencyResult
 from models.link_graph import GraphNode, LinkGraph
+from system_profile import build_system_profile, select_gguf_model
 
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_TEMPERATURE = 0.2   # Low temperature for deterministic code output
 DEFAULT_MAX_TOKENS = 2048
 
 
 class CodeGenAgent:
-    """Generates code using a Groq-hosted LLM, gated by the CSE.
+    """Generates code via local GGUF model (primary) or Groq API (fallback).
 
     Parameters
     ----------
@@ -55,28 +59,54 @@ class CodeGenAgent:
         Path to the serialised LinkGraph JSON (needed for raw-code fetch).
     compressed_graph_path:
         Path to the serialised CompressedGraph JSON (summaries source).
-    model:
-        Groq model ID.  Default: ``llama-3.3-70b-versatile``.
+    groq_model:
+        Groq model ID used when no local GGUF is available.
     api_key:
         Groq API key.  Defaults to the ``GROQ_API_KEY`` environment variable.
+        Only required when local model is not available.
     """
 
     def __init__(
         self,
         link_graph_path: str,
         compressed_graph_path: str,
-        model: str = DEFAULT_MODEL,
+        groq_model: str = DEFAULT_GROQ_MODEL,
         api_key: Optional[str] = None,
     ) -> None:
-        self.model = model
-        self._api_key = api_key or os.environ.get("GROQ_API_KEY", "")
-        if not self._api_key:
-            raise ValueError(
-                "Groq API key not found. "
-                "Set the GROQ_API_KEY environment variable or pass api_key=."
-            )
+        self._local_llm = None   # llama-cpp Llama instance
+        self._groq_client = None
+        self.model = groq_model  # updated to GGUF filename if local loads
 
-        self._client = self._init_groq_client()
+        # --- 1. Try local GGUF ---
+        try:
+            from llama_cpp import Llama
+            profile = build_system_profile()
+            result = select_gguf_model(profile)
+            if result:
+                gguf_path, n_gpu_layers = result
+                self._local_llm = Llama(
+                    model_path=gguf_path,
+                    n_ctx=4096,
+                    n_threads=profile.n_threads,
+                    n_gpu_layers=n_gpu_layers,
+                    verbose=False,
+                )
+                self.model = os.path.basename(gguf_path)
+                print(f"[CodeGenAgent] Using local model: {self.model}")
+        except Exception as exc:
+            print(f"[CodeGenAgent] Local GGUF unavailable ({exc}), trying Groq.")
+
+        # --- 2. Groq fallback ---
+        if self._local_llm is None:
+            api_key = api_key or os.environ.get("GROQ_API_KEY", "")
+            if not api_key:
+                raise ValueError(
+                    "No local GGUF model found and GROQ_API_KEY is not set. "
+                    "Place a .gguf file in codermodel/ or set GROQ_API_KEY."
+                )
+            self._groq_client = self._init_groq_client(api_key)
+            print(f"[CodeGenAgent] Using Groq model: {self.model}")
+
         self._link_graph = self._load_link_graph(link_graph_path)
         self._compressed_graph = self._load_compressed_graph(compressed_graph_path)
         self._node_lookup: Dict[str, GraphNode] = {
@@ -94,11 +124,19 @@ class CodeGenAgent:
         generation but flags ``cse_sufficient=False`` in the result so
         callers can decide how to handle it.
         """
-        prompt_blocks = self._build_prompt(cse_result)
-        system_msg, user_msg = prompt_blocks
+        system_msg, user_msg = self._build_prompt(cse_result)
+        if self._local_llm is not None:
+            return self._generate_local(cse_result, system_msg, user_msg)
+        return self._generate_groq(cse_result, system_msg, user_msg)
 
-        response = self._client.chat.completions.create(
-            model=self.model,
+    def _generate_local(
+        self,
+        cse_result: SufficiencyResult,
+        system_msg: str,
+        user_msg: str,
+    ) -> CodeGenResult:
+        """Run inference on the local GGUF model via llama-cpp-python."""
+        response = self._local_llm.create_chat_completion(
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user",   "content": user_msg},
@@ -106,6 +144,61 @@ class CodeGenAgent:
             temperature=DEFAULT_TEMPERATURE,
             max_tokens=DEFAULT_MAX_TOKENS,
         )
+        generated_code = response["choices"][0]["message"]["content"] or ""
+        generated_code = self._extract_code_block(generated_code)
+
+        usage = response.get("usage", {})
+        return CodeGenResult(
+            generated_code=generated_code,
+            query_text=cse_result.query.query_text,
+            target_node_id=cse_result.query.target_node_id,
+            target_file_path=cse_result.query.target_file_path,
+            model=self.model,
+            context_nodes_used=list(cse_result.context_node_ids),
+            raw_code_nodes_used=list(cse_result.raw_code_nodes),
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            cse_sufficient=cse_result.is_sufficient,
+            cse_rounds=cse_result.expansion_rounds,
+            mean_logprob=None,  # llama-cpp logprobs not requested (slow)
+        )
+
+    def _generate_groq(
+        self,
+        cse_result: SufficiencyResult,
+        system_msg: str,
+        user_msg: str,
+    ) -> CodeGenResult:
+        """Run inference via Groq API with optional logprob extraction."""
+        mean_logprob: Optional[float] = None
+        try:
+            response = self._groq_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user",   "content": user_msg},
+                ],
+                temperature=DEFAULT_TEMPERATURE,
+                max_tokens=DEFAULT_MAX_TOKENS,
+                logprobs=True,
+            )
+            try:
+                tokens = response.choices[0].logprobs.content
+                if tokens:
+                    mean_logprob = sum(t.logprob for t in tokens) / len(tokens)
+            except AttributeError:
+                pass
+        except Exception:
+            # logprobs not supported by this model — retry without
+            response = self._groq_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user",   "content": user_msg},
+                ],
+                temperature=DEFAULT_TEMPERATURE,
+                max_tokens=DEFAULT_MAX_TOKENS,
+            )
 
         generated_code = response.choices[0].message.content or ""
         generated_code = self._extract_code_block(generated_code)
@@ -123,6 +216,7 @@ class CodeGenAgent:
             completion_tokens=usage.completion_tokens if usage else None,
             cse_sufficient=cse_result.is_sufficient,
             cse_rounds=cse_result.expansion_rounds,
+            mean_logprob=mean_logprob,
         )
 
     def save_result(self, result: CodeGenResult, output_path: str) -> None:
@@ -149,6 +243,100 @@ class CodeGenAgent:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(header + result.generated_code + "\n")
         print(f"Saved generated code to '{output_path}'")
+
+    @staticmethod
+    def find_test_file(target_file_path: str, repo_root: str) -> Optional[str]:
+        """Return the path to the test file for *target_file_path*, or None.
+
+        Searches candidates in order:
+          1. ``<repo_root>/tests/test_<module>.py``
+          2. ``<repo_root>/test_<module>.py``
+          3. ``<same_dir_as_target>/test_<module>.py``
+        """
+        module_name = os.path.splitext(os.path.basename(target_file_path))[0]
+        target_dir = os.path.dirname(os.path.join(repo_root, target_file_path))
+        candidates = [
+            os.path.join(repo_root, "tests", f"test_{module_name}.py"),
+            os.path.join(repo_root, f"test_{module_name}.py"),
+            os.path.join(target_dir, f"test_{module_name}.py"),
+        ]
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        return None
+
+    def generate_tests(
+        self,
+        codegen_result: CodeGenResult,
+        existing_test_content: Optional[str] = None,
+    ) -> str:
+        """Generate or update a pytest test file for *codegen_result.generated_code*.
+
+        Parameters
+        ----------
+        codegen_result:
+            The result from a prior ``generate()`` call.
+        existing_test_content:
+            Current content of the related test file, if one exists.
+            When provided the LLM is asked to update it rather than write
+            tests from scratch.
+
+        Returns
+        -------
+        str
+            Python source code for the test file, extracted from the LLM
+            response.
+        """
+        system_msg = (
+            "You are an expert Python test engineer. "
+            "You will be given Python source code that was just generated or modified. "
+            "Write comprehensive pytest unit tests for it. "
+            "If an existing test file is provided, update it to cover new or changed "
+            "behaviour while keeping all previously valid tests intact. "
+            "Use fixtures where appropriate. "
+            "Output ONLY the test code inside a single ```python ... ``` block "
+            "with no additional explanation."
+        )
+
+        parts: List[str] = [
+            f"## Module under test\n`{codegen_result.target_file_path}`",
+            f"## Generated source code\n```python\n{codegen_result.generated_code}\n```",
+        ]
+        if existing_test_content:
+            parts.append(
+                "## Existing test file (update this, preserve passing tests)\n"
+                f"```python\n{existing_test_content}\n```"
+            )
+        else:
+            parts.append(
+                "## Note\nNo existing test file found — write tests from scratch."
+            )
+
+        user_msg = "\n\n".join(parts)
+
+        if self._local_llm is not None:
+            response = self._local_llm.create_chat_completion(
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user",   "content": user_msg},
+                ],
+                temperature=DEFAULT_TEMPERATURE,
+                max_tokens=DEFAULT_MAX_TOKENS,
+            )
+            raw = response["choices"][0]["message"]["content"] or ""
+        else:
+            response = self._groq_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user",   "content": user_msg},
+                ],
+                temperature=DEFAULT_TEMPERATURE,
+                max_tokens=DEFAULT_MAX_TOKENS,
+            )
+            raw = response.choices[0].message.content or ""
+
+        return self._extract_code_block(raw)
 
     # ------------------------------------------------------------------
     # Prompt construction
@@ -239,28 +427,38 @@ class CodeGenAgent:
 
     @staticmethod
     def _extract_code_block(text: str) -> str:
-        """Extract the first ```python ... ``` block from the LLM response.
+        """Extract code from the LLM response.
 
-        Falls back to the full response if no fenced block is found.
+        1. Strip any leading <think>...</think> block (Qwen3 and other
+           reasoning models emit a thinking trace before the answer; the
+           opening tag is injected by the chat template so only the closing
+           </think> tag appears in the output text).
+        2. Extract the first ```python ... ``` fenced block.
+        3. Fall back to a generic ``` ... ``` block.
+        4. Fall back to the full remaining text.
         """
         import re
+        # Strip think block — take everything after the first </think>
+        if "</think>" in text:
+            text = text[text.index("</think>") + len("</think>"):].lstrip()
+
         match = re.search(r"```python\s*(.*?)```", text, re.DOTALL)
         if match:
             return match.group(1).strip()
-        # Try generic ``` block
         match = re.search(r"```\s*(.*?)```", text, re.DOTALL)
         if match:
             return match.group(1).strip()
         return text.strip()
 
-    def _init_groq_client(self):
+    @staticmethod
+    def _init_groq_client(api_key: str):
         try:
             from groq import Groq
-            return Groq(api_key=self._api_key)
+            return Groq(api_key=api_key)
         except ImportError:
             raise ImportError(
                 "groq package not found. Install it with:\n"
-                "  venv/Scripts/pip install groq"
+                "  pip install groq"
             )
 
     @staticmethod
@@ -305,9 +503,9 @@ if __name__ == "__main__":
         help="Output path for the generated code result",
     )
     parser.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
-        help=f"Groq model ID (default: {DEFAULT_MODEL})",
+        "--groq-model",
+        default=DEFAULT_GROQ_MODEL,
+        help=f"Groq model ID used as fallback (default: {DEFAULT_GROQ_MODEL})",
     )
 
     args = parser.parse_args()
@@ -321,7 +519,7 @@ if __name__ == "__main__":
             f"(reason: {cse_result.reason}). Generating anyway."
         )
 
-    agent = CodeGenAgent(args.link_graph, args.compressed_graph, model=args.model)
+    agent = CodeGenAgent(args.link_graph, args.compressed_graph, groq_model=args.groq_model)
     result = agent.generate(cse_result)
     agent.save_result(result, args.output)
 

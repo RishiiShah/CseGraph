@@ -23,6 +23,7 @@ Usage examples
 
 import argparse
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -42,11 +43,42 @@ DEFAULT_SANDBOX_ROOT = "tests/fixtures/sandboxes"
 # Single-repo pipeline
 # ---------------------------------------------------------------------------
 
-def run_pipeline(root_dir: str, output_dir: str, skip_codegen: bool = False) -> None:
-    """Run the full 5-step pipeline on one repository root."""
+def run_pipeline(
+    root_dir: str,
+    output_dir: str,
+    skip_codegen: bool = False,
+    use_llm: bool = False,
+    gguf_model_path: Optional[str] = None,
+    task: Optional[str] = None,
+    prompt_for_task: bool = False,
+) -> None:
+    """Run the full 5-step pipeline on one repository root.
+
+    Parameters
+    ----------
+    task:
+        Explicit task description for the LLM (what to generate/change).
+        If None and prompt_for_task is True, the user is prompted interactively.
+        If both are absent, falls back to the auto-generated structural query.
+    prompt_for_task:
+        When True and task is None, prompt the user on stdin after the target
+        is auto-selected so they can describe their intent.
+    """
     abs_root = os.path.abspath(root_dir)
     abs_output_dir = os.path.abspath(output_dir)
     os.makedirs(abs_output_dir, exist_ok=True)
+
+    # Ask for the task before any processing begins
+    if task:
+        query_text = task
+    elif prompt_for_task:
+        print(f"Repository: {abs_root}")
+        query_text = input("What would you like to do? ").strip()
+        if not query_text:
+            print("No task provided — exiting.")
+            return
+    else:
+        query_text = None  # resolved after target is picked below
 
     # Step 1: Ingestion
     ingestion_agent = IngestionAgent(abs_root)
@@ -61,7 +93,11 @@ def run_pipeline(root_dir: str, output_dir: str, skip_codegen: bool = False) -> 
     linking_agent.save_graph(graph, graph_output)
 
     # Step 3: Compression
-    compressor = CompressionAgent(graph_output)
+    compressor = CompressionAgent(
+        graph_output,
+        use_llm=use_llm,
+        gguf_model_path=gguf_model_path,
+    )
     compressed = compressor.compress()
     compressed_output = os.path.join(abs_output_dir, "compressed_graph.json")
     compressor.save_compressed(compressed, compressed_output)
@@ -69,8 +105,13 @@ def run_pipeline(root_dir: str, output_dir: str, skip_codegen: bool = False) -> 
     # Step 4: Context Sufficiency Estimation
     cse = CSEAgent(graph_output, compressed_output)
     target_id, target_file, auto_query = cse.pick_representative_target()
+
+    # Fall back to auto_query only in non-interactive batch mode
+    if query_text is None:
+        query_text = auto_query
+
     sample_query = SufficiencyQuery(
-        query_text=auto_query,
+        query_text=query_text,
         target_node_id=target_id,
         target_file_path=target_file,
     )
@@ -139,7 +180,12 @@ def run_pipeline(root_dir: str, output_dir: str, skip_codegen: bool = False) -> 
 # ---------------------------------------------------------------------------
 
 def run_all_sandboxes(
-    sandboxes_root: str, output_dir: str, skip_codegen: bool = False
+    sandboxes_root: str,
+    output_dir: str,
+    skip_codegen: bool = False,
+    use_llm: bool = False,
+    gguf_model_path: Optional[str] = None,
+    task: Optional[str] = None,
 ) -> None:
     """Run the full pipeline on every subdirectory inside sandboxes_root."""
     abs_root = os.path.abspath(sandboxes_root)
@@ -161,7 +207,14 @@ def run_all_sandboxes(
         print(f"Sandbox: {sandbox}")
         print(f"{'='*60}")
         try:
-            run_pipeline(sandbox_path, sandbox_output, skip_codegen=skip_codegen)
+            run_pipeline(
+                sandbox_path, sandbox_output,
+                skip_codegen=skip_codegen,
+                use_llm=use_llm,
+                gguf_model_path=gguf_model_path,
+                task=task,
+                prompt_for_task=False,
+            )
         except Exception as e:
             print(f"ERROR in '{sandbox}': {e}")
         print()
@@ -220,28 +273,67 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the Code Generation step.",
     )
+    parser.add_argument(
+        "--use-llm",
+        action="store_true",
+        help="Enable LLM summarization in CompressionAgent.",
+    )
+    parser.add_argument(
+        "--gguf-model-path",
+        default=None,
+        help="Explicit path to a GGUF model. Skips auto-selection.",
+    )
+    parser.add_argument(
+        "--gguf-model-dir",
+        default=None,
+        help="Directory of GGUF models for auto-selection by RAM fit. "
+             "Also read from GGUF_MODEL_DIR env var.",
+    )
+    parser.add_argument(
+        "--task",
+        default=None,
+        help=(
+            "Task description passed to the LLM (e.g. 'Add retry logic with "
+            "exponential backoff'). If omitted in single-repo mode the user is "
+            "prompted interactively; in --all-sandboxes mode the auto-generated "
+            "structural query is used."
+        ),
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
 
+    if args.gguf_model_dir:
+        os.environ["GGUF_MODEL_DIR"] = args.gguf_model_dir
+    llm_kwargs = dict(use_llm=args.use_llm, gguf_model_path=args.gguf_model_path)
+
     if args.all_sandboxes:
+        # Batch mode: no interactive prompt; use --task if given, else auto_query
         run_all_sandboxes(
             sandboxes_root=args.sandbox_root,
             output_dir=args.output_dir,
             skip_codegen=args.skip_codegen,
+            task=args.task,
+            **llm_kwargs,
         )
     elif args.root_dir:
+        # Single-repo mode: prompt user unless --task was supplied
         run_pipeline(
             root_dir=args.root_dir,
             output_dir=args.output_dir,
             skip_codegen=args.skip_codegen,
+            task=args.task,
+            prompt_for_task=(args.task is None),
+            **llm_kwargs,
         )
     else:
-        # Default: run on all sandboxes
+        # Default: run on all sandboxes (no interactive prompt)
         run_all_sandboxes(
             sandboxes_root=args.sandbox_root,
             output_dir=args.output_dir,
             skip_codegen=args.skip_codegen,
+            task=args.task,
+            **llm_kwargs,
         )

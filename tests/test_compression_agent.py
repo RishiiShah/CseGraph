@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -133,20 +134,18 @@ class TestCompressionAgent(unittest.TestCase):
 
         agent = CompressionAgent(str(self.graph_path))
 
-        # Test file node summary
+        # Test file node summary — new format: "Module <name> defines: ..."
         file_summary = agent._generate_node_summary("file::main.py")
         self.assertIn("main.py", file_summary)
-        self.assertIn("File", file_summary)
+        self.assertIn("defines", file_summary)
 
-        # Test class node summary
+        # Test class node summary — new format: signature line or "class <name>"
         class_summary = agent._generate_node_summary("symbol::main.py::class::Handler")
         self.assertIn("Handler", class_summary)
-        self.assertIn("Class", class_summary)
 
-        # Test function node summary
+        # Test function node summary — new format: signature line or "def <name>"
         func_summary = agent._generate_node_summary("symbol::main.py::function::process")
         self.assertIn("process", func_summary)
-        self.assertIn("Function", func_summary)
 
         # Test unknown node
         unknown_summary = agent._generate_node_summary("nonexistent")
@@ -332,6 +331,144 @@ class TestCompressionAgent(unittest.TestCase):
         self.assertGreater(len(compressed.context_slices), 0)
         self.assertGreater(
             compressed.compression_stats["avg_compression_ratio"], 0.0
+        )
+
+
+class TestUseLlmFallback(unittest.TestCase):
+    """Tests for the use_llm parameter and graceful fallback behaviour."""
+
+    def setUp(self) -> None:
+        """Create a temporary link_graph.json for use across tests in this class."""
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self._graph_path = Path(self._tmp_dir.name) / "link_graph.json"
+        self._save_mock_graph(self._create_mock_graph(), self._graph_path)
+
+    def tearDown(self) -> None:
+        self._tmp_dir.cleanup()
+
+    # ------------------------------------------------------------------
+    # Helpers reused from the parent class
+    # ------------------------------------------------------------------
+
+    def _create_mock_graph(self) -> LinkGraph:
+        nodes = [
+            GraphNode(
+                id="file::main.py",
+                type="file",
+                name="main.py",
+                file_path="main.py",
+            ),
+            GraphNode(
+                id="symbol::main.py::function::process",
+                type="function",
+                name="process",
+                file_path="main.py",
+                start_line=1,
+                end_line=5,
+            ),
+            GraphNode(
+                id="file::utils.py",
+                type="file",
+                name="utils.py",
+                file_path="utils.py",
+            ),
+            GraphNode(
+                id="symbol::utils.py::function::helper",
+                type="function",
+                name="helper",
+                file_path="utils.py",
+                start_line=1,
+                end_line=4,
+            ),
+        ]
+        edges = [
+            GraphEdge(
+                source="file::main.py",
+                target="symbol::main.py::function::process",
+                relation="contains",
+            ),
+            GraphEdge(
+                source="file::utils.py",
+                target="symbol::utils.py::function::helper",
+                relation="contains",
+            ),
+            GraphEdge(
+                source="symbol::main.py::function::process",
+                target="symbol::utils.py::function::helper",
+                relation="calls",
+            ),
+        ]
+        return LinkGraph(
+            root_dir=self._tmp_dir.name,
+            summary=LinkGraphSummary(
+                file_count=2, symbol_count=2, edge_count=len(edges)
+            ),
+            nodes=nodes,
+            edges=edges,
+        )
+
+    def _save_mock_graph(self, graph: LinkGraph, output_path: Path) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        data = graph.model_dump()
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+    # ------------------------------------------------------------------
+    # Test 1: default (use_llm=False) — AST path produces non-empty summaries
+    # ------------------------------------------------------------------
+
+    def test_use_llm_false_default(self) -> None:
+        """CompressionAgent with no use_llm arg uses AST path and produces summaries."""
+        agent = CompressionAgent(str(self._graph_path))
+        compressed = agent.compress()
+
+        self.assertGreater(len(compressed.node_summaries), 0)
+        for node_id, summary in compressed.node_summaries.items():
+            self.assertIsInstance(summary.summary, str)
+            self.assertGreater(
+                len(summary.summary), 0,
+                f"Summary for {node_id!r} is an empty string",
+            )
+
+    # ------------------------------------------------------------------
+    # Test 2: use_llm=True with no model available → falls back to AST
+    # ------------------------------------------------------------------
+
+    def test_use_llm_true_no_key(self) -> None:
+        """use_llm=True with no GGUF model and empty Groq key still produces summaries.
+
+        When no LLM backend is available, CompressionAgent falls back to the
+        AST-based path, so compress() must still produce non-empty summaries.
+        """
+        agent = CompressionAgent(
+            str(self._graph_path),
+            use_llm=True,
+            groq_api_key="",
+        )
+
+        # Compression must succeed and produce non-empty summaries regardless
+        # of whether the Groq client could make a real API call.
+        compressed = agent.compress()
+        self.assertGreater(len(compressed.node_summaries), 0)
+        for node_id, summary in compressed.node_summaries.items():
+            self.assertIsInstance(summary.summary, str)
+            self.assertGreater(
+                len(summary.summary), 0,
+                f"Fallback summary for {node_id!r} is an empty string",
+            )
+
+    # ------------------------------------------------------------------
+    # Test 3: CodeGenResult has mean_logprob field
+    # ------------------------------------------------------------------
+
+    def test_mean_logprob_field_exists(self) -> None:
+        """CodeGenResult model must declare a mean_logprob field."""
+        from models.code_gen_result import CodeGenResult
+
+        self.assertIn(
+            "mean_logprob",
+            CodeGenResult.model_fields,
+            "CodeGenResult is missing the 'mean_logprob' field",
         )
 
 
