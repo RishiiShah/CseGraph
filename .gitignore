@@ -39,3 +39,10 @@ Thumbs.db
 
 data/
 reports/
+
+# Sandbox package markers
+tests/fixtures/sandboxes/**/__init__.py
+tests/sandbox_unit_tests/__init__.py
+# Large model files
+*.gguf
+codermodel/*.gguf
