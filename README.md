@@ -154,6 +154,12 @@ env/bin/python run_pipeline.py --all-sandboxes --output-dir data/results
 # Run on a SINGLE sandbox
 env/bin/python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics --output-dir data/graph_out
 
+# Single sandbox with interactive task prompt and custom output directory
+env/bin/python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics --output-dir data/graph_out --prompt-for-task
+
+# Single sandbox without prompting uses the auto-generated structural query
+env/bin/python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics --output-dir data/graph_out
+
 # CSE only, skip code generation (no API key needed)
 env/bin/python run_pipeline.py --all-sandboxes --skip-codegen
 ```

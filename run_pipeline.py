@@ -23,6 +23,7 @@ Usage examples
 
 import argparse
 import os
+import time
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -157,7 +158,10 @@ def run_pipeline(
         print(f"CodeGen              : skipped — {e}")
         return
 
+    print("CodeGen              : generating (this can take a while on local GGUF)...")
+    t0 = time.perf_counter()
     code_gen_result = code_gen.generate(cse_result)
+    elapsed_s = time.perf_counter() - t0
 
     code_gen_json = os.path.join(abs_output_dir, "code_gen_result.json")
     code_gen.save_result(code_gen_result, code_gen_json)
@@ -170,7 +174,8 @@ def run_pipeline(
         f"CodeGen complete     : model={code_gen_result.model}, "
         f"context_nodes={len(code_gen_result.context_nodes_used)}, "
         f"raw_code_nodes={len(code_gen_result.raw_code_nodes_used)}, "
-        f"tokens={code_gen_result.prompt_tokens}+{code_gen_result.completion_tokens} "
+        f"tokens={code_gen_result.prompt_tokens}+{code_gen_result.completion_tokens}, "
+        f"elapsed={elapsed_s:.1f}s "
         f"-> '{code_gen_py}'"
     )
 
@@ -299,6 +304,15 @@ def parse_args() -> argparse.Namespace:
             "structural query is used."
         ),
     )
+    parser.add_argument(
+        "--prompt-for-task",
+        action="store_true",
+        help=(
+            "Prompt interactively for a task in single-repo mode. "
+            "By default the pipeline runs non-interactively and uses the "
+            "auto-generated structural query when --task is omitted."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -319,13 +333,13 @@ if __name__ == "__main__":
             **llm_kwargs,
         )
     elif args.root_dir:
-        # Single-repo mode: prompt user unless --task was supplied
+        # Single-repo mode: non-interactive by default; optional prompt
         run_pipeline(
             root_dir=args.root_dir,
             output_dir=args.output_dir,
             skip_codegen=args.skip_codegen,
             task=args.task,
-            prompt_for_task=(args.task is None),
+            prompt_for_task=(args.prompt_for_task and args.task is None),
             **llm_kwargs,
         )
     else:

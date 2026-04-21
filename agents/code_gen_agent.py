@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from typing import Dict, List, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -48,6 +49,10 @@ from system_profile import build_system_profile, select_gguf_model
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_TEMPERATURE = 0.2   # Low temperature for deterministic code output
 DEFAULT_MAX_TOKENS = 2048
+
+# Reuse local llama-cpp model instances across sandboxes in the same process.
+# Keyed by (model path + runtime config) to avoid repeated heavy loads.
+_LOCAL_LLM_CACHE: Dict[str, object] = {}
 
 
 class CodeGenAgent:
@@ -84,13 +89,21 @@ class CodeGenAgent:
             result = select_gguf_model(profile)
             if result:
                 gguf_path, n_gpu_layers = result
-                self._local_llm = Llama(
-                    model_path=gguf_path,
-                    n_ctx=4096,
-                    n_threads=profile.n_threads,
-                    n_gpu_layers=n_gpu_layers,
-                    verbose=False,
+                cache_key = (
+                    f"{gguf_path}|ctx=4096|threads={profile.n_threads}|gpu={n_gpu_layers}"
                 )
+                if cache_key in _LOCAL_LLM_CACHE:
+                    self._local_llm = _LOCAL_LLM_CACHE[cache_key]
+                    print(f"[CodeGenAgent] Reusing local model: {os.path.basename(gguf_path)}")
+                else:
+                    self._local_llm = Llama(
+                        model_path=gguf_path,
+                        n_ctx=4096,
+                        n_threads=profile.n_threads,
+                        n_gpu_layers=n_gpu_layers,
+                        verbose=False,
+                    )
+                    _LOCAL_LLM_CACHE[cache_key] = self._local_llm
                 self.model = os.path.basename(gguf_path)
                 print(f"[CodeGenAgent] Using local model: {self.model}")
         except Exception as exc:
@@ -136,6 +149,7 @@ class CodeGenAgent:
         user_msg: str,
     ) -> CodeGenResult:
         """Run inference on the local GGUF model via llama-cpp-python."""
+        t0 = time.perf_counter()
         response = self._local_llm.create_chat_completion(
             messages=[
                 {"role": "system", "content": system_msg},
@@ -144,6 +158,7 @@ class CodeGenAgent:
             temperature=DEFAULT_TEMPERATURE,
             max_tokens=DEFAULT_MAX_TOKENS,
         )
+        print(f"[CodeGenAgent] Local generation finished in {time.perf_counter() - t0:.1f}s")
         generated_code = response["choices"][0]["message"]["content"] or ""
         generated_code = self._extract_code_block(generated_code)
 
