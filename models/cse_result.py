@@ -4,8 +4,6 @@ from pydantic import BaseModel, Field
 
 
 class SufficiencyQuery(BaseModel):
-    """Input to the CSE: what context are we evaluating for?"""
-
     query_text: str = Field(
         ..., description="Natural-language code generation request"
     )
@@ -18,8 +16,6 @@ class SufficiencyQuery(BaseModel):
 
 
 class SufficiencyMetrics(BaseModel):
-    """The three sufficiency scores computed by the CSE."""
-
     dependency_completeness: float = Field(
         ...,
         description="Ratio of resolved dependencies in context (0.0-1.0)",
@@ -39,8 +35,6 @@ class SufficiencyMetrics(BaseModel):
 
 
 class SufficiencyResult(BaseModel):
-    """Output of the CSE evaluation."""
-
     schema_version: str = Field(
         "cse-result-v1",
         description="Schema version for serialized CSE output",

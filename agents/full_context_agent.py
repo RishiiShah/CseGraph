@@ -1,18 +1,3 @@
-"""Full Context Agent — full_context_agent.py
-
-Baseline: No context selection.  Every symbol in the repository is passed
-to the Code Generation Agent as verbatim raw source code.
-
-This represents the upper bound on context size and the lower bound on
-token efficiency.  Used to compare correctness and token cost against the
-adaptive (CSE) approach.
-
-Produces a SufficiencyResult with:
-  - context_node_ids = []         (no compressed summaries)
-  - raw_code_nodes  = all symbols (verbatim source for everything)
-  - is_sufficient   = True        (no gating — always proceeds)
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,19 +15,10 @@ class FullContextAgent:
     """Baseline: all repository symbols included as raw verbatim source."""
 
     def __init__(self, link_graph_path: str, compressed_graph_path: str) -> None:
-        # CSEAgent provides graph loading, adjacency indices, and metric computation.
         self._cse = CSEAgent(link_graph_path, compressed_graph_path)
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
-
     def build_context(self, query: SufficiencyQuery) -> SufficiencyResult:
-        """Return a SufficiencyResult that includes every symbol as raw code.
-
-        Metrics are computed on the full-context set so results are directly
-        comparable with those produced by CSEAgent and StaticRAGAgent.
-        """
         all_symbol_ids = self._all_symbol_ids()
 
         # Metrics: compute over all symbols treated as raw-code nodes.
@@ -56,7 +32,7 @@ class FullContextAgent:
         return SufficiencyResult(
             is_sufficient=True,
             metrics=metrics,
-            context_node_ids=[],              # no compressed summaries used
+            context_node_ids=[],
             raw_code_nodes=sorted(all_symbol_ids),
             expansion_rounds=0,
             max_rounds=0,
@@ -71,10 +47,7 @@ class FullContextAgent:
             json.dump(result.model_dump(), f, indent=4)
         print(f"Saved full-context result to '{output_path}'")
 
-    # ------------------------------------------------------------------
     # Helpers
-    # ------------------------------------------------------------------
-
     def _all_symbol_ids(self) -> List[str]:
         """Return IDs of every non-file node in the link graph."""
         return [
@@ -84,10 +57,7 @@ class FullContextAgent:
         ]
 
 
-# ---------------------------------------------------------------------------
 # CLI entry point
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     import argparse
 
@@ -112,10 +82,10 @@ if __name__ == "__main__":
     result = agent.build_context(query)
     agent.save_result(result, args.output)
 
-    print(f"Target            : {target_id}")
-    print(f"Raw code nodes    : {len(result.raw_code_nodes)}")
-    print(f"Dep. completeness : {result.metrics.dependency_completeness:.2%}")
-    print(f"Entity coverage   : {result.metrics.entity_coverage:.2%}")
-    print(f"Semantic overlap  : {result.metrics.semantic_overlap:.2%}")
-    print(f"Model confidence  : {result.metrics.model_confidence:.2%}")
-    print(f"Reason            : {result.reason}")
+    print(f"Target: {target_id}")
+    print(f"Raw code nodes: {len(result.raw_code_nodes)}")
+    print(f"Dep. completeness: {result.metrics.dependency_completeness:.2%}")
+    print(f"Entity coverage: {result.metrics.entity_coverage:.2%}")
+    print(f"Semantic overlap: {result.metrics.semantic_overlap:.2%}")
+    print(f"Model confidence: {result.metrics.model_confidence:.2%}")
+    print(f"Reason: {result.reason}")

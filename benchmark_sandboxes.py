@@ -112,7 +112,7 @@ def _run_cse_metrics(
                 "cse_raw_code_nodes": len(result.raw_code_nodes),
             }
     except Exception as exc:
-        print(f"  [CSE] error: {exc}")
+        print(f"[CSE] error: {exc}")
         return empty
 
 

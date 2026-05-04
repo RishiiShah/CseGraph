@@ -7,7 +7,6 @@ import textwrap
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-# Add parent directory so running from agents/ works without PYTHONPATH.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.compressed_graph import CompressedGraph, ContextSlice, NodeSummary
@@ -68,9 +67,7 @@ class CompressionAgent:
 
         self._llm_backend: Any = self._init_llm()
 
-    # ------------------------------------------------------------------
     # LLM backend initialisation (local GGUF preferred, Groq fallback)
-    # ------------------------------------------------------------------
 
     def _init_llm(self) -> Any:
         """Return an LLM backend object, or None if use_llm is False.
@@ -86,7 +83,6 @@ class CompressionAgent:
         if not self._use_llm:
             return None
 
-        # Build system profile once — determines backend and memory budget
         profile = build_system_profile()
         print(f"[CompressionAgent] {profile}")
 
@@ -134,10 +130,7 @@ class CompressionAgent:
         print("[CompressionAgent] No LLM backend available; using AST-based summaries.")
         return None
 
-    # ------------------------------------------------------------------
     # Summary disk cache
-    # ------------------------------------------------------------------
-
     def _load_summary_cache(self) -> Dict[str, str]:
         if os.path.isfile(self._summary_cache_path):
             try:
@@ -159,10 +152,7 @@ class CompressionAgent:
     def _source_hash(source: str) -> str:
         return hashlib.sha256(source.encode()).hexdigest()
 
-    # ------------------------------------------------------------------
     # LLM summarisation with cache
-    # ------------------------------------------------------------------
-
     def _llm_summarize(self, node_id: str) -> str:
         """Return a one-sentence LLM summary for a node, hitting cache first."""
         node = self._node_lookup.get(node_id)

@@ -1,6 +1,6 @@
 import os
 import sys
-# Add parent directory to sys path so that running from the agents directory works without PYTHONPATH
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import ast
 from typing import List

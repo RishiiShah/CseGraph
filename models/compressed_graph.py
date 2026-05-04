@@ -4,8 +4,6 @@ from pydantic import BaseModel, Field
 
 
 class NodeSummary(BaseModel):
-    """Compressed summary of a code element."""
-
     node_id: str = Field(..., description="Original graph node ID")
     name: str = Field(..., description="Node name")
     node_type: str = Field(..., description="Node type: file, class, function, method")

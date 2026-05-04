@@ -51,9 +51,7 @@ _DEFAULT_MODEL_DIR = os.path.join(
 )
 
 
-# ---------------------------------------------------------------------------
 # Data class
-# ---------------------------------------------------------------------------
 
 @dataclass
 class SystemProfile:
@@ -80,9 +78,7 @@ class SystemProfile:
         )
 
 
-# ---------------------------------------------------------------------------
 # Hardware probes
-# ---------------------------------------------------------------------------
 
 def _probe_cuda() -> Optional[Tuple[str, float, float]]:
     """Return (gpu_name, total_vram_gb, free_vram_gb) for the first NVIDIA GPU."""
@@ -128,9 +124,7 @@ def _probe_rocm() -> Optional[Tuple[str, float, float]]:
     return None
 
 
-# ---------------------------------------------------------------------------
 # Profile builder
-# ---------------------------------------------------------------------------
 
 def build_system_profile() -> SystemProfile:
     """Detect hardware and return a SystemProfile.
@@ -217,10 +211,7 @@ def _apple_chip_name() -> str:
     return "Apple Silicon"
 
 
-# ---------------------------------------------------------------------------
 # Model selection
-# ---------------------------------------------------------------------------
-
 def select_gguf_model(
     profile: SystemProfile,
     model_dir: Optional[str] = None,
@@ -319,9 +310,7 @@ def embedding_device(profile: SystemProfile) -> str:
     return "cpu"
 
 
-# ---------------------------------------------------------------------------
 # CLI — print profile for debugging
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     profile = build_system_profile()

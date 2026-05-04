@@ -1,9 +1,3 @@
-"""Tests for the --include-cse extension of benchmark_sandboxes.run_benchmark.
-
-Uses the real sandbox fixtures so the integration path is exercised end-to-end.
-The sandboxes are tiny, so the tests complete in reasonable time.
-"""
-
 import os
 import sys
 
@@ -49,8 +43,6 @@ def _results_without_cse():
 
 
 class TestIncludeCseAddsFields:
-    """run_benchmark(include_cse=True) must add CSE metric keys to every result."""
-
     def test_at_least_one_result_has_node_summary_count(self):
         results = _results_with_cse()
         assert any(
@@ -74,8 +66,6 @@ class TestIncludeCseAddsFields:
 
 
 class TestIncludeCseFalseNoCseFields:
-    """run_benchmark(include_cse=False) must NOT add any CSE keys."""
-
     def test_node_summary_count_absent(self):
         results = _results_without_cse()
         for r in results:
@@ -97,10 +87,7 @@ class TestIncludeCseFalseNoCseFields:
 
 
 class TestCseMetricsInValidRange:
-    """CSE metric values must be in their documented ranges."""
-
     def _cse_results(self):
-        """Return only results that have CSE fields successfully populated."""
         return [
             r for r in _results_with_cse()
             if r["metrics"].get("cse_dep_completeness") is not None

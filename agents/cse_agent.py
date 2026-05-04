@@ -1,20 +1,3 @@
-"""Context Sufficiency Estimator (CSE) — cse_agent.py
-
-Combines two complementary paradigms:
-
-1. Tiered Adaptive Thresholds (structural precision):
-   - Tier 0 (direct calls):      must be 100 % present — these are hard dependencies.
-   - Tier 1 (file imports):       adaptive target based on context budget.
-   - Tier 2 (2-hop neighbours):   budget-limited BFS expansion.
-
-2. Confidence Scoring + Raw Code Fallback (semantic precision):
-   - If model_confidence < CONFIDENCE_THRESHOLD the agent replaces compressed
-     summaries of Tier-0 nodes with verbatim source code segments.
-
-Both mechanisms are described in *proposal_text_extracted.txt* §3.2 (Decision
-Logic Approach) and §3.3 (Validation Metrics).
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -30,7 +13,6 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Allow running from agents/ directly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.compressed_graph import CompressedGraph
@@ -92,10 +74,7 @@ def _embed(texts: List[str]) -> Optional["np.ndarray"]:
     return np.stack([v for _, v in results])
 
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
-
 _NOISE_WORDS: Set[str] = {
     # Common English words that match CamelCase but aren't code symbols
     "The", "This", "That", "With", "From", "Into", "When",
@@ -125,25 +104,25 @@ class CSEAgent:
     by verbatim raw source code (the Raw Code Fallback).
     """
 
-    # ---- Metric thresholds ------------------------------------------------
+    # Metric thresholds
     DEP_THRESHOLD: float = 0.80        # dependency_completeness
     ENTITY_THRESHOLD: float = 0.80     # entity_coverage
     SEMANTIC_THRESHOLD: float = 0.50   # semantic_overlap (hard threshold)
     SEMANTIC_THRESHOLD_RELAXED: float = 0.0   # not gated when dep+ent both pass
     CONFIDENCE_THRESHOLD: float = 0.70  # model_confidence (lowered: structural metrics dominate)
 
-    # ---- Expansion budget -------------------------------------------------
+    # Expansion budget
     MAX_ROUNDS: int = 3
     CONTEXT_BUDGET: int = 60    # hard cap on total context nodes
     IMPORT_BUDGET: int = 20     # Tier-1 cap (file imports)
 
-    # ---- Tiered completion targets (fraction of each tier to collect) ------
+    # Tiered completion targets (fraction of each tier to collect)
     TIER0_TARGET: float = 1.00  # 100 % of direct call targets
     TIER1_TARGET: float = 0.75  # 75 % of file imports
     # Tier 2 is purely budget-limited — no ratio target
 
-    # ---- Recompression trigger --------------------------------------------
-    CONFIDENCE_DROP_THRESHOLD: float = 0.15  # drop > 15% triggers resummary
+    # Recompression trigger
+    CONFIDENCE_DROP_THRESHOLD: float = 0.15  # > 15% triggers resummary
 
     def __init__(
         self,
@@ -182,10 +161,7 @@ class CSEAgent:
             self._outgoing[edge.source].append(edge)
             self._incoming[edge.target].append(edge)
 
-    # ------------------------------------------------------------------
     # Loading helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _load_link_graph(path: str) -> LinkGraph:
         with open(path, "r", encoding="utf-8") as f:
@@ -196,10 +172,7 @@ class CSEAgent:
         with open(path, "r", encoding="utf-8") as f:
             return CompressedGraph(**json.load(f))
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
-
     def evaluate(self, query: SufficiencyQuery) -> SufficiencyResult:
         """Run the tiered CSE evaluation loop.
 
@@ -225,7 +198,7 @@ class CSEAgent:
         for round_num in range(self.MAX_ROUNDS):
             metrics = self._compute_all_metrics(query, context_ids, raw_code_ids)
 
-            # --- Confidence-drop → recompress newly added nodes ---------------
+            # Confidence-drop → recompress newly added nodes
             # If confidence fell by more than CONFIDENCE_DROP_THRESHOLD since the
             # last round, the newly pulled-in nodes likely have poor template
             # summaries.  Regenerate them in-memory (proposal §3.2: "recompress").
@@ -303,8 +276,7 @@ class CSEAgent:
         return "", "", ""
 
     def pick_top_n_targets(self, n: int = 3) -> List[Tuple[str, str, str]]:
-        """Return up to n non-file nodes by degree, preferring file diversity.
-
+        """
         Selects the highest-degree node from each file first (one per file),
         then fills remaining slots with the next highest-degree nodes overall.
 
@@ -357,10 +329,6 @@ class CSEAgent:
 
         Uses node type, name, file path, and the names of directly connected
         symbols so the TF-IDF representation shares vocabulary with summaries.
-
-        Example output:
-          "Implement class Pipeline in core/pipeline.py with methods __init__
-           run calling CSVLoader NormalizeStage JsonWriter"
         """
         node = self._node_lookup.get(node_id)
         if node is None:
@@ -374,7 +342,6 @@ class CSEAgent:
 
         parts = [f"{verb} {node.name} in {node.file_path}"]
 
-        # Collect outgoing neighbour names (calls / imports)
         callee_names = [
             self._node_lookup[e.target].name
             for e in self._outgoing.get(node_id, [])
@@ -383,7 +350,6 @@ class CSEAgent:
         if callee_names:
             parts.append("calling " + " ".join(callee_names[:8]))
 
-        # Collect sibling methods / functions in the same file
         sibling_names = [
             n.name
             for n in self.link_graph.nodes
@@ -402,10 +368,7 @@ class CSEAgent:
             json.dump(result.model_dump(), f, indent=4)
         print(f"Saved CSE result to '{output_path}'")
 
-    # ------------------------------------------------------------------
     # Context retrieval
-    # ------------------------------------------------------------------
-
     def _get_initial_context(self, target_node_id: str, radius: int) -> List[str]:
         """Get context node IDs from the compressed graph's pre-computed slices.
 
@@ -439,10 +402,7 @@ class CSEAgent:
                     queue.append((nb, depth + 1))
         return list(visited)
 
-    # ------------------------------------------------------------------
     # Tiered dependency helpers
-    # ------------------------------------------------------------------
-
     def _get_tier0_nodes(self, target_id: str) -> Set[str]:
         """Tier 0: direct *calls* targets — must be 100 % covered."""
         return {
@@ -498,7 +458,7 @@ class CSEAgent:
                 expanded.add(nid)
         else:
             # Tier 2: 2-hop BFS, budget-limited
-            new_radius = expansion_round + 2  # round 1 → radius 3, etc.
+            new_radius = expansion_round + 2
             bfs_nodes = self._bfs(
                 target_id,
                 radius=new_radius,
@@ -511,10 +471,7 @@ class CSEAgent:
 
         return list(expanded)
 
-    # ------------------------------------------------------------------
     # Metric computation
-    # ------------------------------------------------------------------
-
     def _compute_all_metrics(
         self,
         query: SufficiencyQuery,
@@ -544,12 +501,6 @@ class CSEAgent:
     def _compute_dependency_completeness(
         self, target_id: str, context_ids: Set[str]
     ) -> float:
-        """Tiered dependency completeness score.
-
-        Weights:
-          - Tier-0 (calls)   → weight 1.0 per node (critical)
-          - Tier-1 (imports) → weight 0.5 per node (important)
-        """
         tier0 = self._get_tier0_nodes(target_id)
         tier1 = self._get_tier1_nodes(target_id)
 
@@ -701,10 +652,7 @@ class CSEAgent:
         )
         return min(1.0, max(0.0, raw))
 
-    # ------------------------------------------------------------------
     # Helpers
-    # ------------------------------------------------------------------
-
     def _extract_query_entities(self, query_text: str) -> Set[str]:
         """Extract likely code entity names from a natural-language query.
 
@@ -830,7 +778,7 @@ class CSEAgent:
         expanded_ids = self._expand_by_tier(
             query.target_node_id,
             context_ids,
-            expansion_round=self.MAX_ROUNDS,  # one step beyond normal budget
+            expansion_round=self.MAX_ROUNDS,
         )
         metrics = self._compute_all_metrics(query, expanded_ids, set(raw_code_ids))
         return self._build_result(
@@ -848,8 +796,6 @@ class CSEAgent:
             metrics.dependency_completeness >= self.DEP_THRESHOLD
             and metrics.entity_coverage >= self.ENTITY_THRESHOLD
         )
-        # When structural coverage is proven, relax the semantic threshold.
-        # TF-IDF cosine on template summaries is unreliable as a hard gate.
         sem_threshold = (
             self.SEMANTIC_THRESHOLD_RELAXED if structural_ok else self.SEMANTIC_THRESHOLD
         )
@@ -889,10 +835,7 @@ class CSEAgent:
         )
 
 
-# ---------------------------------------------------------------------------
 # CLI entry point
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     import argparse
 
@@ -932,19 +875,19 @@ if __name__ == "__main__":
         target_file_path=target_file,
     )
 
-    print(f"Target : {target_id}")
-    print(f"Query  : {query_text}")
+    print(f"Target: {target_id}")
+    print(f"Query: {query_text}")
     print()
 
     result = agent.evaluate(query)
     agent.save_result(result, args.output)
 
-    print(f"\nSufficient         : {result.is_sufficient}")
-    print(f"Expansion rounds   : {result.expansion_rounds}/{result.max_rounds}")
-    print(f"Dep. completeness  : {result.metrics.dependency_completeness:.2%}")
-    print(f"Entity coverage    : {result.metrics.entity_coverage:.2%}")
-    print(f"Semantic overlap   : {result.metrics.semantic_overlap:.2%}")
-    print(f"Model confidence   : {result.metrics.model_confidence:.2%}")
-    print(f"Context nodes      : {len(result.context_node_ids)}")
-    print(f"Raw code nodes     : {len(result.raw_code_nodes)}")
-    print(f"Reason             : {result.reason}")
+    print(f"\nSufficient: {result.is_sufficient}")
+    print(f"Expansion rounds: {result.expansion_rounds}/{result.max_rounds}")
+    print(f"Dep. completeness: {result.metrics.dependency_completeness:.2%}")
+    print(f"Entity coverage: {result.metrics.entity_coverage:.2%}")
+    print(f"Semantic overlap: {result.metrics.semantic_overlap:.2%}")
+    print(f"Model confidence: {result.metrics.model_confidence:.2%}")
+    print(f"Context nodes: {len(result.context_node_ids)}")
+    print(f"Raw code nodes: {len(result.raw_code_nodes)}")
+    print(f"Reason: {result.reason}")

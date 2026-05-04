@@ -6,7 +6,6 @@ import textwrap
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-# Add parent directory so running from agents/ works without PYTHONPATH.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.ingestion_agent import IngestionAgent

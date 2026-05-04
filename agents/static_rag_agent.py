@@ -1,15 +1,3 @@
-"""Static RAG Agent — static_rag_agent.py
-
-Baseline: Context is selected purely by BM25 relevance to the query.
-The top-K highest-scoring nodes are taken as-is — no adaptive expansion,
-no dependency tier logic, no confidence fallback.
-
-Produces a SufficiencyResult with:
-  - context_node_ids = top-K nodes by BM25 (compressed summaries used)
-  - raw_code_nodes   = []   (no raw-code fallback)
-  - is_sufficient    = True (no gating — always proceeds)
-"""
-
 from __future__ import annotations
 
 import json
@@ -39,16 +27,8 @@ class StaticRAGAgent:
         self._cse = CSEAgent(link_graph_path, compressed_graph_path)
         self.top_k = top_k
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
-
     def build_context(self, query: SufficiencyQuery) -> SufficiencyResult:
-        """Return a SufficiencyResult with the top-K BM25-relevant nodes.
-
-        BM25 IDF is computed over the full node-summary corpus so scores
-        reflect genuine relevance rather than single-document frequency.
-        """
         ranked = self._rank_nodes_by_bm25(query.query_text)
         top_k_ids = [nid for nid, _ in ranked[: self.top_k]]
 
@@ -76,17 +56,8 @@ class StaticRAGAgent:
             json.dump(result.model_dump(), f, indent=4)
         print(f"Saved static-RAG result to '{output_path}'")
 
-    # ------------------------------------------------------------------
     # BM25 ranking over the full node-summary corpus
-    # ------------------------------------------------------------------
-
     def _rank_nodes_by_bm25(self, query_text: str) -> List[Tuple[str, float]]:
-        """Rank all nodes in the compressed graph by BM25 score against the query.
-
-        IDF is computed over the entire summary corpus so that common
-        template terms (e.g. 'function', 'method') are down-weighted
-        correctly.
-        """
         query_tokens = self._cse._code_tokenize(query_text)
         if not query_tokens:
             return []
@@ -134,10 +105,7 @@ class StaticRAGAgent:
         return sorted(scores, key=lambda x: x[1], reverse=True)
 
 
-# ---------------------------------------------------------------------------
 # CLI entry point
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     import argparse
 
@@ -163,10 +131,10 @@ if __name__ == "__main__":
     result = agent.build_context(query)
     agent.save_result(result, args.output)
 
-    print(f"Target            : {target_id}")
-    print(f"Context nodes     : {len(result.context_node_ids)}")
-    print(f"Dep. completeness : {result.metrics.dependency_completeness:.2%}")
-    print(f"Entity coverage   : {result.metrics.entity_coverage:.2%}")
-    print(f"Semantic overlap  : {result.metrics.semantic_overlap:.2%}")
-    print(f"Model confidence  : {result.metrics.model_confidence:.2%}")
-    print(f"Reason            : {result.reason}")
+    print(f"Target: {target_id}")
+    print(f"Context nodes: {len(result.context_node_ids)}")
+    print(f"Dep. completeness: {result.metrics.dependency_completeness:.2%}")
+    print(f"Entity coverage: {result.metrics.entity_coverage:.2%}")
+    print(f"Semantic overlap: {result.metrics.semantic_overlap:.2%}")
+    print(f"Model confidence: {result.metrics.model_confidence:.2%}")
+    print(f"Reason: {result.reason}")

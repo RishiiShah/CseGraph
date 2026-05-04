@@ -53,18 +53,6 @@ def run_pipeline(
     task: Optional[str] = None,
     prompt_for_task: bool = False,
 ) -> None:
-    """Run the full 5-step pipeline on one repository root.
-
-    Parameters
-    ----------
-    task:
-        Explicit task description for the LLM (what to generate/change).
-        If None and prompt_for_task is True, the user is prompted interactively.
-        If both are absent, falls back to the auto-generated structural query.
-    prompt_for_task:
-        When True and task is None, prompt the user on stdin after the target
-        is auto-selected so they can describe their intent.
-    """
     abs_root = os.path.abspath(root_dir)
     abs_output_dir = os.path.abspath(output_dir)
     os.makedirs(abs_output_dir, exist_ok=True)
@@ -79,7 +67,7 @@ def run_pipeline(
             print("No task provided — exiting.")
             return
     else:
-        query_text = None  # resolved after target is picked below
+        query_text = None 
 
     # Step 1: Ingestion
     ingestion_agent = IngestionAgent(abs_root)
@@ -107,7 +95,6 @@ def run_pipeline(
     cse = CSEAgent(graph_output, compressed_output)
     target_id, target_file, auto_query = cse.pick_representative_target()
 
-    # Fall back to auto_query only in non-interactive batch mode
     if query_text is None:
         query_text = auto_query
 
@@ -120,20 +107,20 @@ def run_pipeline(
     cse_output = os.path.join(abs_output_dir, "cse_result.json")
     cse.save_result(cse_result, cse_output)
 
-    print(f"Ingestion complete   : {len(parsed_files)} files -> '{ingested_output}'")
+    print(f"Ingestion complete: {len(parsed_files)} files -> '{ingested_output}'")
     print(
-        f"Linking complete     : "
+        f"Linking complete: "
         f"{graph.summary.file_count} files, "
         f"{graph.summary.symbol_count} symbols, "
         f"{graph.summary.edge_count} edges -> '{graph_output}'"
     )
     print(
-        f"Compression complete : "
+        f"Compression complete: "
         f"{len(compressed.node_summaries)} summaries, "
         f"{len(compressed.context_slices)} context slices -> '{compressed_output}'"
     )
     print(
-        f"CSE complete         : sufficient={cse_result.is_sufficient}, "
+        f"CSE complete: sufficient={cse_result.is_sufficient}, "
         f"rounds={cse_result.expansion_rounds}/{cse_result.max_rounds}, "
         f"dep={cse_result.metrics.dependency_completeness:.0%}, "
         f"ent={cse_result.metrics.entity_coverage:.0%}, "
@@ -145,20 +132,20 @@ def run_pipeline(
 
     # Step 5: Code Generation — gated on CSE
     if skip_codegen:
-        print("CodeGen              : skipped (--skip-codegen)")
+        print("CodeGen: skipped (--skip-codegen)")
         return
 
     if not cse_result.is_sufficient:
-        print("CodeGen              : skipped — CSE context not sufficient")
+        print("CodeGen: skipped — CSE context not sufficient")
         return
 
     try:
         code_gen = CodeGenAgent(graph_output, compressed_output)
     except (ImportError, ValueError) as e:
-        print(f"CodeGen              : skipped — {e}")
+        print(f"CodeGen: skipped — {e}")
         return
 
-    print("CodeGen              : generating (this can take a while on local GGUF)...")
+    print("CodeGen: generating (this can take a while on local GGUF)...")
     t0 = time.perf_counter()
     code_gen_result = code_gen.generate(cse_result)
     elapsed_s = time.perf_counter() - t0
@@ -171,7 +158,7 @@ def run_pipeline(
     code_gen.save_code(code_gen_result, code_gen_py)
 
     print(
-        f"CodeGen complete     : model={code_gen_result.model}, "
+        f"CodeGen complete: model={code_gen_result.model}, "
         f"context_nodes={len(code_gen_result.context_nodes_used)}, "
         f"raw_code_nodes={len(code_gen_result.raw_code_nodes_used)}, "
         f"tokens={code_gen_result.prompt_tokens}+{code_gen_result.completion_tokens}, "
@@ -180,10 +167,7 @@ def run_pipeline(
     )
 
 
-# ---------------------------------------------------------------------------
 # All-sandboxes mode
-# ---------------------------------------------------------------------------
-
 def run_all_sandboxes(
     sandboxes_root: str,
     output_dir: str,
@@ -192,7 +176,7 @@ def run_all_sandboxes(
     gguf_model_path: Optional[str] = None,
     task: Optional[str] = None,
 ) -> None:
-    """Run the full pipeline on every subdirectory inside sandboxes_root."""
+
     abs_root = os.path.abspath(sandboxes_root)
     sandboxes = sorted(
         name for name in os.listdir(abs_root)
@@ -224,7 +208,6 @@ def run_all_sandboxes(
             print(f"ERROR in '{sandbox}': {e}")
         print()
 
-    # Summary of generated files
     print(f"{'='*60}")
     print("Generated files:")
     for sandbox in sandboxes:
@@ -237,9 +220,7 @@ def run_all_sandboxes(
         print(f"  {sandbox:<35} {status}")
 
 
-# ---------------------------------------------------------------------------
 # CLI
-# ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
