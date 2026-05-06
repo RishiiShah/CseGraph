@@ -3,7 +3,7 @@
 SQLite-backed Python repository indexing and graph-aware context retrieval.
 """
 
-from csegraph.models import (
+from csegraph.core.models import (
     ContextNode,
     ContextResult,
     GraphEdgeView,
@@ -11,15 +11,12 @@ from csegraph.models import (
     GraphResult,
     IndexResult,
     RefreshResult,
-    SufficiencyMetrics,
 )
-from csegraph.services import (
-    ContextService,
-    GraphQueryService,
-    IndexService,
-    ProjectIndex,
-    RefreshService,
-)
+from csegraph.cse.metrics import SufficiencyMetrics
+from csegraph.graph.queries import GraphQueryService
+from csegraph.index.repository import ProjectIndex
+from csegraph.index.services import IndexService, RefreshService
+from csegraph.retrieval.context import ContextService
 
 __all__ = [
     "ContextNode",

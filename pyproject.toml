@@ -13,7 +13,7 @@ dependencies = []
 test = ["pytest>=9.0.3"]
 
 [project.scripts]
-csegraph = "csegraph.cli:main"
+csegraph = "csegraph.cli.main:main"
 
-[tool.setuptools]
-packages = ["csegraph"]
+[tool.setuptools.packages.find]
+include = ["csegraph*"]
