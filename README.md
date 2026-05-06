@@ -140,92 +140,38 @@ env/bin/python run_pipeline.py --all-sandboxes
 
 ---
 
+## Modes
+
+The codebase exposes the same core in two ways:
+
+- **csegraph SDK / CLI** (`csegraph index ...`, `from csegraph import ContextService`) — SQLite-backed, dependency-light, suitable for embedding in coding agents. See [`docs/csegraph.md`](docs/csegraph.md).
+- **Research mode** (`run_pipeline.py`, `compare_baselines.py`, `agents/`) — JSON-artifact pipeline that produces compile/test metrics for the three retrieval strategies. The agents wrap the same csegraph core but preserve Pydantic JSON shapes for paper reproducibility.
+
+For internals — package layout, CSE algorithm, modern → legacy mapping, schema details — see [`docs/architecture.md`](docs/architecture.md).
+
 ## Run Commands
 
-### Full pipeline
+The most common entry points:
 
 ```bash
-# Run on ALL sandboxes — generates one .py file per sandbox (DEFAULT)
+# Research mode — full pipeline on every sandbox
 env/bin/python run_pipeline.py
 
-# Same with explicit flags
-env/bin/python run_pipeline.py --all-sandboxes --output-dir data/results
+# Research mode — single sandbox, no LLM
+env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir data/graph_out --skip-codegen
 
-# Run on a SINGLE sandbox
-env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir data/graph_out
-
-# Single sandbox with interactive task prompt and custom output directory
-env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir data/graph_out --prompt-for-task
-
-# Single sandbox without prompting uses the auto-generated structural query
-env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir data/graph_out
-
-# CSE only, skip code generation (no API key needed)
-env/bin/python run_pipeline.py --all-sandboxes --skip-codegen
-```
-
-### Individual agents
-
-```bash
-# Step 1 — Ingestion
-env/bin/python agents/ingestion_agent.py --root-dir sandboxes/graph_analytics
-
-# Step 2 — Linking
-env/bin/python agents/linking_agent.py --root-dir sandboxes/graph_analytics
-
-# Step 3 — Compression
-env/bin/python agents/compression_agent.py \
-    --graph-path data/link_graph.json \
-    --output-path data/compressed_graph.json
-
-# Step 4 — CSE
-env/bin/python agents/cse_agent.py \
-    --link-graph data/link_graph.json \
-    --compressed-graph data/compressed_graph.json
-
-# Step 4 — CSE with custom query
-env/bin/python agents/cse_agent.py \
-    --link-graph data/link_graph.json \
-    --compressed-graph data/compressed_graph.json \
-    --query "Implement class UserService with create_user and get_user methods"
-
-# Step 5 — Code Generation
-env/bin/python agents/code_gen_agent.py \
-    --link-graph data/link_graph.json \
-    --compressed-graph data/compressed_graph.json \
-    --cse-result data/cse_result.json \
-    --output data/code_gen_result.json
-```
-
-### Benchmarking
-
-```bash
-# Single-run benchmark (ingestion + linking metrics per sandbox)
-env/bin/python benchmark_sandboxes.py
-
-# Repeated benchmark with statistical aggregates (mean, std, CI95)
-env/bin/python benchmark_repeated.py --repeats 5
-
-# Full report: benchmark + repeated + plots
-env/bin/python run_full_report.py --repeats 5
-
-# Baseline comparison: adaptive vs full_context vs static_rag (with code generation)
+# Three-strategy comparison (adaptive vs full_context vs static_rag)
 env/bin/python compare_baselines.py --output-dir data
 
-# Baseline comparison without code generation (faster, no API key needed)
-env/bin/python compare_baselines.py --output-dir data --skip-codegen
+# csegraph SDK CLI
+env/bin/python -m csegraph index sandboxes/graph_analytics
+env/bin/python -m csegraph context "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics
 
-# Generate plots from comparison results
-env/bin/python report_plots.py \
-    --baseline-csv data/baseline_comparison.csv \
-    --baseline-summary data/baseline_summary.json
+# Tests
+env/bin/python -m pytest tests/ -q
 ```
 
-### Tests
-
-```bash
-env/bin/python -m pytest tests/ -v
-```
+The full set of commands (individual agents, benchmarking, plotting, profile flags, custom queries, etc.) lives in [`CLAUDE.md`](CLAUDE.md) and [`docs/csegraph.md`](docs/csegraph.md).
 
 ---
 
