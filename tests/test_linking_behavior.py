@@ -14,8 +14,6 @@ class TestLinkingBehavior(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.fixture_root = os.path.join(
             PROJECT_ROOT,
-            "tests",
-            "fixtures",
             "sandboxes",
             "baseline_import_resolution",
         )

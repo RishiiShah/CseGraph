@@ -12,7 +12,7 @@ from models.link_graph import GraphEdge, GraphNode, LinkGraph, LinkGraphSummary
 
 class TestCompressionAgent(unittest.TestCase):
     def setUp(self) -> None:
-        self.test_dir = Path(__file__).parent / "fixtures" / "sandboxes" / "baseline_import_resolution"
+        self.test_dir = Path(__file__).parent.parent / "sandboxes" / "baseline_import_resolution"
         self.graph_path = self.test_dir / "test_link_graph.json"
 
     def _create_mock_graph(self) -> LinkGraph:
@@ -318,7 +318,7 @@ class TestCompressionAgent(unittest.TestCase):
 
     def test_integration_with_real_fixture(self) -> None:
         """Test compression with actual fixture repository if available."""
-        fixture_graph = Path(__file__).parent / "fixtures" / "sandboxes" / "baseline_import_resolution" / "link_graph.json"
+        fixture_graph = Path(__file__).parent.parent / "sandboxes" / "baseline_import_resolution" / "link_graph.json"
         
         if not fixture_graph.exists():
             self.skipTest("Fixture link graph not available")

@@ -9,11 +9,11 @@ import pytest
 
 from benchmark_sandboxes import run_benchmark
 
-SANDBOX_ROOT = os.path.join(os.path.dirname(__file__), "fixtures", "sandboxes")
+SANDBOX_ROOT = os.path.join(os.path.dirname(__file__), "..", "sandboxes")
 
 
 # ---------------------------------------------------------------------------
-# Guard: skip the whole module if the fixtures directory is missing.
+# Guard: skip the whole module if the sandbox directory is missing.
 # ---------------------------------------------------------------------------
 
 if not os.path.isdir(SANDBOX_ROOT):

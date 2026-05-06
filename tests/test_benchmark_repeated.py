@@ -11,8 +11,6 @@ class TestBenchmarkRepeatedIsolation(unittest.TestCase):
     def test_runs_execute_in_isolated_subprocess_outputs(self) -> None:
         fixture_root = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "tests",
-            "fixtures",
             "sandboxes",
         )
 

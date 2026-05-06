@@ -4,7 +4,7 @@ import sys
 
 SANDBOX_PATH = os.environ.get(
     "SANDBOX_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "fixtures", "sandboxes", "user_service_api"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "sandboxes", "user_service_api"),
 )
 sys.path.insert(0, os.path.abspath(SANDBOX_PATH))
 
