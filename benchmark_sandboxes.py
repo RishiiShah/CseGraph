@@ -10,7 +10,7 @@ from agents.ingestion_agent import IngestionAgent
 from agents.linking_agent import LinkingAgent
 
 
-DEFAULT_SANDBOX_ROOT = "tests/fixtures/sandboxes"
+DEFAULT_SANDBOX_ROOT = "sandboxes"
 DEFAULT_OUTPUT_JSON = "data/sandbox_benchmark.json"
 DEFAULT_OUTPUT_CSV = "data/sandbox_benchmark.csv"
 

@@ -7,7 +7,7 @@ from compare_baselines import run_comparison
 from report_plots import generate_plots
 
 
-DEFAULT_SANDBOX_ROOT = "tests/fixtures/sandboxes"
+DEFAULT_SANDBOX_ROOT = "sandboxes"
 DEFAULT_OUTPUT_DIR = "data"
 DEFAULT_PLOTS_DIR = "data/plots"
 

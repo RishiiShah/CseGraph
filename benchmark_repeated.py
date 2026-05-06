@@ -10,7 +10,7 @@ from statistics import mean, stdev
 from typing import Dict, List
 
 
-DEFAULT_SANDBOX_ROOT = "tests/fixtures/sandboxes"
+DEFAULT_SANDBOX_ROOT = "sandboxes"
 DEFAULT_REPEATS = 5
 DEFAULT_RUNS_JSON = "data/sandbox_benchmark_runs.json"
 DEFAULT_SUMMARY_JSON = "data/sandbox_benchmark_summary.json"

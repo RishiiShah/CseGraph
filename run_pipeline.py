@@ -8,7 +8,7 @@ Usage examples
     python run_pipeline.py --all-sandboxes
 
 # Run on a single sandbox:
-    python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics
+    python run_pipeline.py --root-dir sandboxes/graph_analytics
 
 # Run without code generation (CSE only):
     python run_pipeline.py --all-sandboxes --skip-codegen
@@ -37,7 +37,7 @@ from agents.code_gen_agent import CodeGenAgent
 from models.cse_result import SufficiencyQuery
 
 
-DEFAULT_SANDBOX_ROOT = "tests/fixtures/sandboxes"
+DEFAULT_SANDBOX_ROOT = "sandboxes"
 
 
 # ---------------------------------------------------------------------------
