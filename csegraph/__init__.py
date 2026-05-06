@@ -1,9 +1,12 @@
-"""csegraph v1.1 SDK.
+"""csegraph v1.1.2 SDK.
 
-SQLite-backed Python repository indexing and graph-aware context retrieval.
+SQLite-backed Python repository indexing and graph-aware context retrieval,
+with integrated code generation.
 """
 
+from csegraph.codegen.service import CodegenService
 from csegraph.core.models import (
+    CodegenResult,
     ContextNode,
     ContextResult,
     GraphEdgeView,
@@ -19,6 +22,8 @@ from csegraph.index.services import IndexService, RefreshService
 from csegraph.retrieval.context import ContextService
 
 __all__ = [
+    "CodegenResult",
+    "CodegenService",
     "ContextNode",
     "ContextResult",
     "ContextService",
