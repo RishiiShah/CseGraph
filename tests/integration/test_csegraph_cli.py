@@ -32,7 +32,7 @@ def _write_repo(root: Path) -> None:
 
 def _run_cli(*args: str) -> dict:
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph", *args],
+        [sys.executable, "-m", "csegraph_cli", *args],
         check=True,
         capture_output=True,
         text=True,
@@ -124,3 +124,160 @@ def test_legacy_explicit_db_flags_still_work(tmp_path):
         "--json",
     )
     assert context["target_node_id"] == "symbol::service.py::function::create_user"
+
+
+def test_codegen_cli_json_contract(tmp_path):
+    """Verify the codegen CLI command returns valid JSON with expected fields.
+
+    Uses monkeypatching to stub out the LLM so we don't need a real model.
+    """
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    # Index first.
+    _run_cli("index", str(repo), "--json")
+
+    # Write a helper script that patches CodegenService to skip the LLM init
+    # and return a canned result, then invokes the CLI.
+    stub = tmp_path / "stub_codegen.py"
+    stub.write_text(
+        "\n".join(
+            [
+                "import sys, json",
+                "from unittest.mock import patch, MagicMock",
+                "from csegraph.core.models import CodegenResult",
+                "from csegraph.cse.metrics import SufficiencyMetrics",
+                "",
+                "fake_result = CodegenResult(",
+                '    command="codegen",',
+                f'    db_path="{repo / ".csegraph" / "index.db"}",',
+                f'    repo_root="{repo}",',
+                '    profile="medium",',
+                '    task="Implement create_user",',
+                '    target_node_id="symbol::service.py::function::create_user",',
+                '    model="stub-model",',
+                '    generated_code="def create_user(name): return name",',
+                "    is_sufficient=True,",
+                "    metrics=SufficiencyMetrics(",
+                "        dependency_completeness=1.0,",
+                "        entity_coverage=1.0,",
+                "        semantic_overlap=0.8,",
+                "        model_confidence=0.9,",
+                "    ),",
+                '    context_nodes_used=["a"],',
+                "    raw_code_nodes_used=[],",
+                "    prompt_tokens=100,",
+                "    completion_tokens=50,",
+                "    elapsed_seconds=0.5,",
+                ")",
+                "",
+                "mock_svc = MagicMock()",
+                "mock_svc.generate.return_value = fake_result",
+                "",
+                "with patch('csegraph_cli.main.CodegenService', return_value=mock_svc):",
+                "    from csegraph_cli.main import main",
+                "    sys.exit(main(sys.argv[1:]))",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(stub),
+            "codegen",
+            "Implement create_user",
+            "--repo",
+            str(repo),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(proc.stdout)
+
+    assert result["command"] == "codegen"
+    assert result["model"] == "stub-model"
+    assert result["is_sufficient"] is True
+    assert "generated_code" in result
+    assert result["target_node_id"] == "symbol::service.py::function::create_user"
+    assert result["prompt_tokens"] == 100
+    assert result["completion_tokens"] == 50
+
+
+def test_codegen_cli_output_flag(tmp_path):
+    """Verify --output writes a .py file."""
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    out_py = tmp_path / "out.py"
+
+    stub = tmp_path / "stub_codegen_out.py"
+    stub.write_text(
+        "\n".join(
+            [
+                "import sys, json",
+                "from unittest.mock import patch, MagicMock",
+                "from csegraph.core.models import CodegenResult",
+                "from csegraph.cse.metrics import SufficiencyMetrics",
+                "",
+                "fake_result = CodegenResult(",
+                '    command="codegen",',
+                f'    db_path="{repo / ".csegraph" / "index.db"}",',
+                f'    repo_root="{repo}",',
+                '    profile="medium",',
+                '    task="Implement create_user",',
+                '    target_node_id="symbol::service.py::function::create_user",',
+                '    model="stub-model",',
+                '    generated_code="def create_user(name): return name",',
+                "    is_sufficient=True,",
+                "    metrics=SufficiencyMetrics(",
+                "        dependency_completeness=1.0,",
+                "        entity_coverage=1.0,",
+                "        semantic_overlap=0.8,",
+                "        model_confidence=0.9,",
+                "    ),",
+                '    context_nodes_used=["a"],',
+                "    raw_code_nodes_used=[],",
+                "    prompt_tokens=100,",
+                "    completion_tokens=50,",
+                "    elapsed_seconds=0.5,",
+                f'    output_path="{out_py}",',
+                ")",
+                "",
+                "mock_svc = MagicMock()",
+                "mock_svc.generate.return_value = fake_result",
+                "",
+                "with patch('csegraph_cli.main.CodegenService', return_value=mock_svc):",
+                "    from csegraph_cli.main import main",
+                "    sys.exit(main(sys.argv[1:]))",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(stub),
+            "codegen",
+            "Implement create_user",
+            "--repo",
+            str(repo),
+            "--output",
+            str(out_py),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(proc.stdout)
+    assert result["command"] == "codegen"
+    assert result["output_path"] == str(out_py)
+
