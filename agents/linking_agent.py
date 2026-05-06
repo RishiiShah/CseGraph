@@ -1,14 +1,16 @@
-import ast
 import json
 import os
 import sys
-import textwrap
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.ingestion_agent import IngestionAgent
+from csegraph.languages.python.parser import (
+    extract_called_symbols,
+    resolve_local_import,
+)
 from models.code_element import FileNode
 from models.link_graph import GraphEdge, GraphNode, LinkGraph, LinkGraphSummary
 
@@ -57,54 +59,6 @@ class LinkingAgent:
                         node_to_file_id[method_id] = file_id
 
         return module_to_file, symbol_to_node_ids, node_to_file_id
-
-    def _resolve_local_import(
-        self,
-        import_name: str,
-        module_to_file: Dict[str, str],
-        current_module: str,
-    ) -> Optional[str]:
-        if import_name.startswith('.'):
-            dot_count = len(import_name) - len(import_name.lstrip('.'))
-            remainder = import_name[dot_count:]
-            module_parts = current_module.split('.') if current_module else []
-            if dot_count > len(module_parts):
-                return None
-
-            base_parts = module_parts[:-dot_count]
-            remainder_parts = [part for part in remainder.split('.') if part]
-            normalized_parts = base_parts + remainder_parts
-            candidate = '.'.join(normalized_parts)
-        else:
-            candidate = import_name
-
-        while candidate:
-            if candidate in module_to_file:
-                return module_to_file[candidate]
-            if "." not in candidate:
-                break
-            candidate = candidate.rsplit(".", 1)[0]
-        return None
-
-    def _extract_called_symbols(self, code: str) -> Set[str]:
-        called: Set[str] = set()
-        normalized = textwrap.dedent(code)
-
-        try:
-            tree = ast.parse(normalized)
-        except SyntaxError:
-            return called
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-
-            if isinstance(node.func, ast.Name):
-                called.add(node.func.id)
-            elif isinstance(node.func, ast.Attribute):
-                called.add(node.func.attr)
-
-        return called
 
     def _pick_best_symbol_target(
         self,
@@ -180,7 +134,7 @@ class LinkingAgent:
                             seen_edges.add(class_contains_key)
 
             for import_name in sorted(file_node.imports):
-                target_file_id = self._resolve_local_import(
+                target_file_id = resolve_local_import(
                     import_name,
                     module_to_file,
                     current_module,
@@ -204,7 +158,7 @@ class LinkingAgent:
 
             for node in file_node.nodes:
                 source_node_id = f"symbol::{rel_path}::{node.node_type}::{node.name}"
-                called_symbols = self._extract_called_symbols(node.code_content)
+                called_symbols = extract_called_symbols(node.code_content)
                 for symbol in sorted(called_symbols):
                     target_node_id = self._pick_best_symbol_target(
                         symbol,
@@ -258,8 +212,6 @@ class LinkingAgent:
 if __name__ == "__main__":
     default_root = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "tests",
-        "fixtures",
         "sandboxes",
         "baseline_import_resolution",
     )
