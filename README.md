@@ -163,9 +163,14 @@ env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir
 # Three-strategy comparison (adaptive vs full_context vs static_rag)
 env/bin/python compare_baselines.py --output-dir data
 
-# csegraph SDK CLI
-env/bin/python -m csegraph index sandboxes/graph_analytics
-env/bin/python -m csegraph context "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics
+# csegraph SDK + CLI (v1.1.2 — two separate packages)
+# Install:
+#   env/bin/pip install -e .                        (SDK only)
+#   env/bin/pip install -e packages/csegraph-cli/   (CLI, requires SDK)
+env/bin/python -m csegraph_cli index sandboxes/graph_analytics
+env/bin/python -m csegraph_cli context "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics
+env/bin/python -m csegraph_cli codegen "Add a calculator function" --repo sandboxes/graph_analytics
+env/bin/python -m csegraph_cli codegen "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics -o generated.py
 
 # Tests
 env/bin/python -m pytest tests/ -q
