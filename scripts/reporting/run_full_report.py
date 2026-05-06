@@ -1,10 +1,22 @@
 import argparse
 import os
+import sys
 
-from benchmark_repeated import run_repeated_benchmark, save_outputs as save_repeated_outputs
-from benchmark_sandboxes import run_benchmark, save_outputs as save_benchmark_outputs
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from scripts.benchmarks.benchmark_repeated import (
+    run_repeated_benchmark,
+    save_outputs as save_repeated_outputs,
+)
+from scripts.benchmarks.benchmark_sandboxes import (
+    run_benchmark,
+    save_outputs as save_benchmark_outputs,
+)
 from compare_baselines import run_comparison
-from report_plots import generate_plots
+from scripts.reporting.report_plots import generate_plots
 
 
 DEFAULT_SANDBOX_ROOT = "sandboxes"

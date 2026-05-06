@@ -43,7 +43,7 @@ def run_repeated_benchmark(sandbox_root: str, repeats: int) -> Dict[str, object]
     run_records: List[Dict[str, object]] = []
     grouped: Dict[str, Dict[str, List[float]]] = {}
 
-    repo_root = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
     for run_index in range(1, repeats + 1):
         with tempfile.TemporaryDirectory(prefix="benchmark_run_") as temp_dir:
@@ -52,7 +52,7 @@ def run_repeated_benchmark(sandbox_root: str, repeats: int) -> Dict[str, object]
 
             command = [
                 sys.executable,
-                os.path.join(repo_root, "benchmark_sandboxes.py"),
+                os.path.join(repo_root, "scripts", "benchmarks", "benchmark_sandboxes.py"),
                 "--sandbox-root",
                 sandbox_root,
                 "--output-json",
