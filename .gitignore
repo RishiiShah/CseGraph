@@ -39,10 +39,19 @@ Thumbs.db
 
 data/
 reports/
+.csegraph/
 
 # Sandbox package markers
-tests/fixtures/sandboxes/**/__init__.py
+sandboxes/**/__init__.py
 tests/sandbox_unit_tests/__init__.py
 # Large model files
 *.gguf
 codermodel/*.gguf
+
+# Sandbox directories
+sandboxes/
+
+# Docs
+CLAUDE.md
+AGENTS.md
+docs/

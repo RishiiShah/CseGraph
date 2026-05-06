@@ -1,6 +1,6 @@
 {
     "schema_version": "link-graph-v1",
-    "root_dir": "/Users/rishi/Desktop/CLG/NLP/Adaptive-Memory-Aware-Multi-Agent-System/tests/fixtures/sandboxes/baseline_import_resolution",
+    "root_dir": "/Users/rishi/Desktop/CLG/NLP/Adaptive-Memory-Aware-Multi-Agent-System/sandboxes/baseline_import_resolution",
     "summary": {
         "file_count": 2,
         "symbol_count": 4,
