@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from benchmark_repeated import run_repeated_benchmark
+from scripts.benchmarks.benchmark_repeated import run_repeated_benchmark
 
 
 class TestBenchmarkRepeatedIsolation(unittest.TestCase):
@@ -62,7 +62,7 @@ class TestBenchmarkRepeatedIsolation(unittest.TestCase):
 
             return Completed()
 
-        with patch("benchmark_repeated.subprocess.run", side_effect=fake_subprocess_run) as mock_run:
+        with patch("scripts.benchmarks.benchmark_repeated.subprocess.run", side_effect=fake_subprocess_run) as mock_run:
             payload = run_repeated_benchmark(fixture_root, repeats=3)
 
         self.assertEqual(mock_run.call_count, 3)

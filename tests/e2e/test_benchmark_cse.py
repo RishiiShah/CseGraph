@@ -7,7 +7,7 @@ if PROJECT_ROOT not in sys.path:
 
 import pytest
 
-from benchmark_sandboxes import run_benchmark
+from scripts.benchmarks.benchmark_sandboxes import run_benchmark
 
 SANDBOX_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "sandboxes")
 
