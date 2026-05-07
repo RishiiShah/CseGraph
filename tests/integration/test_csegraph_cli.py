@@ -153,8 +153,8 @@ def test_codegen_cli_json_contract(tmp_path):
             [
                 "import sys, json",
                 "from unittest.mock import patch, MagicMock",
-                "from csegraph.core.models import CodegenResult",
-                "from csegraph.cse.metrics import SufficiencyMetrics",
+                "from csegraph_codegen.models import CodegenResult",
+                "from csegraph_core.cse.metrics import SufficiencyMetrics",
                 "",
                 "fake_result = CodegenResult(",
                 '    command="codegen",',
@@ -182,7 +182,7 @@ def test_codegen_cli_json_contract(tmp_path):
                 "mock_svc = MagicMock()",
                 "mock_svc.generate.return_value = fake_result",
                 "",
-                "with patch('csegraph.codegen.service.CodegenService', return_value=mock_svc):",
+                "with patch('csegraph_codegen.service.CodegenService', return_value=mock_svc):",
                 "    from csegraph_cli.main import main",
                 "    sys.exit(main(sys.argv[1:]))",
                 "",
@@ -230,8 +230,8 @@ def test_codegen_cli_output_flag(tmp_path):
             [
                 "import sys, json",
                 "from unittest.mock import patch, MagicMock",
-                "from csegraph.core.models import CodegenResult",
-                "from csegraph.cse.metrics import SufficiencyMetrics",
+                "from csegraph_codegen.models import CodegenResult",
+                "from csegraph_core.cse.metrics import SufficiencyMetrics",
                 "",
                 "fake_result = CodegenResult(",
                 '    command="codegen",',
@@ -260,7 +260,7 @@ def test_codegen_cli_output_flag(tmp_path):
                 "mock_svc = MagicMock()",
                 "mock_svc.generate.return_value = fake_result",
                 "",
-                "with patch('csegraph.codegen.service.CodegenService', return_value=mock_svc):",
+                "with patch('csegraph_codegen.service.CodegenService', return_value=mock_svc):",
                 "    from csegraph_cli.main import main",
                 "    sys.exit(main(sys.argv[1:]))",
                 "",
@@ -291,8 +291,8 @@ def test_codegen_cli_output_flag(tmp_path):
 
 
 
-def test_install_matrix_cli_works_without_sdk(tmp_path):
-    """CLI should run with root csegraph-core + csegraph-cli, no SDK package."""
+def test_install_matrix_cli_works_without_sdk_or_codegen(tmp_path):
+    """CLI should run with root csegraph-core + csegraph-cli, no SDK or codegen package."""
     repo_root = Path(__file__).resolve().parents[2]
     if not (repo_root / "pyproject.toml").exists():
         import pytest
@@ -312,7 +312,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         env=_offline_pip_env(),
     )
 
-    # SDK must NOT be installed in this venv.
+    # SDK and codegen add-on must NOT be installed in this venv.
     listing = subprocess.run([str(pip), "list"], check=True, capture_output=True, text=True).stdout
     assert "csegraph-core" in listing
     assert "csegraph-cli" in listing
@@ -321,6 +321,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         if line.startswith("csegraph ") or line.split()[0:1] == ["csegraph"]
     ]
     assert sdk_lines == [], f"SDK should not be installed: {sdk_lines}"
+    assert "csegraph-codegen" not in listing
 
     # index/refresh/context/graph must work.
     sample = tmp_path / "repo"
@@ -330,8 +331,45 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         check=True, capture_output=True, text=True,
     )
     assert json.loads(proc.stdout)["files_indexed"] == 2
+    proc = subprocess.run(
+        [
+            str(csegraph_bin),
+            "context",
+            "Implement create_user",
+            "--target",
+            "create_user",
+            "--repo",
+            str(sample),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(proc.stdout)["target_node_id"] == "symbol::service.py::function::create_user"
+    proc = subprocess.run(
+        [
+            str(csegraph_bin),
+            "graph",
+            "symbol::service.py::function::create_user",
+            "--repo",
+            str(sample),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(proc.stdout)["command"] == "graph"
+    proc = subprocess.run(
+        [str(csegraph_bin), "refresh", str(sample), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(proc.stdout)["command"] == "refresh"
 
-    # codegen must produce the friendly error (no SDK).
+    # codegen must produce the friendly error (no add-on).
     proc = subprocess.run(
         [str(csegraph_bin), "codegen", "Implement create_user", "--repo", str(sample), "--json"],
         capture_output=True, text=True,
@@ -339,4 +377,4 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     assert proc.returncode != 0
     err = json.loads(proc.stderr)
     assert "csegraph" in err.get("error", "").lower()
-    assert "pip install csegraph" in err.get("error", "")
+    assert "pip install csegraph-codegen" in err.get("error", "")

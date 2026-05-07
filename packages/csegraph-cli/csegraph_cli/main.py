@@ -1,7 +1,8 @@
-"""csegraph_cli.main — CLI entrypoint for the csegraph SDK.
+"""csegraph_cli.main — CLI entrypoint for csegraph.
 
 Provides the `csegraph` shell command (registered via pyproject_cli.toml).
-Importable standalone; has no effect on the csegraph SDK package.
+Importable standalone; depends on csegraph-core and lazy-loads optional
+add-ons only when their subcommands need them.
 """
 from __future__ import annotations
 
@@ -121,11 +122,11 @@ def _dispatch(args: argparse.Namespace) -> Any:
         return GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
     if args.command == "codegen":
         try:
-            from csegraph.codegen.service import CodegenService
+            from csegraph_codegen.service import CodegenService
         except ImportError as exc:
             raise RuntimeError(
-                "codegen requires the optional `csegraph` SDK package. "
-                "Install with: pip install csegraph"
+                "codegen requires the optional csegraph-codegen package. "
+                "Install with: pip install csegraph-codegen"
             ) from exc
         repo = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg
