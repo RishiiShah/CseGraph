@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csegraph-cli"
+version = "1.1.2"
+description = "Command-line interface for the csegraph SDK."
+requires-python = ">=3.10"
+dependencies = ["csegraph>=1.1.2"]
+
+[project.scripts]
+csegraph = "csegraph_cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["csegraph_cli*"]

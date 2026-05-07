@@ -1,0 +1,97 @@
+{
+    "schema_version": "link-graph-v1",
+    "root_dir": "/Users/rishi/Desktop/CLG/NLP/Adaptive-Memory-Aware-Multi-Agent-System/sandboxes/baseline_import_resolution",
+    "summary": {
+        "file_count": 2,
+        "symbol_count": 4,
+        "edge_count": 6
+    },
+    "nodes": [
+        {
+            "id": "file::main.py",
+            "type": "file",
+            "name": "main.py",
+            "file_path": "main.py",
+            "start_line": null,
+            "end_line": null
+        },
+        {
+            "id": "symbol::main.py::function::process",
+            "type": "function",
+            "name": "process",
+            "file_path": "main.py",
+            "start_line": 5,
+            "end_line": 15
+        },
+        {
+            "id": "symbol::main.py::class::Handler",
+            "type": "class",
+            "name": "Handler",
+            "file_path": "main.py",
+            "start_line": 18,
+            "end_line": 40
+        },
+        {
+            "id": "symbol::main.py::method::Handler.run",
+            "type": "method",
+            "name": "Handler.run",
+            "file_path": "main.py",
+            "start_line": 20,
+            "end_line": 35
+        },
+        {
+            "id": "file::utils.py",
+            "type": "file",
+            "name": "utils.py",
+            "file_path": "utils.py",
+            "start_line": null,
+            "end_line": null
+        },
+        {
+            "id": "symbol::utils.py::function::helper",
+            "type": "function",
+            "name": "helper",
+            "file_path": "utils.py",
+            "start_line": 3,
+            "end_line": 10
+        }
+    ],
+    "edges": [
+        {
+            "source": "file::main.py",
+            "target": "symbol::main.py::function::process",
+            "relation": "contains",
+            "metadata": null
+        },
+        {
+            "source": "file::main.py",
+            "target": "symbol::main.py::class::Handler",
+            "relation": "contains",
+            "metadata": null
+        },
+        {
+            "source": "symbol::main.py::class::Handler",
+            "target": "symbol::main.py::method::Handler.run",
+            "relation": "contains",
+            "metadata": null
+        },
+        {
+            "source": "symbol::main.py::function::process",
+            "target": "symbol::utils.py::function::helper",
+            "relation": "calls",
+            "metadata": null
+        },
+        {
+            "source": "file::main.py",
+            "target": "file::utils.py",
+            "relation": "imports",
+            "metadata": null
+        },
+        {
+            "source": "symbol::main.py::class::Handler",
+            "target": "symbol::utils.py::function::helper",
+            "relation": "calls",
+            "metadata": null
+        }
+    ]
+}

@@ -1,6 +1,6 @@
 """compare_baselines.py — Side-by-side comparison of three context-selection strategies.
 
-For each sandbox in tests/fixtures/sandboxes/ the script:
+For each sandbox in sandboxes/ the script:
   1. Runs IngestionAgent → LinkingAgent → CompressionAgent (shared pipeline).
   2. Picks a representative target via CSEAgent.pick_representative_target().
   3. Runs all three agents with the same SufficiencyQuery:
@@ -761,8 +761,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--sandbox-root",
-        default="tests/fixtures/sandboxes",
-        help="Directory containing sandbox repos (default: tests/fixtures/sandboxes).",
+        default="sandboxes",
+        help="Directory containing sandbox repos (default: sandboxes).",
     )
     parser.add_argument(
         "--output-dir",

@@ -56,7 +56,7 @@ Evaluates retrieved context against four metrics before allowing generation:
 |---|---|---|
 | `dependency_completeness` | ≥ 80% | Weighted ratio of Tier-0/Tier-1 deps present in context |
 | `entity_coverage` | ≥ 80% | Fraction of query code-entities found in context node names |
-| `semantic_overlap` | ≥ 5% (relaxed) / 50% (strict) | BM25 similarity with code-aware tokenisation |
+| `semantic_overlap` | ≥ 50% (strict) / 0% (relaxed when dep+ent both pass) | TF-IDF cosine similarity with code-aware tokenisation, optionally blended with `BAAI/bge-small-en-v1.5` sentence embeddings |
 | `model_confidence` | ≥ 70% | Composite proxy: 0.45·dep + 0.35·ent + 0.20·sem |
 
 **Tiered expansion strategy:**
@@ -66,7 +66,7 @@ Evaluates retrieved context against four metrics before allowing generation:
 
 **Raw Code Fallback:** when `model_confidence < 0.70`, Tier-0 nodes have their compressed summaries replaced with verbatim source code.
 
-**Semantic similarity:** Okapi BM25 with CamelCase/snake_case identifier splitting — no GPU or embedding model required.
+**Semantic similarity:** sklearn `TfidfVectorizer` cosine similarity with CamelCase/snake_case identifier splitting. When `sentence-transformers` is importable, `BAAI/bge-small-en-v1.5` embeddings are loaded lazily on the best-available device (Metal/CUDA/CPU) and blended `0.6·emb + 0.4·tfidf`. Falls back transparently to TF-IDF-only if the embedding model can't load — no GPU required.
 
 ### 5. Code Generation Agent (`agents/code_gen_agent.py`)
 Generates Python code using a Groq-hosted LLM (`llama-3.3-70b-versatile`), gated by the CSE:
@@ -140,92 +140,43 @@ env/bin/python run_pipeline.py --all-sandboxes
 
 ---
 
+## Modes
+
+The codebase exposes the same core in two ways:
+
+- **csegraph SDK / CLI** (`csegraph index ...`, `from csegraph import ContextService`) — SQLite-backed, dependency-light, suitable for embedding in coding agents. See [`docs/csegraph.md`](docs/csegraph.md).
+- **Research mode** (`run_pipeline.py`, `compare_baselines.py`, `agents/`) — JSON-artifact pipeline that produces compile/test metrics for the three retrieval strategies. The agents wrap the same csegraph core but preserve Pydantic JSON shapes for paper reproducibility.
+
+For internals — package layout, CSE algorithm, modern → legacy mapping, schema details — see [`docs/architecture.md`](docs/architecture.md).
+
 ## Run Commands
 
-### Full pipeline
+The most common entry points:
 
 ```bash
-# Run on ALL sandboxes — generates one .py file per sandbox (DEFAULT)
+# Research mode — full pipeline on every sandbox
 env/bin/python run_pipeline.py
 
-# Same with explicit flags
-env/bin/python run_pipeline.py --all-sandboxes --output-dir data/results
+# Research mode — single sandbox, no LLM
+env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir data/graph_out --skip-codegen
 
-# Run on a SINGLE sandbox
-env/bin/python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics --output-dir data/graph_out
-
-# Single sandbox with interactive task prompt and custom output directory
-env/bin/python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics --output-dir data/graph_out --prompt-for-task
-
-# Single sandbox without prompting uses the auto-generated structural query
-env/bin/python run_pipeline.py --root-dir tests/fixtures/sandboxes/graph_analytics --output-dir data/graph_out
-
-# CSE only, skip code generation (no API key needed)
-env/bin/python run_pipeline.py --all-sandboxes --skip-codegen
-```
-
-### Individual agents
-
-```bash
-# Step 1 — Ingestion
-env/bin/python agents/ingestion_agent.py --root-dir tests/fixtures/sandboxes/graph_analytics
-
-# Step 2 — Linking
-env/bin/python agents/linking_agent.py --root-dir tests/fixtures/sandboxes/graph_analytics
-
-# Step 3 — Compression
-env/bin/python agents/compression_agent.py \
-    --graph-path data/link_graph.json \
-    --output-path data/compressed_graph.json
-
-# Step 4 — CSE
-env/bin/python agents/cse_agent.py \
-    --link-graph data/link_graph.json \
-    --compressed-graph data/compressed_graph.json
-
-# Step 4 — CSE with custom query
-env/bin/python agents/cse_agent.py \
-    --link-graph data/link_graph.json \
-    --compressed-graph data/compressed_graph.json \
-    --query "Implement class UserService with create_user and get_user methods"
-
-# Step 5 — Code Generation
-env/bin/python agents/code_gen_agent.py \
-    --link-graph data/link_graph.json \
-    --compressed-graph data/compressed_graph.json \
-    --cse-result data/cse_result.json \
-    --output data/code_gen_result.json
-```
-
-### Benchmarking
-
-```bash
-# Single-run benchmark (ingestion + linking metrics per sandbox)
-env/bin/python benchmark_sandboxes.py
-
-# Repeated benchmark with statistical aggregates (mean, std, CI95)
-env/bin/python benchmark_repeated.py --repeats 5
-
-# Full report: benchmark + repeated + plots
-env/bin/python run_full_report.py --repeats 5
-
-# Baseline comparison: adaptive vs full_context vs static_rag (with code generation)
+# Three-strategy comparison (adaptive vs full_context vs static_rag)
 env/bin/python compare_baselines.py --output-dir data
 
-# Baseline comparison without code generation (faster, no API key needed)
-env/bin/python compare_baselines.py --output-dir data --skip-codegen
+# csegraph SDK + CLI (v1.1.2 — two separate packages)
+# Install:
+#   env/bin/pip install -e .                        (SDK only)
+#   env/bin/pip install -e packages/csegraph-cli/   (CLI, requires SDK)
+env/bin/python -m csegraph_cli index sandboxes/graph_analytics
+env/bin/python -m csegraph_cli context "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics
+env/bin/python -m csegraph_cli codegen "Add a calculator function" --repo sandboxes/graph_analytics
+env/bin/python -m csegraph_cli codegen "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics -o generated.py
 
-# Generate plots from comparison results
-env/bin/python report_plots.py \
-    --baseline-csv data/baseline_comparison.csv \
-    --baseline-summary data/baseline_summary.json
+# Tests
+env/bin/python -m pytest tests/ -q
 ```
 
-### Tests
-
-```bash
-env/bin/python -m pytest tests/ -v
-```
+The full set of commands (individual agents, benchmarking, plotting, profile flags, custom queries, etc.) lives in [`CLAUDE.md`](CLAUDE.md) and [`docs/csegraph.md`](docs/csegraph.md).
 
 ---
 
@@ -345,7 +296,7 @@ The "0/1 crash" entries are **import errors in the generated code**, not logic f
 
 ## Design Decisions
 
-**Semantic similarity via BM25, not embeddings.** The CSE uses Okapi BM25 with CamelCase/snake_case identifier splitting rather than embedding cosine similarity. This avoids GPU dependency, reduces latency, and handles sparse code-identifier vocabularies where token overlap is more informative than distributional similarity. The threshold is relaxed (5%) to prevent false negatives on short function signatures.
+**Semantic similarity defaults to TF-IDF, with optional embedding boost.** The CSE uses sklearn `TfidfVectorizer` cosine similarity with CamelCase/snake_case identifier splitting as the default signal — no GPU dependency, low latency, and well-suited to sparse code-identifier vocabularies. When `sentence-transformers` is available, `BAAI/bge-small-en-v1.5` embeddings are loaded on the best-available device and blended with TF-IDF (0.6·emb + 0.4·tfidf) for queries where token overlap alone is too sparse. The semantic threshold is relaxed to 0% when both dependency and entity coverage pass, preventing false negatives on short function signatures.
 
 **Synthetic sandboxes as the evaluation environment.** The pipeline is evaluated on 7 hand-crafted sandboxes rather than a public benchmark (e.g., SWE-bench, RepoEval). This provides controlled ground truth — exact reference implementations, deterministic unit tests, and reproducible dependency graphs — without license or API constraints. Each sandbox covers a distinct structural pattern (OOP hierarchies, event-driven dispatch, ML training loops, import resolution chains) to stress-test different aspects of the retrieval pipeline.
 
@@ -358,5 +309,5 @@ The "0/1 crash" entries are **import errors in the generated code**, not logic f
 - All pipeline steps use Python AST — no source files are executed.
 - Groq API key is only required for Step 5 (code generation). Steps 1–4 run fully offline.
 - `--skip-codegen` runs the full structural pipeline without calling any LLM.
-- The CSE uses BM25 with code-aware tokenisation — no scikit-learn, no GPU, no embeddings.
+- The CSE uses sklearn TF-IDF with code-aware tokenisation by default; `sentence-transformers` (BGE-small) is used opportunistically when installed but is not required.
 - `system_profile.py` detects Metal/CUDA/ROCm/CPU and selects the best local GGUF model when one is placed in `codermodel/`. It also supplies the embedding device for optional sentence-transformers. Groq API is used when no local model is present.

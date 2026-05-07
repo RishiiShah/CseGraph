@@ -117,6 +117,8 @@ class CompressionAgent:
                 )
             except ImportError:
                 print("[CompressionAgent] llama-cpp-python not installed; falling back to Groq.")
+            except Exception as exc:
+                print(f"[CompressionAgent] Local GGUF load failed ({exc}); falling back to Groq.")
 
         # Groq fallback
         if self._groq_api_key:
