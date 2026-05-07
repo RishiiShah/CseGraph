@@ -6,7 +6,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from csegraph.index.schema import SCHEMA_DDL, SCHEMA_META_UPSERT, SCHEMA_VERSION
+from csegraph_core.core.ids import file_node_id
+from csegraph_core.index.migrations import apply_pending
+from csegraph_core.index.schema import SCHEMA_DDL, SCHEMA_META_UPSERT, SCHEMA_VERSION
 
 
 class ProjectIndex:
@@ -17,15 +19,37 @@ class ProjectIndex:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
+        for pragma in (
+            "PRAGMA journal_mode = WAL",
+            "PRAGMA synchronous = NORMAL",
+            "PRAGMA foreign_keys = ON",
+            "PRAGMA temp_store = MEMORY",
+            "PRAGMA cache_size = -64000",
+        ):
+            self.conn.execute(pragma)
 
     def close(self) -> None:
         self.conn.close()
 
     def initialize_schema(self) -> None:
+        existing_version = self._existing_schema_version()
+        if existing_version is not None and existing_version != SCHEMA_VERSION:
+            apply_pending(self.conn, existing_version, SCHEMA_VERSION)
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
         cur.execute(SCHEMA_META_UPSERT, (SCHEMA_VERSION,))
         self.conn.commit()
+
+    def _existing_schema_version(self) -> Optional[str]:
+        row = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta'"
+        ).fetchone()
+        if row is None:
+            return None
+        cur = self.conn.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()
+        return cur["value"] if cur else None
 
     def upsert_project(self, root_dir: str, profile: str) -> int:
         now = time.time()
@@ -54,73 +78,105 @@ class ProjectIndex:
         return row
 
     def clear_project_graph(self, project_id: int) -> None:
-        self.conn.execute("DELETE FROM retrieval_context WHERE run_id IN (SELECT id FROM retrieval_runs WHERE project_id = ?)", (project_id,))
+        self.conn.execute(
+            "DELETE FROM retrieval_context WHERE run_id IN (SELECT id FROM retrieval_runs WHERE project_id = ?)",
+            (project_id,),
+        )
         self.conn.execute("DELETE FROM retrieval_runs WHERE project_id = ?", (project_id,))
-        self.conn.execute("DELETE FROM lexical_index")
+        node_ids = [row["id"] for row in self.conn.execute(
+            "SELECT id FROM nodes WHERE project_id = ?", (project_id,)
+        )]
+        if node_ids:
+            placeholders = ",".join("?" for _ in node_ids)
+            self.conn.execute(
+                f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
+                node_ids,
+            )
+            self.conn.execute(
+                f"DELETE FROM summaries WHERE node_id IN ({placeholders})",
+                node_ids,
+            )
         self.conn.execute("DELETE FROM edges WHERE project_id = ?", (project_id,))
-        self.conn.execute("DELETE FROM symbols WHERE project_id = ?", (project_id,))
-        self.conn.execute("DELETE FROM files WHERE project_id = ?", (project_id,))
+        self.conn.execute("DELETE FROM nodes WHERE project_id = ?", (project_id,))
         self.conn.commit()
 
     def delete_file_payload(self, project_id: int, rel_path: str, remove_incoming: bool) -> List[str]:
+        file_id = file_node_id(rel_path)
         file_row = self.conn.execute(
-            "SELECT id FROM files WHERE project_id = ? AND path = ?",
-            (project_id, rel_path),
+            "SELECT id FROM nodes WHERE project_id = ? AND id = ?",
+            (project_id, file_id),
         ).fetchone()
         if file_row is None:
             return []
 
-        file_id = int(file_row["id"])
         symbol_ids = [
             row["id"]
             for row in self.conn.execute(
-                "SELECT id FROM symbols WHERE project_id = ? AND file_id = ?",
-                (project_id, file_id),
+                """
+                SELECT id FROM nodes
+                WHERE project_id = ? AND path = ?
+                  AND type IN ('class','function','method','test')
+                """,
+                (project_id, rel_path),
             )
         ]
-        node_ids = [f"file::{rel_path}", *symbol_ids]
-
+        node_ids = [file_id, *symbol_ids]
         placeholders = ",".join("?" for _ in node_ids)
-        if node_ids:
-            params: Sequence[Any] = (project_id, *node_ids)
+        params: Sequence[Any] = (project_id, *node_ids)
+
+        self.conn.execute(
+            f"DELETE FROM edges WHERE project_id = ? AND source_node_id IN ({placeholders})",
+            params,
+        )
+        if remove_incoming:
             self.conn.execute(
-                f"DELETE FROM edges WHERE project_id = ? AND source_id IN ({placeholders})",
+                f"DELETE FROM edges WHERE project_id = ? AND target_node_id IN ({placeholders})",
                 params,
             )
-            if remove_incoming:
-                self.conn.execute(
-                    f"DELETE FROM edges WHERE project_id = ? AND target_id IN ({placeholders})",
-                    params,
-                )
-            for node_id in node_ids:
-                self.conn.execute("DELETE FROM lexical_index WHERE node_id = ?", (node_id,))
-
+        for node_id in node_ids:
+            self.conn.execute("DELETE FROM lexical_index WHERE node_id = ?", (node_id,))
+            self.conn.execute("DELETE FROM summaries WHERE node_id = ?", (node_id,))
         self.conn.execute(
-            "DELETE FROM symbols WHERE project_id = ? AND file_id = ?",
-            (project_id, file_id),
-        )
-        self.conn.execute(
-            "DELETE FROM files WHERE project_id = ? AND id = ?",
-            (project_id, file_id),
+            f"DELETE FROM nodes WHERE project_id = ? AND id IN ({placeholders})",
+            params,
         )
         self.conn.commit()
         return symbol_ids
 
     def cleanup_orphan_edges(self, project_id: int) -> None:
-        valid_ids = set(self.file_node_ids(project_id)) | set(self.symbol_ids(project_id))
-        for row in self.conn.execute(
-            "SELECT id, source_id, target_id FROM edges WHERE project_id = ?",
-            (project_id,),
-        ):
-            if row["source_id"] not in valid_ids or row["target_id"] not in valid_ids:
-                self.conn.execute("DELETE FROM edges WHERE id = ?", (row["id"],))
+        self.conn.execute(
+            """
+            DELETE FROM edges
+             WHERE project_id = ?
+               AND (source_node_id NOT IN (SELECT id FROM nodes WHERE project_id = ?)
+                 OR target_node_id NOT IN (SELECT id FROM nodes WHERE project_id = ?))
+            """,
+            (project_id, project_id, project_id),
+        )
+        self.conn.commit()
+
+    def cleanup_orphan_folders(self, project_id: int) -> None:
+        """Drop folder nodes that no longer have descendants among files/symbols."""
+        while True:
+            removed = self.conn.execute(
+                """
+                DELETE FROM nodes
+                WHERE project_id = ?
+                  AND type = 'folder'
+                  AND id NOT IN (SELECT parent_id FROM nodes WHERE project_id = ? AND parent_id IS NOT NULL)
+                """,
+                (project_id, project_id),
+            )
+            if removed.rowcount == 0:
+                break
         self.conn.commit()
 
     def file_node_ids(self, project_id: int) -> List[str]:
         return [
-            f"file::{row['path']}"
+            row["id"]
             for row in self.conn.execute(
-                "SELECT path FROM files WHERE project_id = ?", (project_id,)
+                "SELECT id FROM nodes WHERE project_id = ? AND type = 'file'",
+                (project_id,),
             )
         ]
 
@@ -128,7 +184,11 @@ class ProjectIndex:
         return [
             row["id"]
             for row in self.conn.execute(
-                "SELECT id FROM symbols WHERE project_id = ?", (project_id,)
+                """
+                SELECT id FROM nodes
+                WHERE project_id = ? AND type IN ('class','function','method','test')
+                """,
+                (project_id,),
             )
         ]
 
@@ -171,24 +231,28 @@ class ProjectIndex:
         run_id: int,
         rows: Iterable[Dict[str, Any]],
     ) -> None:
-        for row in rows:
-            self.conn.execute(
+        params = [
+            (
+                run_id,
+                row["node_id"],
+                row["rank"],
+                row["score"],
+                1 if row["raw_code"] else 0,
+                json.dumps(row["evidence"], sort_keys=True),
+            )
+            for row in rows
+        ]
+        if params:
+            self.conn.executemany(
                 """
                 INSERT OR REPLACE INTO retrieval_context(
                     run_id, node_id, rank, score, raw_code, evidence
                 )
                 VALUES(?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    run_id,
-                    row["node_id"],
-                    row["rank"],
-                    row["score"],
-                    1 if row["raw_code"] else 0,
-                    json.dumps(row["evidence"], sort_keys=True),
-                ),
+                params,
             )
-        self.conn.commit()
+            self.conn.commit()
 
 
 def json_dumps(value: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -201,3 +265,5 @@ def json_loads(value: Optional[str]) -> Dict[str, Any]:
     if not value:
         return {}
     return json.loads(value)
+
+

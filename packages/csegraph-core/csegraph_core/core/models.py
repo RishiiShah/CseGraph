@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Dict, List, Optional
 
-from csegraph.cse.metrics import SufficiencyMetrics
+from csegraph_core.cse.metrics import SufficiencyMetrics
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,7 @@ class ContextNode:
     raw_code: bool = False
     evidence: List[str] = field(default_factory=list)
     summary: str = ""
+    lineage: List[str] = field(default_factory=list)
 
 
 @dataclass
