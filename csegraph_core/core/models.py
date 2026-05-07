@@ -60,6 +60,8 @@ class ContextNode:
     evidence: List[str] = field(default_factory=list)
     summary: str = ""
     lineage: List[str] = field(default_factory=list)
+    source_text: Optional[str] = None
+    estimated_tokens: int = 0
 
 
 @dataclass
@@ -76,6 +78,7 @@ class ContextResult:
     raw_code_nodes: List[str] = field(default_factory=list)
     thresholds: Dict[str, float] = field(default_factory=dict)
     run_id: Optional[int] = None
+    estimated_tokens: int = 0
 
 
 @dataclass
