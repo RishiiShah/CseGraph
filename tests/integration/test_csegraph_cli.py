@@ -174,7 +174,7 @@ def test_codegen_cli_json_contract(tmp_path):
                 "mock_svc = MagicMock()",
                 "mock_svc.generate.return_value = fake_result",
                 "",
-                "with patch('csegraph_cli.main.CodegenService', return_value=mock_svc):",
+                "with patch('csegraph.codegen.service.CodegenService', return_value=mock_svc):",
                 "    from csegraph_cli.main import main",
                 "    sys.exit(main(sys.argv[1:]))",
                 "",
@@ -252,7 +252,7 @@ def test_codegen_cli_output_flag(tmp_path):
                 "mock_svc = MagicMock()",
                 "mock_svc.generate.return_value = fake_result",
                 "",
-                "with patch('csegraph_cli.main.CodegenService', return_value=mock_svc):",
+                "with patch('csegraph.codegen.service.CodegenService', return_value=mock_svc):",
                 "    from csegraph_cli.main import main",
                 "    sys.exit(main(sys.argv[1:]))",
                 "",
@@ -281,3 +281,55 @@ def test_codegen_cli_output_flag(tmp_path):
     assert result["command"] == "codegen"
     assert result["output_path"] == str(out_py)
 
+
+
+def test_install_matrix_cli_works_without_sdk(tmp_path):
+    """Sanity check that the CLI runs in an isolated venv with only csegraph-core
+    + csegraph-cli installed (no `csegraph` SDK). The codegen subcommand must
+    surface a friendly install-hint instead of importing the SDK."""
+    repo_root = Path(__file__).resolve().parents[2]
+    if not (repo_root / "packages" / "csegraph-core" / "pyproject.toml").exists():
+        import pytest
+        pytest.skip("csegraph-core package not present in this checkout")
+
+    venv = tmp_path / "v"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
+    pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
+    csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
+
+    subprocess.run(
+        [str(pip), "install", "--quiet",
+         "-e", str(repo_root / "packages" / "csegraph-core"),
+         "-e", str(repo_root / "packages" / "csegraph-cli")],
+        check=True,
+    )
+
+    # SDK must NOT be installed in this venv.
+    listing = subprocess.run([str(pip), "list"], check=True, capture_output=True, text=True).stdout
+    assert "csegraph-core" in listing
+    assert "csegraph-cli" in listing
+    sdk_lines = [
+        line for line in listing.splitlines()
+        if line.startswith("csegraph ") or line.split()[0:1] == ["csegraph"]
+    ]
+    assert sdk_lines == [], f"SDK should not be installed: {sdk_lines}"
+
+    # index/refresh/context/graph must work.
+    sample = tmp_path / "repo"
+    _write_repo(sample)
+    proc = subprocess.run(
+        [str(csegraph_bin), "index", str(sample), "--json"],
+        check=True, capture_output=True, text=True,
+    )
+    assert json.loads(proc.stdout)["files_indexed"] == 2
+
+    # codegen must produce the friendly error (no SDK).
+    proc = subprocess.run(
+        [str(csegraph_bin), "codegen", "Implement create_user", "--repo", str(sample), "--json"],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode != 0
+    err = json.loads(proc.stderr)
+    assert "csegraph" in err.get("error", "").lower()
+    assert "pip install csegraph" in err.get("error", "")
