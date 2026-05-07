@@ -4,9 +4,9 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from csegraph.core.models import GraphEdgeView, GraphNodeView, GraphResult
-from csegraph.index.loaders import edge_maps, load_edges, load_files, load_symbols
-from csegraph.index.repository import ProjectIndex, json_loads
+from csegraph_core.core.models import GraphEdgeView, GraphNodeView, GraphResult
+from csegraph_core.index.loaders import edge_maps, load_edges, load_files, load_symbols
+from csegraph_core.index.repository import ProjectIndex, json_loads
 
 
 class GraphQueryService:
@@ -105,10 +105,17 @@ def _node_view(
             start_line=row["start_line"],
             end_line=row["end_line"],
         )
-    row = files[node_id]
+    if node_id in files:
+        row = files[node_id]
+        return GraphNodeView(
+            node_id=node_id,
+            kind="file",
+            name=Path(row["path"]).name,
+            file_path=row["path"],
+        )
     return GraphNodeView(
         node_id=node_id,
-        kind="file",
-        name=Path(row["path"]).name,
-        file_path=row["path"],
+        kind="external",
+        name=node_id.split("::")[-1],
+        file_path="",
     )

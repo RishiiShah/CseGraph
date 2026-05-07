@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set
 
-from csegraph.core.ids import file_node_id, symbol_node_id
+from csegraph_core.core.ids import file_node_id, symbol_node_id
 
 __all__ = [
     "EXCLUDED_DIRS",
@@ -57,6 +57,9 @@ class ParsedSymbol:
     source_hash: str
     parent_symbol_id: Optional[str] = None
     calls: List[str] = field(default_factory=list)
+    bases: List[str] = field(default_factory=list)
+    decorators: List[str] = field(default_factory=list)
+    is_test: bool = False
 
 
 @dataclass
@@ -188,11 +191,14 @@ def parse_python_file(path: Path, root_dir: Path) -> ParsedFile:
                     imports.append(alias.name)
     parsed.imports = sorted(set(imports))
 
+    file_is_test = _file_is_test(rel_path)
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            parsed.symbols.append(_parse_symbol(node, rel_path, lines, "function"))
+            parsed.symbols.append(
+                _parse_symbol(node, rel_path, lines, "function", file_is_test=file_is_test)
+            )
         elif isinstance(node, ast.ClassDef):
-            class_symbol = _parse_symbol(node, rel_path, lines, "class")
+            class_symbol = _parse_symbol(node, rel_path, lines, "class", file_is_test=file_is_test)
             parsed.symbols.append(class_symbol)
             for child in node.body:
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -205,9 +211,15 @@ def parse_python_file(path: Path, root_dir: Path) -> ParsedFile:
                             "method",
                             display_name=method_name,
                             parent_symbol_id=class_symbol.node_id,
+                            file_is_test=file_is_test,
                         )
                     )
     return parsed
+
+
+def _file_is_test(rel_path: str) -> bool:
+    name = Path(rel_path).name
+    return rel_path.startswith("tests/") or rel_path.startswith("test/") or name.startswith("test_") or name.endswith("_test.py")
 
 
 def _parse_symbol(
@@ -217,6 +229,7 @@ def _parse_symbol(
     kind: str,
     display_name: Optional[str] = None,
     parent_symbol_id: Optional[str] = None,
+    file_is_test: bool = False,
 ) -> ParsedSymbol:
     name = display_name or getattr(node, "name")
     start_line = getattr(node, "lineno")
@@ -224,6 +237,17 @@ def _parse_symbol(
     source = "\n".join(lines[start_line - 1 : end_line])
     signature = _signature_from_source(source)
     docstring = ast.get_docstring(node) or ""
+    bases: List[str] = []
+    if isinstance(node, ast.ClassDef):
+        bases = sorted({_attr_or_name(base) for base in node.bases if _attr_or_name(base)})
+    decorators: List[str] = []
+    if hasattr(node, "decorator_list"):
+        decorators = sorted({_attr_or_name(dec) for dec in node.decorator_list if _attr_or_name(dec)})
+    is_test = (
+        file_is_test
+        and kind in {"function", "method"}
+        and (name.startswith("test_") or (display_name or "").split(".")[-1].startswith("test_"))
+    )
     return ParsedSymbol(
         node_id=symbol_node_id(rel_path, kind, name),
         kind=kind,
@@ -237,7 +261,20 @@ def _parse_symbol(
         source_hash=sha256_text(source),
         parent_symbol_id=parent_symbol_id,
         calls=sorted(extract_called_symbols(source)),
+        bases=bases,
+        decorators=decorators,
+        is_test=is_test,
     )
+
+
+def _attr_or_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Call):
+        return _attr_or_name(node.func)
+    return ""
 
 
 def _signature_from_source(source: str) -> str:

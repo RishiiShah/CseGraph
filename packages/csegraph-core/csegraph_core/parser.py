@@ -6,8 +6,8 @@ exists so external callers (and the legacy `agents/` wrappers added in
 Phase 3) keep working unchanged.
 """
 
-from csegraph.core.ids import file_node_id, symbol_node_id
-from csegraph.languages.python.parser import (
+from csegraph_core.core.ids import file_node_id, symbol_node_id
+from csegraph_core.languages.python.parser import (
     EXCLUDED_DIRS,
     ParsedFile,
     ParsedSymbol,
