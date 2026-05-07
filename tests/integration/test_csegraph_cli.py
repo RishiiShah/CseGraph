@@ -1,4 +1,6 @@
 import json
+import os
+import site
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +40,12 @@ def _run_cli(*args: str) -> dict:
         text=True,
     )
     return json.loads(proc.stdout)
+
+
+def _offline_pip_env() -> dict:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(site.getsitepackages())
+    return env
 
 
 def test_cli_json_contracts(tmp_path):
@@ -284,13 +292,11 @@ def test_codegen_cli_output_flag(tmp_path):
 
 
 def test_install_matrix_cli_works_without_sdk(tmp_path):
-    """Sanity check that the CLI runs in an isolated venv with only csegraph-core
-    + csegraph-cli installed (no `csegraph` SDK). The codegen subcommand must
-    surface a friendly install-hint instead of importing the SDK."""
+    """CLI should run with root csegraph-core + csegraph-cli, no SDK package."""
     repo_root = Path(__file__).resolve().parents[2]
-    if not (repo_root / "packages" / "csegraph-core" / "pyproject.toml").exists():
+    if not (repo_root / "pyproject.toml").exists():
         import pytest
-        pytest.skip("csegraph-core package not present in this checkout")
+        pytest.skip("root csegraph-core package not present in this checkout")
 
     venv = tmp_path / "v"
     subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
@@ -299,10 +305,11 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
 
     subprocess.run(
-        [str(pip), "install", "--quiet",
-         "-e", str(repo_root / "packages" / "csegraph-core"),
+        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation",
+         "-e", str(repo_root),
          "-e", str(repo_root / "packages" / "csegraph-cli")],
         check=True,
+        env=_offline_pip_env(),
     )
 
     # SDK must NOT be installed in this venv.
