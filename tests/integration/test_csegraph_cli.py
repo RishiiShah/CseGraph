@@ -79,6 +79,12 @@ def test_cli_json_contracts(tmp_path):
         node["node_id"] == "symbol::helpers.py::function::clean_name"
         for node in context["context_nodes"]
     )
+    assert context["estimated_tokens"] >= 1
+    nodes_by_id = {node["node_id"]: node for node in context["context_nodes"]}
+    assert "source_text" in nodes_by_id["symbol::service.py::function::create_user"]
+    assert "def create_user(name: str) -> dict:" in nodes_by_id["symbol::service.py::function::create_user"]["source_text"]
+    assert "def clean_name(value: str) -> str:" in nodes_by_id["symbol::helpers.py::function::clean_name"]["source_text"]
+    assert nodes_by_id["symbol::service.py::function::create_user"]["estimated_tokens"] >= 1
 
     graph = _run_cli(
         "graph",
@@ -132,6 +138,47 @@ def test_legacy_explicit_db_flags_still_work(tmp_path):
         "--json",
     )
     assert context["target_node_id"] == "symbol::service.py::function::create_user"
+
+
+def test_context_cli_source_controls_and_token_budget(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    compact = _run_cli(
+        "context",
+        "Implement create_user",
+        "--target",
+        "create_user",
+        "--repo",
+        str(repo),
+        "--include-source",
+        "never",
+        "--json",
+    )
+    assert compact["estimated_tokens"] == sum(
+        node["estimated_tokens"] for node in compact["context_nodes"]
+    )
+    assert all(node["source_text"] is None for node in compact["context_nodes"])
+
+    budgeted = _run_cli(
+        "context",
+        "Implement create_user",
+        "--target",
+        "create_user",
+        "--repo",
+        str(repo),
+        "--include-source",
+        "always",
+        "--max-tokens",
+        "20",
+        "--json",
+    )
+    assert budgeted["estimated_tokens"] <= 20
+    budgeted_nodes = {node["node_id"]: node for node in budgeted["context_nodes"]}
+    assert "symbol::service.py::function::create_user" in budgeted_nodes
+    helper = budgeted_nodes.get("symbol::helpers.py::function::clean_name")
+    assert helper is None or helper["source_text"] is None
 
 
 def test_codegen_cli_json_contract(tmp_path):

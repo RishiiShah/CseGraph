@@ -144,6 +144,71 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     assert refreshed_context.target_node_id == "symbol::utils.py::function::format_title"
 
 
+def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="Implement build_report using format_user",
+        target="build_report",
+        profile="small",
+    )
+
+    by_id = {node.node_id: node for node in context.context_nodes}
+    target = by_id["symbol::main.py::function::build_report"]
+    helper = by_id["symbol::utils.py::function::format_user"]
+
+    assert "def build_report(name: str) -> str:" in target.source_text
+    assert "return f'Report: {format_user(name)}'" in target.source_text
+    assert "def format_user(name: str) -> str:" in helper.source_text
+    assert "return name.strip().title()" in helper.source_text
+    assert target.estimated_tokens >= 1
+    assert helper.estimated_tokens >= 1
+    assert context.estimated_tokens >= target.estimated_tokens + helper.estimated_tokens
+
+
+def test_context_include_source_never_stays_compact(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="Implement build_report using format_user",
+        target="build_report",
+        profile="small",
+        include_source="never",
+    )
+
+    assert context.context_nodes
+    assert all(node.source_text is None for node in context.context_nodes)
+    assert all(node.estimated_tokens >= 1 for node in context.context_nodes)
+    assert context.estimated_tokens == sum(node.estimated_tokens for node in context.context_nodes)
+
+
+def test_context_max_tokens_limits_source_materialization(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="Implement build_report using format_user",
+        target="build_report",
+        profile="small",
+        include_source="always",
+        max_tokens=30,
+    )
+
+    by_id = {node.node_id: node for node in context.context_nodes}
+    assert context.estimated_tokens <= 30
+    assert "symbol::main.py::function::build_report" in by_id
+    helper = by_id.get("symbol::utils.py::function::format_user")
+    assert helper is None or helper.source_text is None
+
+
 def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
