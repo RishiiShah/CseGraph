@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from csegraph_core.core.models import CodegenResult, ContextNode, ContextResult
+from csegraph_core.core.models import ContextNode, ContextResult
 from csegraph_core.retrieval.context import ContextService
+from csegraph_codegen.models import CodegenResult
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +277,18 @@ class CodegenService:
             import sys
             import importlib.util
 
-            # system_profile lives at the project root — not inside csegraph.
-            # Try to find it relative to this file (../../system_profile.py).
-            sp_path = Path(__file__).resolve().parents[2] / "system_profile.py"
-            if not sp_path.exists():
+            # system_profile is repo-local, not part of the add-on package.
+            # Find it when running from the source checkout; otherwise fall
+            # through to Groq.
+            sp_path = next(
+                (
+                    parent / "system_profile.py"
+                    for parent in Path(__file__).resolve().parents
+                    if (parent / "system_profile.py").exists()
+                ),
+                None,
+            )
+            if sp_path is None:
                 return
             spec = importlib.util.spec_from_file_location("system_profile", sp_path)
             if spec is None or spec.loader is None:

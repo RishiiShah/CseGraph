@@ -1,8 +1,8 @@
-"""csegraph v1.2.2 SDK.
+"""csegraph v1.2.3 SDK.
 
-Thin façade over `csegraph-core` (import namespace: `csegraph_core`).
-Adds the LLM-powered `CodegenService`
-on top of the core indexing/retrieval primitives. The CLI package
+Thin facade over `csegraph-core` (import namespace: `csegraph_core`) for
+coding-agent context retrieval. Code generation lives in the optional
+`csegraph-codegen` add-on, not in this SDK facade. The CLI package
 (`csegraph-cli`) imports from `csegraph-core` directly and does not depend
 on this package.
 """
@@ -30,11 +30,8 @@ from csegraph_core import (
     get_profile,
     to_dict,
 )
-from csegraph_core.core.models import CodegenResult
 
-from csegraph.codegen.service import CodegenService
-
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 # Backward-compat shims: legacy callers import `csegraph.languages.python.parser`,
 # `csegraph.legacy.adapters`, `csegraph.core.models`, `csegraph.cse.metrics`,
@@ -78,8 +75,6 @@ for _name in (
 
 __all__ = [
     "__version__",
-    "CodegenResult",
-    "CodegenService",
     "ContextNode",
     "ContextResult",
     "ContextService",

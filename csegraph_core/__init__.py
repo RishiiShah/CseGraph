@@ -3,12 +3,13 @@
 The install/distribution name is `csegraph-core`; Python imports use
 `csegraph_core` because hyphens are invalid in module names.
 
-The SDK package (`csegraph`) and CLI package (`csegraph-cli`) both depend
-on this package and never on each other. CodegenService (which carries LLM
-dependencies) lives in the SDK, not here.
+This package is the source-of-truth context engine for coding agents:
+parser, SQLite index, graph traversal, retrieval, and CSE metrics. The SDK
+package (`csegraph`), CLI package (`csegraph-cli`), and optional codegen
+add-on (`csegraph-codegen`) depend on this package and never on each other.
 """
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile
 from csegraph_core.core.models import (

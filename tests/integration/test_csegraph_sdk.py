@@ -1,16 +1,13 @@
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
+import csegraph
 from csegraph import (
-    CodegenResult,
-    CodegenService,
     ContextService,
     GraphQueryService,
     IndexService,
     ProjectIndex,
     RefreshService,
-    SufficiencyMetrics,
 )
 
 
@@ -318,79 +315,7 @@ def test_v121_migrates_v2_to_v3_in_place(tmp_path):
     assert {"name", "path", "signature", "docstring", "summary", "source"}.issubset(set(fts_cols))
 
 
-def test_codegen_result_construction():
-    """CodegenResult can be constructed and its fields match."""
-    result = CodegenResult(
-        command="codegen",
-        db_path="/tmp/test.db",
-        repo_root="/tmp/repo",
-        profile="medium",
-        task="Add a calculator function",
-        target_node_id="symbol::calc.py::function::add",
-        model="stub-model",
-        generated_code="def add(a, b): return a + b",
-        is_sufficient=True,
-        metrics=SufficiencyMetrics(
-            dependency_completeness=1.0,
-            entity_coverage=1.0,
-            semantic_overlap=0.8,
-            model_confidence=0.9,
-        ),
-        context_nodes_used=["node_a", "node_b"],
-        raw_code_nodes_used=[],
-        prompt_tokens=100,
-        completion_tokens=50,
-        elapsed_seconds=1.23,
-    )
-    assert result.command == "codegen"
-    assert result.model == "stub-model"
-    assert result.generated_code == "def add(a, b): return a + b"
-    assert result.metrics.dependency_completeness == 1.0
-    assert result.elapsed_seconds == 1.23
-    assert result.output_path is None
-
-
-def test_codegen_service_generate_with_mock(tmp_path):
-    """CodegenService.generate() calls ContextService and LLM, returns CodegenResult."""
-    repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
-    _write_sample_repo(repo)
-
-    # Index the repo first.
-    IndexService(db_path).index(repo, profile="small")
-
-    fake_metrics = SufficiencyMetrics(
-        dependency_completeness=1.0,
-        entity_coverage=1.0,
-        semantic_overlap=0.8,
-        model_confidence=0.9,
-    )
-
-    # Patch CodegenService to skip the LLM __init__ and stub generate.
-    with patch.object(CodegenService, "__init__", lambda self, *a, **kw: None):
-        svc = CodegenService.__new__(CodegenService)
-        svc.db_path = str(db_path)
-        svc.model = "test-mock"
-        svc._temperature = 0.2
-        svc._max_tokens = 2048
-        svc._local_llm = None
-        svc._groq_client = None
-
-        # We only check that the dataclass round-trips correctly.
-        result = CodegenResult(
-            command="codegen",
-            db_path=str(db_path),
-            repo_root=str(repo),
-            profile="small",
-            task="Implement build_report",
-            target_node_id="symbol::main.py::function::build_report",
-            model="test-mock",
-            generated_code="def build_report(name): return name",
-            is_sufficient=True,
-            metrics=fake_metrics,
-            context_nodes_used=["symbol::main.py::function::build_report"],
-            raw_code_nodes_used=[],
-        )
-        assert result.command == "codegen"
-        assert result.is_sufficient is True
-        assert result.model == "test-mock"
+def test_sdk_facade_does_not_export_codegen():
+    assert hasattr(csegraph, "ContextService")
+    assert not hasattr(csegraph, "CodegenService")
+    assert not hasattr(csegraph, "CodegenResult")
