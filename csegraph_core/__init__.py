@@ -1,9 +1,14 @@
-"""csegraph_core — single source of truth for csegraph storage, parsing, and retrieval.
+"""csegraph_core - import namespace for the csegraph-core distribution.
 
-The SDK package (`csegraph`) and CLI package (`csegraph-cli`) both depend on
-this package and never on each other. CodegenService (which carries LLM
+The install/distribution name is `csegraph-core`; Python imports use
+`csegraph_core` because hyphens are invalid in module names.
+
+The SDK package (`csegraph`) and CLI package (`csegraph-cli`) both depend
+on this package and never on each other. CodegenService (which carries LLM
 dependencies) lives in the SDK, not here.
 """
+
+__version__ = "1.2.2"
 
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile
 from csegraph_core.core.models import (
@@ -23,6 +28,7 @@ from csegraph_core.index.services import IndexService, RefreshService
 from csegraph_core.retrieval.context import ContextService
 
 __all__ = [
+    "__version__",
     "ContextNode",
     "ContextResult",
     "ContextService",
