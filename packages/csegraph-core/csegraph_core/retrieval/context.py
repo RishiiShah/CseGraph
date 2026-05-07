@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from csegraph.config.profiles import get_profile
-from csegraph.core.models import ContextNode, ContextResult
-from csegraph.cse.metrics import (
+from csegraph_core.config.profiles import get_profile
+from csegraph_core.core.models import ContextNode, ContextResult
+from csegraph_core.cse.metrics import (
     CONFIDENCE_THRESHOLD,
     DEP_THRESHOLD,
     ENTITY_THRESHOLD,
@@ -14,9 +14,9 @@ from csegraph.cse.metrics import (
     compute_metrics,
     raw_code_nodes,
 )
-from csegraph.index.loaders import edge_maps, load_edges, load_summaries, load_symbols
-from csegraph.index.repository import ProjectIndex
-from csegraph.retrieval.scoring import apply_graph_expansion, lexical_scores
+from csegraph_core.index.loaders import edge_maps, load_edges, load_summaries, load_symbols
+from csegraph_core.index.repository import ProjectIndex
+from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
 
 
 class ContextService:
@@ -40,13 +40,14 @@ class ContextService:
             symbols = load_symbols(index, project_id)
             summaries = load_summaries(index, project_id)
             edges = load_edges(index, project_id)
-            outgoing, incoming = edge_maps(edges)
+            outgoing, _incoming = edge_maps(edges)
 
             if not symbols:
                 raise ValueError("No symbols are indexed in this database.")
 
-            target_node_id = _resolve_target(target, task, symbols, summaries)
-            scores, evidence = lexical_scores(task, symbols, summaries)
+            target_node_id = _resolve_target(target, task, symbols, summaries, index, project_id)
+            fts_seed = fts_lexical_scores(index.conn, project_id, task)
+            scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
             if target_node_id:
                 scores[target_node_id] += 4.0
                 evidence[target_node_id].append("target")
@@ -60,8 +61,8 @@ class ContextService:
                     config.graph_radius,
                     scores,
                     evidence,
-                    outgoing,
-                    incoming,
+                    index.conn,
+                    project_id,
                     symbols,
                 )
 
@@ -84,6 +85,9 @@ class ContextService:
             context_nodes: List[ContextNode] = []
             for node_id in context_ids:
                 row = symbols[node_id]
+                raw_evidence = evidence.get(node_id, [])
+                lineage = sorted({e for e in raw_evidence if e.startswith("expanded-from-")})
+                clean_evidence = sorted({e for e in raw_evidence if not e.startswith("expanded-from-")})
                 context_nodes.append(
                     ContextNode(
                         node_id=node_id,
@@ -94,8 +98,9 @@ class ContextService:
                         end_line=row["end_line"],
                         score=round(scores.get(node_id, 0.0), 4),
                         raw_code=node_id in raw_nodes,
-                        evidence=sorted(set(evidence.get(node_id, []))),
+                        evidence=clean_evidence,
                         summary=summaries.get(node_id, ""),
+                        lineage=lineage,
                     )
                 )
 
@@ -120,7 +125,7 @@ class ContextService:
                         "rank": rank,
                         "score": node.score,
                         "raw_code": node.raw_code,
-                        "evidence": node.evidence,
+                        "evidence": list(node.evidence) + list(node.lineage),
                     }
                     for rank, node in enumerate(context_nodes, start=1)
                 ],
@@ -154,22 +159,42 @@ def _resolve_target(
     task: str,
     symbols: Dict[str, Dict[str, Any]],
     summaries: Dict[str, str],
+    index: Optional[ProjectIndex] = None,
+    project_id: Optional[int] = None,
 ) -> str:
     if target:
         if target in symbols:
             return target
-        lowered = target.lower()
-        for node_id, row in symbols.items():
-            if row["name"].lower() == lowered:
-                return node_id
-        for node_id, row in symbols.items():
-            if row["file_path"].lower() == lowered:
-                return node_id
-        for node_id, row in symbols.items():
-            if lowered in row["name"].lower() or lowered in row["file_path"].lower():
-                return node_id
+        if index is not None and project_id is not None:
+            lowered = target.lower()
+            row = index.conn.execute(
+                """
+                SELECT id FROM nodes
+                 WHERE project_id = ?
+                   AND type IN ('class','function','method')
+                   AND (LOWER(name) = ? OR LOWER(path) = ?)
+                 ORDER BY (LOWER(name) = ?) DESC, length(name) ASC
+                 LIMIT 1
+                """,
+                (project_id, lowered, lowered, lowered),
+            ).fetchone()
+            if row is not None:
+                return row["id"]
+            row = index.conn.execute(
+                """
+                SELECT id FROM nodes
+                 WHERE project_id = ?
+                   AND type IN ('class','function','method')
+                   AND (LOWER(name) LIKE ? OR LOWER(path) LIKE ?)
+                 ORDER BY length(name) ASC
+                 LIMIT 1
+                """,
+                (project_id, f"%{lowered}%", f"%{lowered}%"),
+            ).fetchone()
+            if row is not None:
+                return row["id"]
         raise ValueError(f"Target '{target}' did not match any indexed symbol.")
-    scores, _ = lexical_scores(task, symbols, summaries)
+    scores, _ = lexical_scores(task, symbols, summaries, fts_seed=None)
     return max(scores.items(), key=lambda item: item[1])[0]
 
 

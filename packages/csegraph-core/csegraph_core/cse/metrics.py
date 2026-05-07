@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, Set
 
-from csegraph.languages.python.parser import code_tokenize, extract_query_entities
+from csegraph_core.languages.python.parser import code_tokenize, extract_query_entities
 
 
 DEP_THRESHOLD = 0.80
