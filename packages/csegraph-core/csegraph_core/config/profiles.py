@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from csegraph.core.models import ProfileConfig
+from csegraph_core.core.models import ProfileConfig
 
 
 PROFILES = {
