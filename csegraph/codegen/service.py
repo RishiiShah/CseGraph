@@ -12,8 +12,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from csegraph.core.models import CodegenResult, ContextNode, ContextResult
-from csegraph.retrieval.context import ContextService
+from csegraph_core.core.models import CodegenResult, ContextNode, ContextResult
+from csegraph_core.retrieval.context import ContextService
 
 
 # ---------------------------------------------------------------------------

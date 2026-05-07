@@ -43,6 +43,8 @@ Consumes ingestion output and builds a `LinkGraph` with three edge types:
 - `imports` — cross-file import resolution
 - `calls` — symbol-to-symbol call edges
 
+> **csegraph v1.2 SDK** writes a richer graph than the legacy research pipeline: a single `nodes` table covering repo/folder/file/class/function/method, plus three additional edge relations (`inherits`, `decorates`, `tested_by`). See [`docs/architecture.md`](docs/architecture.md#v12-storage-schema-csegraph-sqlite-v2).
+
 ### 3. Compression Agent (`agents/compression_agent.py`)
 Compresses the link graph into a `CompressedGraph` with:
 - Per-node text summaries (name, type, connectivity)
@@ -163,7 +165,15 @@ env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir
 # Three-strategy comparison (adaptive vs full_context vs static_rag)
 env/bin/python compare_baselines.py --output-dir data
 
-# csegraph SDK + CLI (v1.1.2 — two separate packages)
+# csegraph SDK + CLI (v1.2.1 — three independent packages)
+
+`csegraph-core` (no LLM deps) holds the storage, parser, retrieval, and graph layer. `csegraph` adds the LLM-powered `CodegenService` on top. `csegraph-cli` is a thin command-line front-end that depends only on `csegraph-core` — installing it does NOT pull in the SDK or its LLM dependencies.
+
+| You install | You get |
+|---|---|
+| `pip install csegraph-cli` | `csegraph index/refresh/context/graph` (no LLM deps) |
+| `pip install csegraph` | SDK with `CodegenService` (programmatic LLM-backed codegen) |
+| `pip install csegraph csegraph-cli` | Full CLI including `csegraph codegen` |
 # Install:
 #   env/bin/pip install -e .                        (SDK only)
 #   env/bin/pip install -e packages/csegraph-cli/   (CLI, requires SDK)
