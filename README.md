@@ -43,7 +43,7 @@ Consumes ingestion output and builds a `LinkGraph` with three edge types:
 - `imports` — cross-file import resolution
 - `calls` — symbol-to-symbol call edges
 
-> **csegraph v1.2 SDK** writes a richer graph than the legacy research pipeline: a single `nodes` table covering repo/folder/file/class/function/method, plus three additional edge relations (`inherits`, `decorates`, `tested_by`). See [`docs/architecture.md`](docs/architecture.md#v12-storage-schema-csegraph-sqlite-v2).
+> **csegraph v1.2 SDK** writes a richer graph than the legacy research pipeline: a single `nodes` table covering repo/folder/file/class/function/method, plus three additional edge relations (`inherits`, `decorates`, `tested_by`). See [`docs/architecture.md`](docs/architecture.md#v12-storage-schema-csegraph-sqlite-v3).
 
 ### 3. Compression Agent (`agents/compression_agent.py`)
 Compresses the link graph into a `CompressedGraph` with:
@@ -165,9 +165,9 @@ env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir
 # Three-strategy comparison (adaptive vs full_context vs static_rag)
 env/bin/python compare_baselines.py --output-dir data
 
-# csegraph SDK + CLI (v1.2.1 — three independent packages)
+# csegraph SDK + CLI (v1.2.2 — root core plus slim packages)
 
-`csegraph-core` (no LLM deps) holds the storage, parser, retrieval, and graph layer. `csegraph` adds the LLM-powered `CodegenService` on top. `csegraph-cli` is a thin command-line front-end that depends only on `csegraph-core` — installing it does NOT pull in the SDK or its LLM dependencies.
+`csegraph-core` (distribution name; imported in Python as `csegraph_core`) holds the storage, parser, retrieval, and graph layer. `csegraph` adds the LLM-powered `CodegenService` on top. `csegraph-cli` is a thin command-line front-end that depends only on `csegraph-core` — installing it does NOT pull in the SDK or its LLM dependencies.
 
 | You install | You get |
 |---|---|
@@ -175,8 +175,11 @@ env/bin/python compare_baselines.py --output-dir data
 | `pip install csegraph` | SDK with `CodegenService` (programmatic LLM-backed codegen) |
 | `pip install csegraph csegraph-cli` | Full CLI including `csegraph codegen` |
 # Install:
-#   env/bin/pip install -e .                        (SDK only)
-#   env/bin/pip install -e packages/csegraph-cli/   (CLI, requires SDK)
+#   env/bin/pip install -e .                        (core only)
+#   env/bin/pip install -e packages/csegraph/       (SDK facade + CodegenService)
+#   env/bin/pip install -e packages/csegraph-cli/   (CLI, depends on core)
+# Import:
+#   import csegraph_core                            (hyphenated names are package/distribution names only)
 env/bin/python -m csegraph_cli index sandboxes/graph_analytics
 env/bin/python -m csegraph_cli context "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics
 env/bin/python -m csegraph_cli codegen "Add a calculator function" --repo sandboxes/graph_analytics

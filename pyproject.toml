@@ -3,14 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "csegraph"
-version = "1.2.1"
-description = "csegraph SDK — façade over csegraph-core with optional LLM-powered code generation."
+name = "csegraph-core"
+version = "1.2.2"
+description = "Storage, parsing, and retrieval primitives for csegraph. Distribution: csegraph-core; import: csegraph_core."
 requires-python = ">=3.10"
-dependencies = ["csegraph-core>=1.2.1"]
+dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest>=9.0.3"]
 
 [tool.setuptools.packages.find]
-include = ["csegraph*", "!csegraph_cli*", "!csegraph_core*"]
+include = ["csegraph_core*"]
