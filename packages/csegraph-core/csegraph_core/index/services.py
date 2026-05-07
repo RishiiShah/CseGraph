@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import json
 import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from csegraph.config.profiles import get_profile
-from csegraph.core.ids import file_node_id
-from csegraph.core.models import IndexResult, RefreshResult
-from csegraph.index.repository import ProjectIndex, json_dumps
-from csegraph.languages.python.parser import (
+from csegraph_core.config.profiles import get_profile
+from csegraph_core.core.ids import file_node_id, folder_node_id, repo_node_id
+from csegraph_core.core.models import IndexResult, RefreshResult
+from csegraph_core.index.repository import ProjectIndex, json_dumps
+from csegraph_core.languages.python.parser import (
     ParsedFile,
     ParsedSymbol,
     code_tokenize,
@@ -34,7 +35,7 @@ class IndexService:
             index.initialize_schema()
             project_id = index.upsert_project(repo_root, config.name)
             index.clear_project_graph(project_id)
-            stats = _write_parsed_files(index, project_id, parsed_files)
+            stats = _write_parsed_files(index, project_id, repo_root, parsed_files)
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
                 for parsed in parsed_files
@@ -76,7 +77,7 @@ class RefreshService:
             stored = {
                 row["path"]: row["sha256"]
                 for row in index.conn.execute(
-                    "SELECT path, sha256 FROM files WHERE project_id = ?",
+                    "SELECT path, sha256 FROM nodes WHERE project_id = ? AND type = 'file'",
                     (project_id,),
                 )
             }
@@ -112,8 +113,9 @@ class RefreshService:
                     index.delete_file_payload(project_id, rel_path, remove_incoming=False)
                 )
 
-            stats = _write_parsed_files(index, project_id, parsed_changed)
+            stats = _write_parsed_files(index, project_id, str(repo_root), parsed_changed)
             index.cleanup_orphan_edges(project_id)
+            index.cleanup_orphan_folders(project_id)
             changed_symbols.extend(symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols)
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
@@ -141,57 +143,64 @@ class RefreshService:
 def _write_parsed_files(
     index: ProjectIndex,
     project_id: int,
+    repo_root: str,
     parsed_files: Sequence[ParsedFile],
 ) -> Dict[str, int]:
     now = time.time()
-    file_id_by_path: Dict[str, int] = {}
+    _write_repo_and_folders(index, project_id, repo_root, parsed_files, now)
+
+    file_node_rows: List[tuple] = []
+    summary_rows: List[tuple] = []
+    lexical_delete_ids: List[tuple] = []
+    lexical_rows: List[tuple] = []
     for parsed in parsed_files:
-        index.conn.execute(
-            """
-            INSERT INTO files(
-                project_id, path, language, sha256, mtime, size,
-                parse_status, parse_error, updated_at
+        node_id = file_node_id(parsed.rel_path)
+        parent_dir = "/".join(parsed.rel_path.split("/")[:-1])
+        parent = folder_node_id(parent_dir) if parent_dir else repo_node_id(Path(repo_root).name or "repo")
+        file_meta = json.dumps({"size": parsed.size, "mtime": parsed.mtime}, sort_keys=True)
+        file_node_rows.append(
+            (
+                node_id, project_id, parent, Path(parsed.rel_path).name, parsed.rel_path,
+                parsed.language, parsed.sha256, parsed.sha256,
+                parsed.parse_status, parsed.parse_error, file_meta, now,
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(project_id, path) DO UPDATE SET
+        )
+        file_summary = _file_summary(parsed)
+        summary_rows.append((node_id, project_id, parsed.sha256, file_summary, "file", now))
+        lexical_delete_ids.append((node_id,))
+        lexical_rows.append(
+            (node_id, Path(parsed.rel_path).name, parsed.rel_path, "", "", file_summary, "")
+        )
+
+    if file_node_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO nodes(
+                id, project_id, parent_id, type, name, path,
+                language, sha256, signature, docstring,
+                start_line, end_line, source_hash,
+                parse_status, parse_error, metadata, is_test, updated_at
+            ) VALUES(?, ?, ?, 'file', ?, ?, ?, ?, NULL, NULL,
+                     NULL, NULL, ?, ?, ?, ?, 0, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_id = excluded.parent_id,
                 language = excluded.language,
                 sha256 = excluded.sha256,
-                mtime = excluded.mtime,
-                size = excluded.size,
+                source_hash = excluded.source_hash,
                 parse_status = excluded.parse_status,
                 parse_error = excluded.parse_error,
+                metadata = excluded.metadata,
                 updated_at = excluded.updated_at
             """,
-            (
-                project_id,
-                parsed.rel_path,
-                parsed.language,
-                parsed.sha256,
-                parsed.mtime,
-                parsed.size,
-                parsed.parse_status,
-                parsed.parse_error,
-                now,
-            ),
+            file_node_rows,
         )
-        row = index.conn.execute(
-            "SELECT id FROM files WHERE project_id = ? AND path = ?",
-            (project_id, parsed.rel_path),
-        ).fetchone()
-        file_id_by_path[parsed.rel_path] = int(row["id"])
-
-        file_summary = _file_summary(parsed)
-        _upsert_summary(index, project_id, file_node_id(parsed.rel_path), parsed.sha256, "file", file_summary)
-        _replace_lexical(index, file_node_id(parsed.rel_path), f"{parsed.rel_path} {file_summary}")
 
     symbol_by_name: Dict[str, List[str]] = defaultdict(list)
     node_to_file_node: Dict[str, str] = {}
     for row in index.conn.execute(
         """
-        SELECT s.id, s.name, f.path
-        FROM symbols s
-        JOIN files f ON f.id = s.file_id
-        WHERE s.project_id = ?
+        SELECT id, name, path FROM nodes
+        WHERE project_id = ? AND type IN ('class','function','method')
         """,
         (project_id,),
     ):
@@ -200,30 +209,20 @@ def _write_parsed_files(
             symbol_by_name[row["name"].split(".")[-1]].append(row["id"])
         node_to_file_node[row["id"]] = file_node_id(row["path"])
 
+    symbol_node_rows: List[tuple] = []
     for parsed in parsed_files:
-        file_id = file_id_by_path[parsed.rel_path]
         for symbol in parsed.symbols:
-            index.conn.execute(
-                """
-                INSERT OR REPLACE INTO symbols(
-                    id, project_id, file_id, kind, name, parent_symbol_id,
-                    signature, docstring, start_line, end_line, source_hash
-                )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            parent = symbol.parent_symbol_id or file_node_id(parsed.rel_path)
+            metadata = json.dumps(
+                {"is_test": symbol.is_test, "bases": symbol.bases, "decorators": symbol.decorators},
+                sort_keys=True,
+            )
+            symbol_node_rows.append(
                 (
-                    symbol.node_id,
-                    project_id,
-                    file_id,
-                    symbol.kind,
-                    symbol.name,
-                    symbol.parent_symbol_id,
-                    symbol.signature,
-                    symbol.docstring,
-                    symbol.start_line,
-                    symbol.end_line,
-                    symbol.source_hash,
-                ),
+                    symbol.node_id, project_id, parent, symbol.kind, symbol.name, parsed.rel_path,
+                    symbol.signature, symbol.docstring, symbol.start_line, symbol.end_line,
+                    symbol.source_hash, metadata, 1 if symbol.is_test else 0, now,
+                )
             )
             symbol_by_name[symbol.name].append(symbol.node_id)
             if "." in symbol.name:
@@ -231,119 +230,192 @@ def _write_parsed_files(
             node_to_file_node[symbol.node_id] = file_node_id(parsed.rel_path)
 
             summary = _symbol_summary(symbol)
-            _upsert_summary(index, project_id, symbol.node_id, symbol.source_hash, symbol.kind, summary)
-            _replace_lexical(
-                index,
-                symbol.node_id,
-                " ".join(
-                    [
-                        symbol.name,
-                        parsed.rel_path,
-                        symbol.signature,
-                        symbol.docstring,
-                        summary,
-                        " ".join(code_tokenize(symbol.source)),
-                    ]
-                ),
+            summary_rows.append((symbol.node_id, project_id, symbol.source_hash, summary, symbol.kind, now))
+            lexical_delete_ids.append((symbol.node_id,))
+            lexical_rows.append(
+                (
+                    symbol.node_id,
+                    symbol.name,
+                    parsed.rel_path,
+                    symbol.signature or "",
+                    symbol.docstring or "",
+                    summary,
+                    " ".join(code_tokenize(symbol.source)),
+                )
             )
-    index.conn.commit()
+
+    if symbol_node_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO nodes(
+                id, project_id, parent_id, type, name, path,
+                language, sha256, signature, docstring,
+                start_line, end_line, source_hash,
+                parse_status, parse_error, metadata, is_test, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_id = excluded.parent_id,
+                type = excluded.type,
+                signature = excluded.signature,
+                docstring = excluded.docstring,
+                start_line = excluded.start_line,
+                end_line = excluded.end_line,
+                source_hash = excluded.source_hash,
+                metadata = excluded.metadata,
+                is_test = excluded.is_test,
+                updated_at = excluded.updated_at
+            """,
+            symbol_node_rows,
+        )
+
+    if summary_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO summaries(node_id, project_id, source_hash, summary, kind, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(node_id) DO UPDATE SET
+                project_id = excluded.project_id,
+                source_hash = excluded.source_hash,
+                summary = excluded.summary,
+                kind = excluded.kind,
+                updated_at = excluded.updated_at
+            """,
+            summary_rows,
+        )
+
+    if lexical_delete_ids:
+        index.conn.executemany(
+            "DELETE FROM lexical_index WHERE node_id = ?",
+            lexical_delete_ids,
+        )
+    if lexical_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO lexical_index(node_id, name, path, signature, docstring, summary, source)
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+            """,
+            lexical_rows,
+        )
 
     module_to_file_id = _module_to_file_id(index, project_id)
-    edges_inserted = 0
+    edge_rows: List[tuple] = []
     for parsed in parsed_files:
         current_module = module_name_from_relpath(parsed.rel_path)
         current_file_id = file_node_id(parsed.rel_path)
         for symbol in parsed.symbols:
             source = symbol.parent_symbol_id if symbol.kind == "method" and symbol.parent_symbol_id else current_file_id
-            if _insert_edge(index, project_id, source, symbol.node_id, "contains", None):
-                edges_inserted += 1
+            edge_rows.append((project_id, source, symbol.node_id, "contains", None))
 
         for import_name in parsed.imports:
             target_file_id = resolve_local_import(import_name, module_to_file_id, current_module)
-            if target_file_id and _insert_edge(
-                index,
-                project_id,
-                current_file_id,
-                target_file_id,
-                "imports",
-                {"import": import_name},
-            ):
-                edges_inserted += 1
+            if target_file_id:
+                edge_rows.append(
+                    (project_id, current_file_id, target_file_id, "imports", json_dumps({"import": import_name}))
+                )
 
         for symbol in parsed.symbols:
             for call in symbol.calls:
                 target = _pick_call_target(call, current_file_id, symbol_by_name, node_to_file_node)
-                if target and target != symbol.node_id and _insert_edge(
-                    index,
-                    project_id,
-                    symbol.node_id,
-                    target,
-                    "calls",
-                    {"symbol": call},
-                ):
-                    edges_inserted += 1
+                if target and target != symbol.node_id:
+                    edge_rows.append(
+                        (project_id, symbol.node_id, target, "calls", json_dumps({"symbol": call}))
+                    )
+            for base in symbol.bases:
+                target = _pick_call_target(base, current_file_id, symbol_by_name, node_to_file_node)
+                if target and target != symbol.node_id:
+                    edge_rows.append(
+                        (project_id, symbol.node_id, target, "inherits", json_dumps({"base": base}))
+                    )
+            for decorator in symbol.decorators:
+                target = _pick_call_target(decorator, current_file_id, symbol_by_name, node_to_file_node)
+                if target and target != symbol.node_id:
+                    edge_rows.append(
+                        (project_id, target, symbol.node_id, "decorates", json_dumps({"decorator": decorator}))
+                    )
+            if symbol.is_test:
+                for call in symbol.calls:
+                    target = _pick_call_target(call, current_file_id, symbol_by_name, node_to_file_node)
+                    if target and target != symbol.node_id:
+                        edge_rows.append(
+                            (project_id, target, symbol.node_id, "tested_by", json_dumps({"via": call}))
+                        )
 
+    edges_before = int(
+        index.conn.execute(
+            "SELECT COUNT(*) AS c FROM edges WHERE project_id = ?", (project_id,)
+        ).fetchone()["c"]
+    )
+    if edge_rows:
+        index.conn.executemany(
+            """
+            INSERT OR IGNORE INTO edges(project_id, source_node_id, target_node_id, relation, metadata)
+            VALUES(?, ?, ?, ?, ?)
+            """,
+            edge_rows,
+        )
     index.conn.commit()
+
     total_edges = int(
         index.conn.execute(
-            "SELECT COUNT(*) AS count FROM edges WHERE project_id = ?",
-            (project_id,),
-        ).fetchone()["count"]
+            "SELECT COUNT(*) AS c FROM edges WHERE project_id = ?", (project_id,)
+        ).fetchone()["c"]
     )
     return {
         "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
-        "edges": total_edges if len(parsed_files) > 1 else edges_inserted,
+        "edges": total_edges if len(parsed_files) > 1 else (total_edges - edges_before),
     }
 
 
-def _insert_edge(
+def _write_repo_and_folders(
     index: ProjectIndex,
     project_id: int,
-    source_id: str,
-    target_id: str,
-    relation: str,
-    metadata: Optional[Dict[str, Any]],
-) -> bool:
-    before = index.conn.total_changes
-    index.conn.execute(
-        """
-        INSERT OR IGNORE INTO edges(project_id, source_id, target_id, relation, metadata)
-        VALUES(?, ?, ?, ?, ?)
-        """,
-        (project_id, source_id, target_id, relation, json_dumps(metadata)),
-    )
-    return index.conn.total_changes > before
-
-
-def _upsert_summary(
-    index: ProjectIndex,
-    project_id: int,
-    node_id: str,
-    source_hash: str,
-    kind: str,
-    summary: str,
+    repo_root: str,
+    parsed_files: Sequence[ParsedFile],
+    now: float,
 ) -> None:
+    repo_name = Path(repo_root).name or "repo"
+    repo_id = repo_node_id(repo_name)
     index.conn.execute(
         """
-        INSERT INTO summaries(node_id, project_id, source_hash, summary, kind, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?)
-        ON CONFLICT(node_id) DO UPDATE SET
-            project_id = excluded.project_id,
-            source_hash = excluded.source_hash,
-            summary = excluded.summary,
-            kind = excluded.kind,
-            updated_at = excluded.updated_at
+        INSERT OR IGNORE INTO nodes(
+            id, project_id, parent_id, type, name, path,
+            language, sha256, signature, docstring,
+            start_line, end_line, source_hash,
+            parse_status, parse_error, metadata, updated_at
+        ) VALUES(?, ?, NULL, 'repo', ?, '', NULL, NULL, NULL, NULL,
+                 NULL, NULL, '', NULL, NULL, NULL, ?)
         """,
-        (node_id, project_id, source_hash, summary, kind, time.time()),
+        (repo_id, project_id, repo_name, now),
     )
 
+    folder_paths: set[str] = set()
+    for parsed in parsed_files:
+        parts = parsed.rel_path.split("/")[:-1]
+        for i in range(1, len(parts) + 1):
+            folder_paths.add("/".join(parts[:i]))
 
-def _replace_lexical(index: ProjectIndex, node_id: str, content: str) -> None:
-    index.conn.execute("DELETE FROM lexical_index WHERE node_id = ?", (node_id,))
-    index.conn.execute(
-        "INSERT INTO lexical_index(node_id, content) VALUES(?, ?)",
-        (node_id, content),
-    )
+    for rel_dir in sorted(folder_paths, key=lambda p: p.count("/")):
+        parent_parts = rel_dir.split("/")[:-1]
+        parent = folder_node_id("/".join(parent_parts)) if parent_parts else repo_id
+        index.conn.execute(
+            """
+            INSERT OR IGNORE INTO nodes(
+                id, project_id, parent_id, type, name, path,
+                language, sha256, signature, docstring,
+                start_line, end_line, source_hash,
+                parse_status, parse_error, metadata, updated_at
+            ) VALUES(?, ?, ?, 'folder', ?, ?, NULL, NULL, NULL, NULL,
+                     NULL, NULL, '', NULL, NULL, NULL, ?)
+            """,
+            (
+                folder_node_id(rel_dir),
+                project_id,
+                parent,
+                rel_dir.rsplit("/", 1)[-1],
+                rel_dir,
+                now,
+            ),
+        )
 
 
 def _file_summary(parsed: ParsedFile) -> str:
@@ -355,6 +427,8 @@ def _symbol_summary(symbol: ParsedSymbol) -> str:
     parts = [symbol.signature or f"{symbol.kind} {symbol.name}"]
     if symbol.docstring:
         parts.append(symbol.docstring.split(".")[0].replace("\n", " ").strip())
+    if symbol.bases:
+        parts.append("inherits " + ", ".join(symbol.bases[:4]))
     if symbol.calls:
         parts.append("calls " + ", ".join(symbol.calls[:8]))
     return " - ".join(part for part in parts if part)
@@ -363,7 +437,7 @@ def _symbol_summary(symbol: ParsedSymbol) -> str:
 def _module_to_file_id(index: ProjectIndex, project_id: int) -> Dict[str, str]:
     mapping: Dict[str, str] = {}
     for row in index.conn.execute(
-        "SELECT path FROM files WHERE project_id = ?",
+        "SELECT path FROM nodes WHERE project_id = ? AND type = 'file'",
         (project_id,),
     ):
         mapping[module_name_from_relpath(row["path"])] = file_node_id(row["path"])

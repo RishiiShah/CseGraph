@@ -1,35 +1,50 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from csegraph.index.repository import ProjectIndex
-from csegraph.core.ids import file_node_id
+from csegraph_core.index.repository import ProjectIndex
+
+
+SYMBOL_TYPES = ("class", "function", "method", "test")
+
+
+def load_nodes(
+    index: ProjectIndex,
+    project_id: int,
+    types: Optional[Iterable[str]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    if types is None:
+        rows = index.conn.execute(
+            "SELECT * FROM nodes WHERE project_id = ?",
+            (project_id,),
+        )
+    else:
+        types = tuple(types)
+        placeholders = ",".join("?" for _ in types)
+        rows = index.conn.execute(
+            f"SELECT * FROM nodes WHERE project_id = ? AND type IN ({placeholders})",
+            (project_id, *types),
+        )
+    return {row["id"]: dict(row) for row in rows}
 
 
 def load_files(index: ProjectIndex, project_id: int) -> Dict[str, Dict[str, Any]]:
-    files: Dict[str, Dict[str, Any]] = {}
-    for row in index.conn.execute(
-        "SELECT * FROM files WHERE project_id = ?",
-        (project_id,),
-    ):
-        files[file_node_id(row["path"])] = dict(row)
-    return files
+    return load_nodes(index, project_id, types=("file",))
 
 
 def load_symbols(index: ProjectIndex, project_id: int) -> Dict[str, Dict[str, Any]]:
-    symbols: Dict[str, Dict[str, Any]] = {}
-    for row in index.conn.execute(
-        """
-        SELECT s.*, f.path AS file_path
-        FROM symbols s
-        JOIN files f ON f.id = s.file_id
-        WHERE s.project_id = ?
+    rows = index.conn.execute(
+        f"""
+        SELECT id, project_id, parent_id, type AS kind, name, path AS file_path,
+               signature, docstring, start_line, end_line, source_hash, metadata,
+               parent_id AS parent_symbol_id
+        FROM nodes
+        WHERE project_id = ? AND type IN ({",".join("?" for _ in SYMBOL_TYPES)})
         """,
-        (project_id,),
-    ):
-        symbols[row["id"]] = dict(row)
-    return symbols
+        (project_id, *SYMBOL_TYPES),
+    )
+    return {row["id"]: dict(row) for row in rows}
 
 
 def load_summaries(index: ProjectIndex, project_id: int) -> Dict[str, str]:
@@ -43,13 +58,16 @@ def load_summaries(index: ProjectIndex, project_id: int) -> Dict[str, str]:
 
 
 def load_edges(index: ProjectIndex, project_id: int) -> List[Dict[str, Any]]:
-    return [
-        dict(row)
-        for row in index.conn.execute(
-            "SELECT * FROM edges WHERE project_id = ?",
-            (project_id,),
-        )
-    ]
+    rows = []
+    for row in index.conn.execute(
+        "SELECT * FROM edges WHERE project_id = ?",
+        (project_id,),
+    ):
+        edge = dict(row)
+        edge["source_id"] = edge["source_node_id"]
+        edge["target_id"] = edge["target_node_id"]
+        rows.append(edge)
+    return rows
 
 
 def edge_maps(
