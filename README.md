@@ -58,7 +58,7 @@ The primary product surface is `context`: build an index once, refresh changed f
 
 ## Package Layout
 
-v1.2.3 uses four installable packages:
+v1.2.4 uses four installable packages:
 
 | Package | Location | Purpose |
 |---|---|---|
@@ -100,6 +100,9 @@ csegraph refresh .
 # Ask for context before an agent edits.
 csegraph context "fix auth token refresh bug" --target refresh_token --repo .
 
+# Tune source materialization for agent token budgets.
+csegraph context "fix auth token refresh bug" --target refresh_token --repo . --include-source auto --max-tokens 4000 --json
+
 # Explain why a symbol/file matters.
 csegraph graph refresh_token --repo . --depth 1
 ```
@@ -127,9 +130,32 @@ A context result includes:
 
 - ranked files and symbols
 - line ranges and source paths
+- optional `source_text` for target symbols and important dependencies
+- `estimated_tokens` per node and for the whole result
 - dependency-aware evidence for why each node was selected
 - sufficiency metrics such as dependency completeness and entity coverage
 - raw-code fallbacks for exact imports, signatures, small helpers, and risky context
+
+Source controls:
+
+| Flag | Behavior |
+|---|---|
+| `--include-source auto` | Default. Includes exact source for the target, direct calls, raw-code fallbacks, and small helpers. |
+| `--include-source always` | Tries to include exact source for every returned context node. |
+| `--include-source never` | Returns compact metadata/summaries only. |
+| `--max-tokens <n>` | Caps the returned context bundle using deterministic `ceil(chars / 4)` estimates. |
+
+## Agent Integration Loop
+
+Coding agents should use csegraph as a repo-context preflight:
+
+```bash
+csegraph index . --json
+csegraph refresh . --json
+csegraph context "describe the requested edit" --target SomeSymbol --repo . --include-source auto --max-tokens 6000 --json
+```
+
+The agent should read the returned `context_nodes`, inspect `source_text` when present, use `evidence` and `lineage` to understand why each node was included, then edit the repo with its normal tools.
 
 ## SDK Usage
 
