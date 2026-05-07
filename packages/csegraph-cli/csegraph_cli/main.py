@@ -11,12 +11,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from csegraph.codegen.service import CodegenService
-from csegraph.config.profiles import PROFILES
-from csegraph.core.models import to_dict
-from csegraph.graph.queries import GraphQueryService
-from csegraph.index.services import IndexService, RefreshService
-from csegraph.retrieval.context import ContextService
+from csegraph_core.config.profiles import PROFILES
+from csegraph_core.core.models import to_dict
+from csegraph_core.graph.queries import GraphQueryService
+from csegraph_core.index.services import IndexService, RefreshService
+from csegraph_core.retrieval.context import ContextService
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,6 +120,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
             raise ValueError("graph requires a node. Example: csegraph graph MyClass.method")
         return GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
     if args.command == "codegen":
+        try:
+            from csegraph.codegen.service import CodegenService
+        except ImportError as exc:
+            raise RuntimeError(
+                "codegen requires the optional `csegraph` SDK package. "
+                "Install with: pip install csegraph"
+            ) from exc
         repo = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg
         if not task:
