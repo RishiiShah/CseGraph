@@ -66,6 +66,18 @@ def _build_parser() -> argparse.ArgumentParser:
     context.add_argument("--task", default=None, help="Natural-language task.")
     context.add_argument("--target", default=None, help="Optional target node, symbol name, or file path.")
     context.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    context.add_argument(
+        "--include-source",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="Control source_text materialization in context nodes (default: auto).",
+    )
+    context.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Approximate max tokens for returned context nodes.",
+    )
     context.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     graph = subparsers.add_parser("graph", help="Explain a graph neighborhood.")
@@ -113,6 +125,8 @@ def _dispatch(args: argparse.Namespace) -> Any:
             task=task,
             target=args.target,
             profile=args.profile,
+            include_source=args.include_source,
+            max_tokens=args.max_tokens,
         )
     if args.command == "graph":
         repo = Path(args.repo or ".").resolve()
