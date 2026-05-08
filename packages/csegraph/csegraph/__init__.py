@@ -1,4 +1,4 @@
-"""csegraph v1.2.4 SDK.
+"""csegraph v1.2.5 SDK.
 
 Thin facade over `csegraph-core` (import namespace: `csegraph_core`) for
 coding-agent context retrieval. Code generation lives in the optional
@@ -27,11 +27,12 @@ from csegraph_core import (
     RefreshResult,
     RefreshService,
     SufficiencyMetrics,
+    VALID_REASONS,
     get_profile,
     to_dict,
 )
 
-__version__ = "1.2.4"
+__version__ = "1.2.5"
 
 # Backward-compat shims: legacy callers import `csegraph.languages.python.parser`,
 # `csegraph.legacy.adapters`, `csegraph.core.models`, `csegraph.cse.metrics`,
@@ -60,7 +61,9 @@ for _name in (
     "legacy.adapters",
     "parser",
     "retrieval",
+    "retrieval.constants",
     "retrieval.context",
+    "retrieval.explain",
     "retrieval.scoring",
 ):
     _core_mod = f"csegraph_core.{_name}"
@@ -90,6 +93,7 @@ __all__ = [
     "RefreshResult",
     "RefreshService",
     "SufficiencyMetrics",
+    "VALID_REASONS",
     "get_profile",
     "to_dict",
 ]
