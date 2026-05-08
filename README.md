@@ -2,6 +2,8 @@
 
 csegraph is a repository context engine for coding agents.
 
+csegraph gives coding agents the right repository context before they edit: the target code, direct dependencies, relevant imports, small helpers, and explanations for why each piece was selected.
+
 It indexes Python code into a dependency graph and returns compact, task-specific context bundles so agents like Codex, Claude Code, Cursor, Aider, or custom agent loops do not have to repeatedly grep, cat, and scan the repo.
 
 The goal is simple:
@@ -58,7 +60,7 @@ The primary product surface is `context`: build an index once, refresh changed f
 
 ## Package Layout
 
-v1.2.4 uses four installable packages:
+v1.2.5 uses four installable packages:
 
 | Package | Location | Purpose |
 |---|---|---|
@@ -103,6 +105,9 @@ csegraph context "fix auth token refresh bug" --target refresh_token --repo .
 # Tune source materialization for agent token budgets.
 csegraph context "fix auth token refresh bug" --target refresh_token --repo . --include-source auto --max-tokens 4000 --json
 
+# Render agent context as Markdown for human inspection.
+csegraph context "fix auth token refresh bug" --target refresh_token --repo . --format markdown --explain
+
 # Explain why a symbol/file matters.
 csegraph graph refresh_token --repo . --depth 1
 ```
@@ -132,9 +137,58 @@ A context result includes:
 - line ranges and source paths
 - optional `source_text` for target symbols and important dependencies
 - `estimated_tokens` per node and for the whole result
-- dependency-aware evidence for why each node was selected
+- stable `reason` tags for why each node was selected
 - sufficiency metrics such as dependency completeness and entity coverage
 - raw-code fallbacks for exact imports, signatures, small helpers, and risky context
+
+The v1.2.5 context output is backward-compatible and includes both legacy fields
+(`task`, `target_node_id`, `estimated_tokens`, `metrics`, `context_nodes`) and
+the canonical agent contract:
+
+```json
+{
+  "query": "fix auth token refresh bug",
+  "target": "symbol::auth.py::function::refresh_token",
+  "total_estimated_tokens": 4200,
+  "sufficiency": {
+    "sufficient": true,
+    "metrics": {},
+    "thresholds": {}
+  },
+  "nodes": [
+    {
+      "id": "symbol::auth.py::function::refresh_token",
+      "kind": "function",
+      "path": "auth.py",
+      "line_range": [10, 40],
+      "reason": ["target", "direct_call"],
+      "summary": "Refreshes an access token.",
+      "source_text": "def refresh_token(...):\n    ...\n",
+      "estimated_tokens": 120
+    }
+  ]
+}
+```
+
+`nodes[*].reason` is constrained to this fixed enum:
+
+```python
+VALID_REASONS = {
+    "target",
+    "direct_call",
+    "caller",
+    "import_dependency",
+    "same_file",
+    "parent_class",
+    "small_helper",
+    "test_related",
+    "raw_code_fallback",
+    "lexical_match",
+    "graph_neighbor",
+}
+```
+
+Use `--explain` when you also want human-readable `explanation` text.
 
 Source controls:
 
@@ -144,6 +198,9 @@ Source controls:
 | `--include-source always` | Tries to include exact source for every returned context node. |
 | `--include-source never` | Returns compact metadata/summaries only. |
 | `--max-tokens <n>` | Caps the returned context bundle using deterministic `ceil(chars / 4)` estimates. |
+| `--format json` | Default. Emits JSON with legacy and canonical context fields. |
+| `--format markdown` | Emits a human-readable Markdown context report. |
+| `--explain` | Adds optional human-readable explanations for node selection. |
 
 ## Agent Integration Loop
 
@@ -155,7 +212,7 @@ csegraph refresh . --json
 csegraph context "describe the requested edit" --target SomeSymbol --repo . --include-source auto --max-tokens 6000 --json
 ```
 
-The agent should read the returned `context_nodes`, inspect `source_text` when present, use `evidence` and `lineage` to understand why each node was included, then edit the repo with its normal tools.
+The agent should read the returned canonical `nodes`, inspect `source_text` when present, use `reason` for machine behavior, optionally use `explanation` for debugging, then edit the repo with its normal tools.
 
 ## SDK Usage
 
