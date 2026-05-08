@@ -6,9 +6,15 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from csegraph_core.core.errors import UnsupportedSchemaError
 from csegraph_core.core.ids import file_node_id
 from csegraph_core.index.migrations import apply_pending
-from csegraph_core.index.schema import SCHEMA_DDL, SCHEMA_META_UPSERT, SCHEMA_VERSION
+from csegraph_core.index.schema import (
+    SCHEMA_DDL,
+    SCHEMA_META_UPSERT,
+    SCHEMA_USER_VERSION,
+    SCHEMA_VERSION,
+)
 
 
 class ProjectIndex:
@@ -33,11 +39,17 @@ class ProjectIndex:
 
     def initialize_schema(self) -> None:
         existing_version = self._existing_schema_version()
+        if existing_version is None and self._has_csegraph_objects():
+            raise UnsupportedSchemaError()
         if existing_version is not None and existing_version != SCHEMA_VERSION:
-            apply_pending(self.conn, existing_version, SCHEMA_VERSION)
+            try:
+                apply_pending(self.conn, existing_version, SCHEMA_VERSION)
+            except RuntimeError as exc:
+                raise UnsupportedSchemaError() from exc
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
         cur.execute(SCHEMA_META_UPSERT, (SCHEMA_VERSION,))
+        cur.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
         self.conn.commit()
 
     def _existing_schema_version(self) -> Optional[str]:
@@ -50,6 +62,17 @@ class ProjectIndex:
             "SELECT value FROM schema_meta WHERE key='schema_version'"
         ).fetchone()
         return cur["value"] if cur else None
+
+    def _has_csegraph_objects(self) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE name NOT LIKE 'sqlite_%'
+              AND name NOT LIKE 'lexical_index_%'
+            LIMIT 1
+            """
+        ).fetchone()
+        return row is not None
 
     def upsert_project(self, root_dir: str, profile: str) -> int:
         now = time.time()
@@ -265,5 +288,4 @@ def json_loads(value: Optional[str]) -> Dict[str, Any]:
     if not value:
         return {}
     return json.loads(value)
-
 

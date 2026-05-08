@@ -17,6 +17,7 @@ from csegraph_core.cse.metrics import (
 )
 from csegraph_core.index.loaders import edge_maps, load_edges, load_summaries, load_symbols
 from csegraph_core.index.repository import ProjectIndex
+from csegraph_core.retrieval.explain import build_explanation, normalize_reasons
 from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
 
 
@@ -31,6 +32,7 @@ class ContextService:
         profile: str = "small",
         include_source: str = "auto",
         max_tokens: Optional[int] = None,
+        explain: bool = False,
     ) -> ContextResult:
         config = get_profile(profile)
         include_source = _validate_include_source(include_source)
@@ -46,7 +48,7 @@ class ContextService:
             symbols = load_symbols(index, project_id)
             summaries = load_summaries(index, project_id)
             edges = load_edges(index, project_id)
-            outgoing, _incoming = edge_maps(edges)
+            outgoing, incoming = edge_maps(edges)
 
             if not symbols:
                 raise ValueError("No symbols are indexed in this database.")
@@ -97,6 +99,7 @@ class ContextService:
             )
 
             context_nodes: List[ContextNode] = []
+            target_row = symbols.get(target_node_id, {})
             for node_id in context_ids:
                 row = symbols[node_id]
                 raw_evidence = evidence.get(node_id, [])
@@ -107,6 +110,18 @@ class ContextService:
                     _read_node_source(repo_root, row) if node_id in source_ids else None
                 )
                 estimated_tokens = _estimate_node_tokens(row, summary, source_text)
+                reason = normalize_reasons(
+                    node_id=node_id,
+                    target_node_id=target_node_id,
+                    row=row,
+                    target_row=target_row,
+                    evidence=clean_evidence,
+                    lineage=lineage,
+                    outgoing=outgoing,
+                    incoming=incoming,
+                    symbols=symbols,
+                    raw_nodes=raw_nodes,
+                )
                 context_nodes.append(
                     ContextNode(
                         node_id=node_id,
@@ -122,6 +137,8 @@ class ContextService:
                         lineage=lineage,
                         source_text=source_text,
                         estimated_tokens=estimated_tokens,
+                        reason=reason,
+                        explanation=build_explanation(reason) if explain else None,
                     )
                 )
 
@@ -350,6 +367,8 @@ def _apply_token_budget(
     for node in nodes:
         candidate = node
         if used + candidate.estimated_tokens > max_tokens and candidate.source_text is not None:
+            reason = [item for item in node.reason if item != "raw_code_fallback"]
+            compact_reason = reason or list(node.reason)
             candidate = ContextNode(
                 node_id=node.node_id,
                 kind=node.kind,
@@ -370,6 +389,8 @@ def _apply_token_budget(
                         if value
                     )
                 ),
+                reason=compact_reason,
+                explanation=build_explanation(compact_reason) if node.explanation is not None else None,
             )
         if used + candidate.estimated_tokens <= max_tokens:
             selected.append(candidate)

@@ -9,7 +9,7 @@ package (`csegraph`), CLI package (`csegraph-cli`), and optional codegen
 add-on (`csegraph-codegen`) depend on this package and never on each other.
 """
 
-__version__ = "1.2.4"
+__version__ = "1.2.5"
 
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile
 from csegraph_core.core.models import (
@@ -26,6 +26,7 @@ from csegraph_core.cse.metrics import SufficiencyMetrics
 from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.index.services import IndexService, RefreshService
+from csegraph_core.retrieval.constants import VALID_REASONS
 from csegraph_core.retrieval.context import ContextService
 
 __all__ = [
@@ -45,6 +46,7 @@ __all__ = [
     "RefreshResult",
     "RefreshService",
     "SufficiencyMetrics",
+    "VALID_REASONS",
     "get_profile",
     "to_dict",
 ]

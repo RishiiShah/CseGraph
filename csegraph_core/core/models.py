@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from csegraph_core.cse.metrics import SufficiencyMetrics
@@ -62,6 +62,8 @@ class ContextNode:
     lineage: List[str] = field(default_factory=list)
     source_text: Optional[str] = None
     estimated_tokens: int = 0
+    reason: List[str] = field(default_factory=list)
+    explanation: Optional[str] = None
 
 
 @dataclass
@@ -111,10 +113,6 @@ class GraphResult:
 
 
 def to_dict(value: Any) -> Any:
-    if is_dataclass(value):
-        return {key: to_dict(item) for key, item in asdict(value).items()}
-    if isinstance(value, list):
-        return [to_dict(item) for item in value]
-    if isinstance(value, dict):
-        return {key: to_dict(item) for key, item in value.items()}
-    return value
+    from csegraph_core.core.serializer import to_dict as serialize
+
+    return serialize(value)

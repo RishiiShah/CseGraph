@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 SCHEMA_VERSION = "csegraph-sqlite-v3"
+SCHEMA_USER_VERSION = 3
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
