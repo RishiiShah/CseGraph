@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 import csegraph
+import pytest
 from csegraph import (
     ContextService,
     GraphQueryService,
@@ -9,6 +10,8 @@ from csegraph import (
     ProjectIndex,
     RefreshService,
 )
+from csegraph_core.core.errors import UnsupportedSchemaError
+from csegraph_core.retrieval.constants import VALID_REASONS
 
 
 def _write_sample_repo(root: Path) -> None:
@@ -71,7 +74,9 @@ def test_project_index_schema_is_idempotent(tmp_path):
         version = conn.execute(
             "SELECT value FROM schema_meta WHERE key='schema_version'"
         ).fetchone()
+        user_version = conn.execute("PRAGMA user_version").fetchone()[0]
     assert version[0] == "csegraph-sqlite-v3"
+    assert user_version == 3
 
 
 def test_index_context_graph_and_incremental_refresh(tmp_path):
@@ -167,6 +172,33 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
     assert target.estimated_tokens >= 1
     assert helper.estimated_tokens >= 1
     assert context.estimated_tokens >= target.estimated_tokens + helper.estimated_tokens
+    assert "target" in target.reason
+    assert "direct_call" in helper.reason
+    assert set(target.reason).issubset(VALID_REASONS)
+    assert set(helper.reason).issubset(VALID_REASONS)
+    assert target.explanation is None
+    assert helper.explanation is None
+
+
+def test_context_explain_populates_human_explanations(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="Implement build_report using format_user",
+        target="build_report",
+        profile="small",
+        explain=True,
+    )
+
+    by_id = {node.node_id: node for node in context.context_nodes}
+    assert by_id["symbol::main.py::function::build_report"].explanation
+    assert "target" in by_id["symbol::main.py::function::build_report"].reason
+    helper = by_id["symbol::utils.py::function::format_user"]
+    assert "direct_call" in helper.reason
+    assert "directly called by the target" in helper.explanation
 
 
 def test_context_include_source_never_stays_compact(tmp_path):
@@ -207,6 +239,24 @@ def test_context_max_tokens_limits_source_materialization(tmp_path):
     assert "symbol::main.py::function::build_report" in by_id
     helper = by_id.get("symbol::utils.py::function::format_user")
     assert helper is None or helper.source_text is None
+
+
+def test_context_reason_enum_is_strict(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="Implement build_report using format_user",
+        target="build_report",
+        profile="small",
+    )
+
+    for node in context.context_nodes:
+        assert node.reason
+        assert set(node.reason).issubset(VALID_REASONS)
+        assert all("expanded-from-" not in reason for reason in node.reason)
 
 
 def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
@@ -282,6 +332,7 @@ def test_v12_migrates_v1_database_in_place(tmp_path):
         version = idx.conn.execute(
             "SELECT value FROM schema_meta WHERE key='schema_version'"
         ).fetchone()[0]
+        user_version = idx.conn.execute("PRAGMA user_version").fetchone()[0]
         types = dict(idx.conn.execute("SELECT type, COUNT(*) FROM nodes GROUP BY type").fetchall())
         edge_cols = {row[1] for row in idx.conn.execute("PRAGMA table_info(edges)")}
         legacy_tables = [
@@ -292,6 +343,7 @@ def test_v12_migrates_v1_database_in_place(tmp_path):
     finally:
         idx.close()
     assert version == "csegraph-sqlite-v3"
+    assert user_version == 3
     assert types == {"repo": 1, "folder": 1, "file": 1, "function": 1}
     assert {"source_node_id", "target_node_id"}.issubset(edge_cols)
     assert legacy_tables == []
@@ -366,6 +418,7 @@ def test_v121_migrates_v2_to_v3_in_place(tmp_path):
         version = idx.conn.execute(
             "SELECT value FROM schema_meta WHERE key='schema_version'"
         ).fetchone()[0]
+        user_version = idx.conn.execute("PRAGMA user_version").fetchone()[0]
         node_cols = {row[1] for row in idx.conn.execute("PRAGMA table_info(nodes)")}
         is_test_count = idx.conn.execute(
             "SELECT COUNT(*) FROM nodes WHERE is_test = 1"
@@ -375,9 +428,51 @@ def test_v121_migrates_v2_to_v3_in_place(tmp_path):
         idx.close()
 
     assert version == "csegraph-sqlite-v3"
+    assert user_version == 3
     assert "is_test" in node_cols
     assert is_test_count == 1  # backfill from metadata JSON
     assert {"name", "path", "signature", "docstring", "summary", "source"}.issubset(set(fts_cols))
+
+
+def test_unsupported_schema_version_raises_structured_error(tmp_path):
+    db_path = tmp_path / "future.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO schema_meta(key, value) VALUES('schema_version', 'csegraph-sqlite-v999');
+            """
+        )
+
+    idx = ProjectIndex(db_path)
+    try:
+        with pytest.raises(UnsupportedSchemaError) as exc_info:
+            idx.initialize_schema()
+    finally:
+        idx.close()
+
+    assert exc_info.value.error_code == "unsupported_schema"
+    assert exc_info.value.hint == "Rebuild the index or install a compatible csegraph-core version."
+
+
+def test_malformed_schema_metadata_raises_structured_error(tmp_path):
+    db_path = tmp_path / "malformed.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE nodes (id TEXT PRIMARY KEY);
+            """
+        )
+
+    idx = ProjectIndex(db_path)
+    try:
+        with pytest.raises(UnsupportedSchemaError) as exc_info:
+            idx.initialize_schema()
+    finally:
+        idx.close()
+
+    assert exc_info.value.error_code == "unsupported_schema"
 
 
 def test_sdk_facade_does_not_export_codegen():
