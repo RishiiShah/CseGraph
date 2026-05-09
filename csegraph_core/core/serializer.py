@@ -4,6 +4,9 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Dict, List, Optional
 
 
+CONTEXT_OUTPUT_SCHEMA_VERSION = "csegraph-context-v1"
+
+
 def to_dict(value: Any) -> Any:
     from csegraph_core.core.models import ContextNode, ContextResult
 
@@ -28,6 +31,7 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
     metrics = to_dict(result.metrics)
     payload.update(
         {
+            "schema_version": CONTEXT_OUTPUT_SCHEMA_VERSION,
             "query": result.task,
             "target": result.target_node_id,
             "total_estimated_tokens": result.estimated_tokens,

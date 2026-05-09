@@ -58,6 +58,12 @@ csegraph-core
 
 The primary product surface is `context`: build an index once, refresh changed files, and ask for graph-backed context before an agent edits.
 
+## v1.3.1 Highlights
+
+- **Versioned context contract** — JSON context output now includes `"schema_version": "csegraph-context-v1"`. Contract tests lock both legacy fields and canonical fields so agent integrations can depend on stable shapes and ranking order.
+- **Migration and version hygiene** — migration-chain tests cover v1→v4 and v2→v4 upgrade paths, and CI checks that all four package versions match their module `__version__` values.
+- **Benchmark decision artifact** — benchmark runs should be summarized in `docs/evals/v1_3_0_baseline.md` before publishing any README performance claims.
+
 ## v1.3.0 Highlights
 
 - **Language registry** — `Parser` and `Tokenizer` protocols with a module-level `registry` singleton (`registry.for_extension(ext)`, `registry.tokenizer_for(language)`). Adding a second language (TypeScript, Go, etc.) now requires only registering a new parser+tokenizer pair; no changes to scoring, metrics, or services.
@@ -68,7 +74,7 @@ The primary product surface is `context`: build an index once, refresh changed f
 
 ## Package Layout
 
-v1.3.0 uses four installable packages:
+v1.3.1 uses four installable packages:
 
 | Package | Location | Purpose |
 |---|---|---|
@@ -149,12 +155,13 @@ A context result includes:
 - sufficiency metrics such as dependency completeness and entity coverage
 - raw-code fallbacks for exact imports, signatures, small helpers, and risky context
 
-The v1.3.0 context output is backward-compatible and includes both legacy fields
+The v1.3.1 context output is backward-compatible and includes both legacy fields
 (`task`, `target_node_id`, `estimated_tokens`, `metrics`, `context_nodes`) and
 the canonical agent contract:
 
 ```json
 {
+  "schema_version": "csegraph-context-v1",
   "query": "fix auth token refresh bug",
   "target": "symbol::auth.py::function::refresh_token",
   "total_estimated_tokens": 4200,

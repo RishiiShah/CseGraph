@@ -17,7 +17,7 @@ def _offline_pip_env() -> dict:
     return env
 
 
-def test_v125_package_layout_and_versions():
+def test_v131_package_layout_and_versions():
     repo_root = Path(__file__).resolve().parents[2]
 
     root_project = _project_metadata(repo_root)
@@ -26,21 +26,21 @@ def test_v125_package_layout_and_versions():
     codegen_project = _project_metadata(repo_root / "packages" / "csegraph-codegen")
 
     assert root_project["name"] == "csegraph-core"
-    assert root_project["version"] == "1.3.0"
+    assert root_project["version"] == "1.3.1"
     assert root_project.get("dependencies", []) == []
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
-    assert sdk_project["version"] == "1.3.0"
-    assert sdk_project["dependencies"] == ["csegraph-core>=1.3.0"]
+    assert sdk_project["version"] == "1.3.1"
+    assert sdk_project["dependencies"] == ["csegraph-core>=1.3.1"]
 
     assert cli_project["name"] == "csegraph-cli"
-    assert cli_project["version"] == "1.3.0"
-    assert cli_project["dependencies"] == ["csegraph-core>=1.3.0"]
+    assert cli_project["version"] == "1.3.1"
+    assert cli_project["dependencies"] == ["csegraph-core>=1.3.1"]
 
     assert codegen_project["name"] == "csegraph-codegen"
-    assert codegen_project["version"] == "1.3.0"
-    assert codegen_project["dependencies"] == ["csegraph-core>=1.3.0"]
+    assert codegen_project["version"] == "1.3.1"
+    assert codegen_project["dependencies"] == ["csegraph-core>=1.3.1"]
 
     assert (repo_root / "csegraph_core" / "__init__.py").exists()
     assert (repo_root / "packages" / "csegraph" / "csegraph" / "__init__.py").exists()
