@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from csegraph_core.languages.python.parser import ParsedFile, ParsedSymbol
+from csegraph_core.languages.types import ParsedFile, ParsedSymbol
 from models.code_element import CodeNode, FileNode, MethodNode
 
 

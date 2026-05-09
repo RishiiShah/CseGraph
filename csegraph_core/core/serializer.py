@@ -57,6 +57,7 @@ def _canonical_context_node_to_dict(node: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "id": node.node_id,
         "kind": node.kind,
+        "language": node.language,
         "path": node.file_path,
         "line_range": _line_range(node.start_line, node.end_line),
         "reason": list(node.reason),

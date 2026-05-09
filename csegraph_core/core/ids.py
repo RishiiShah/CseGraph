@@ -1,3 +1,4 @@
+"""Node IDs are opaque. Treat as opaque strings; do not parse. Use core.models fields for structural access. Format is internal."""
 from __future__ import annotations
 
 

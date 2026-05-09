@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Callable, List, NamedTuple
 
-from csegraph_core.index.migrations import m0001_v1_to_v2, m0002_v2_to_v3
+from csegraph_core.index.migrations import m0001_v1_to_v2, m0002_v2_to_v3, m0003_v3_to_v4
 
 
 class Migration(NamedTuple):
@@ -21,6 +21,7 @@ class Migration(NamedTuple):
 MIGRATIONS: List[Migration] = [
     Migration(m0001_v1_to_v2.FROM_VERSION, m0001_v1_to_v2.TO_VERSION, m0001_v1_to_v2.upgrade),
     Migration(m0002_v2_to_v3.FROM_VERSION, m0002_v2_to_v3.TO_VERSION, m0002_v2_to_v3.upgrade),
+    Migration(m0003_v3_to_v4.FROM_VERSION, m0003_v3_to_v4.TO_VERSION, m0003_v3_to_v4.upgrade),
 ]
 
 

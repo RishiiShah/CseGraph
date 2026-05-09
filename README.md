@@ -58,9 +58,17 @@ csegraph-core
 
 The primary product surface is `context`: build an index once, refresh changed files, and ask for graph-backed context before an agent edits.
 
+## v1.3.0 Highlights
+
+- **Language registry** — `Parser` and `Tokenizer` protocols with a module-level `registry` singleton (`registry.for_extension(ext)`, `registry.tokenizer_for(language)`). Adding a second language (TypeScript, Go, etc.) now requires only registering a new parser+tokenizer pair; no changes to scoring, metrics, or services.
+- **Mandatory `language` field** — `ContextNode.language` is a required non-empty string. Serialization emits `"language"` in every canonical node; markdown output uses language-aware code fences (` ```python `).
+- **`QueryTokenizer` split** — query-side tokenization is now separate from source-side. Currently behavior-identical to the Python tokenizer; separated so they can diverge in a future patch without touching call sites.
+- **Schema v4** — `nodes.language` is now `NOT NULL`. Existing on-disk indexes at v3 are auto-migrated (NULL values backfilled with `'python'`). Run `csegraph index <repo>` after upgrading to ensure a clean rebuild.
+- **Breaking: `csegraph_core.parser` shim removed** — The backward-compat shim `csegraph_core/parser.py` (and the `csegraph.parser` SDK alias) are gone. Import directly from `csegraph_core.languages.python.parser`.
+
 ## Package Layout
 
-v1.2.5 uses four installable packages:
+v1.3.0 uses four installable packages:
 
 | Package | Location | Purpose |
 |---|---|---|
@@ -141,7 +149,7 @@ A context result includes:
 - sufficiency metrics such as dependency completeness and entity coverage
 - raw-code fallbacks for exact imports, signatures, small helpers, and risky context
 
-The v1.2.5 context output is backward-compatible and includes both legacy fields
+The v1.3.0 context output is backward-compatible and includes both legacy fields
 (`task`, `target_node_id`, `estimated_tokens`, `metrics`, `context_nodes`) and
 the canonical agent contract:
 

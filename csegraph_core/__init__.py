@@ -9,7 +9,7 @@ package (`csegraph`), CLI package (`csegraph-cli`), and optional codegen
 add-on (`csegraph-codegen`) depend on this package and never on each other.
 """
 
-__version__ = "1.2.5"
+__version__ = "1.3.0"
 
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile
 from csegraph_core.core.models import (

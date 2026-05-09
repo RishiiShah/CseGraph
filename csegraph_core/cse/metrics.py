@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, Set
 
-from csegraph_core.languages.python.parser import code_tokenize, extract_query_entities
+from csegraph_core.languages.registry import registry
+from csegraph_core.text.entities import extract_query_entities
+from csegraph_core.text.query_tokenizer import query_tokenizer
 
 
 DEP_THRESHOLD = 0.80
@@ -42,14 +44,16 @@ def compute_metrics(
     context_names = {symbols[node_id]["name"] for node_id in context_set if node_id in symbols}
     ent = 1.0 if not entities else len(entities & context_names) / len(entities)
 
-    task_tokens = set(code_tokenize(task))
+    task_tokens = set(query_tokenizer.tokenize(task))
     context_tokens: Set[str] = set()
     for node_id in context_set:
         if node_id not in symbols:
             continue
         row = symbols[node_id]
+        lang = row["language"]
+        source_tokenizer = registry.tokenizer_for(lang)
         context_tokens.update(
-            code_tokenize(
+            source_tokenizer.tokenize(
                 " ".join(
                     [
                         row["name"],

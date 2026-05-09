@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import pytest
+
+from csegraph_core.languages.python.tokenizer import PythonTokenizer, code_tokenize
+from csegraph_core.languages.registry import UnsupportedLanguageError
+from csegraph_core.text.entities import extract_query_entities
+
+
+def test_code_tokenize_splits_camel_case():
+    tokens = code_tokenize("buildReport")
+    assert "build" in tokens
+    assert "report" in tokens
+
+
+def test_code_tokenize_drops_stop_words():
+    tokens = code_tokenize("iterate the list and items")
+    assert "the" not in tokens
+    assert "and" not in tokens
+    assert "iterate" in tokens
+    assert "list" in tokens
+
+
+def test_code_tokenize_drops_py_stop_word():
+    tokens = code_tokenize("parse py file")
+    assert "py" not in tokens
+
+
+def test_python_tokenizer_matches_code_tokenize():
+    tokenizer = PythonTokenizer()
+    text = "BuildReportFromUser snake_case_name"
+    assert tokenizer.tokenize(text) == code_tokenize(text)
+
+
+def test_extract_query_entities_matches_known_names():
+    entities = extract_query_entities("Implement build_report", ["build_report", "format_user"])
+    assert "build_report" in entities
+
+
+def test_extract_query_entities_substring_match():
+    entities = extract_query_entities("Implement build_report function", ["build_report", "format_user"])
+    assert "build_report" in entities
+
+
+def test_tokenizer_for_python_returns_python_tokenizer():
+    from csegraph_core.languages import registry
+    tokenizer = registry.tokenizer_for("python")
+    assert isinstance(tokenizer, PythonTokenizer)
+
+
+def test_tokenizer_for_unknown_raises():
+    from csegraph_core.languages import registry
+    with pytest.raises(UnsupportedLanguageError):
+        registry.tokenizer_for("javascript")

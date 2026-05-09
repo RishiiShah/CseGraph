@@ -41,7 +41,7 @@ def _render_node(rank: int, node: Dict[str, Any]) -> List[str]:
     if node.get("summary"):
         lines.extend(["", node["summary"]])
     if node.get("source_text") is not None:
-        lines.extend(["", "```python", node["source_text"].rstrip(), "```"])
+        lines.extend(["", f"```{node['language']}", node["source_text"].rstrip(), "```"])
     lines.append("")
     return lines
 

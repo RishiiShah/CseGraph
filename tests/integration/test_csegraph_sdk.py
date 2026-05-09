@@ -75,8 +75,8 @@ def test_project_index_schema_is_idempotent(tmp_path):
             "SELECT value FROM schema_meta WHERE key='schema_version'"
         ).fetchone()
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version[0] == "csegraph-sqlite-v3"
-    assert user_version == 3
+    assert version[0] == "csegraph-sqlite-v4"
+    assert user_version == 4
 
 
 def test_index_context_graph_and_incremental_refresh(tmp_path):
@@ -342,8 +342,8 @@ def test_v12_migrates_v1_database_in_place(tmp_path):
         ]
     finally:
         idx.close()
-    assert version == "csegraph-sqlite-v3"
-    assert user_version == 3
+    assert version == "csegraph-sqlite-v4"
+    assert user_version == 4
     assert types == {"repo": 1, "folder": 1, "file": 1, "function": 1}
     assert {"source_node_id", "target_node_id"}.issubset(edge_cols)
     assert legacy_tables == []
@@ -427,8 +427,8 @@ def test_v121_migrates_v2_to_v3_in_place(tmp_path):
     finally:
         idx.close()
 
-    assert version == "csegraph-sqlite-v3"
-    assert user_version == 3
+    assert version == "csegraph-sqlite-v4"
+    assert user_version == 4
     assert "is_test" in node_cols
     assert is_test_count == 1  # backfill from metadata JSON
     assert {"name", "path", "signature", "docstring", "summary", "source"}.issubset(set(fts_cols))

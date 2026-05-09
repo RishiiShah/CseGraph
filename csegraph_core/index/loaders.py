@@ -37,7 +37,7 @@ def load_symbols(index: ProjectIndex, project_id: int) -> Dict[str, Dict[str, An
     rows = index.conn.execute(
         f"""
         SELECT id, project_id, parent_id, type AS kind, name, path AS file_path,
-               signature, docstring, start_line, end_line, source_hash, metadata,
+               language, signature, docstring, start_line, end_line, source_hash, metadata,
                parent_id AS parent_symbol_id
         FROM nodes
         WHERE project_id = ? AND type IN ({",".join("?" for _ in SYMBOL_TYPES)})

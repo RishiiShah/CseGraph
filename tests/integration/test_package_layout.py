@@ -26,21 +26,21 @@ def test_v125_package_layout_and_versions():
     codegen_project = _project_metadata(repo_root / "packages" / "csegraph-codegen")
 
     assert root_project["name"] == "csegraph-core"
-    assert root_project["version"] == "1.2.5"
+    assert root_project["version"] == "1.3.0"
     assert root_project.get("dependencies", []) == []
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
-    assert sdk_project["version"] == "1.2.5"
-    assert sdk_project["dependencies"] == ["csegraph-core>=1.2.5"]
+    assert sdk_project["version"] == "1.3.0"
+    assert sdk_project["dependencies"] == ["csegraph-core>=1.3.0"]
 
     assert cli_project["name"] == "csegraph-cli"
-    assert cli_project["version"] == "1.2.5"
-    assert cli_project["dependencies"] == ["csegraph-core>=1.2.5"]
+    assert cli_project["version"] == "1.3.0"
+    assert cli_project["dependencies"] == ["csegraph-core>=1.3.0"]
 
     assert codegen_project["name"] == "csegraph-codegen"
-    assert codegen_project["version"] == "1.2.5"
-    assert codegen_project["dependencies"] == ["csegraph-core>=1.2.5"]
+    assert codegen_project["version"] == "1.3.0"
+    assert codegen_project["dependencies"] == ["csegraph-core>=1.3.0"]
 
     assert (repo_root / "csegraph_core" / "__init__.py").exists()
     assert (repo_root / "packages" / "csegraph" / "csegraph" / "__init__.py").exists()

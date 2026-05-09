@@ -4,7 +4,8 @@ import sqlite3
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
-from csegraph_core.languages.python.parser import code_tokenize
+from csegraph_core.languages.registry import registry
+from csegraph_core.text.query_tokenizer import query_tokenizer
 
 
 RELATION_WEIGHTS: Dict[str, float] = {
@@ -32,7 +33,7 @@ def fts_lexical_scores(
     Symbol-name matches outrank docstring matches (8x vs 1x). Returns a
     {node_id: positive_score} mapping where higher = better.
     """
-    tokens = [t for t in code_tokenize(task) if t]
+    tokens = [t for t in query_tokenizer.tokenize(task) if t]
     if not tokens:
         return {}
     match_expr = " OR ".join(f'"{t}"' for t in tokens)
@@ -65,7 +66,7 @@ def lexical_scores(
     summaries: Dict[str, str],
     fts_seed: Dict[str, float] | None = None,
 ) -> Tuple[Dict[str, float], Dict[str, List[str]]]:
-    task_tokens = set(code_tokenize(task))
+    task_tokens = set(query_tokenizer.tokenize(task))
     scores: Dict[str, float] = defaultdict(float)
     evidence: Dict[str, List[str]] = defaultdict(list)
     task_lower = task.lower()
@@ -84,7 +85,9 @@ def lexical_scores(
                 summaries.get(node_id, ""),
             ]
         )
-        content_tokens = set(code_tokenize(content))
+        lang = row["language"]
+        source_tokenizer = registry.tokenizer_for(lang)
+        content_tokens = set(source_tokenizer.tokenize(content))
         overlap = task_tokens & content_tokens
         if overlap:
             scores[node_id] += float(len(overlap))

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "csegraph-sqlite-v3"
-SCHEMA_USER_VERSION = 3
+SCHEMA_VERSION = "csegraph-sqlite-v4"
+SCHEMA_USER_VERSION = 4
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     type TEXT NOT NULL,
     name TEXT NOT NULL,
     path TEXT NOT NULL,
-    language TEXT,
+    language TEXT NOT NULL,
     sha256 TEXT,
     signature TEXT,
     docstring TEXT,

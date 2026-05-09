@@ -10,15 +10,10 @@ from csegraph_core.config.profiles import get_profile
 from csegraph_core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph_core.core.models import IndexResult, RefreshResult
 from csegraph_core.index.repository import ProjectIndex, json_dumps
-from csegraph_core.languages.python.parser import (
-    ParsedFile,
-    ParsedSymbol,
-    code_tokenize,
-    iter_python_files,
-    module_name_from_relpath,
-    parse_python_file,
-    resolve_local_import,
-)
+from csegraph_core.languages.types import ParsedFile, ParsedSymbol
+from csegraph_core.languages.registry import UnsupportedLanguageError, registry
+
+_STRUCTURAL_LANGUAGE = "non_code"
 
 
 class IndexService:
@@ -28,7 +23,10 @@ class IndexService:
     def index(self, repo: str | Path, profile: str = "small") -> IndexResult:
         config = get_profile(profile)
         repo_root = str(Path(repo).resolve())
-        parsed_files = [parse_python_file(path, Path(repo_root)) for path in iter_python_files(Path(repo_root))]
+        parsed_files = [
+            parser.parse(path, Path(repo_root))
+            for parser, path in registry.iter_files(Path(repo_root))
+        ]
 
         index = ProjectIndex(self.db_path)
         try:
@@ -71,8 +69,8 @@ class RefreshService:
             index.upsert_project(str(repo_root), config.name)
 
             current_files = {
-                path.resolve().relative_to(repo_root).as_posix(): path
-                for path in iter_python_files(repo_root)
+                path.resolve().relative_to(repo_root).as_posix(): (parser, path)
+                for parser, path in registry.iter_files(repo_root)
             }
             stored = {
                 row["path"]: row["sha256"]
@@ -85,8 +83,8 @@ class RefreshService:
             deleted = sorted(path for path in stored if path not in current_files)
             changed: List[str] = []
             parsed_changed: List[ParsedFile] = []
-            for rel_path, path in sorted(current_files.items()):
-                parsed = parse_python_file(path, repo_root)
+            for rel_path, (parser, path) in sorted(current_files.items()):
+                parsed = parser.parse(path, repo_root)
                 if stored.get(rel_path) != parsed.sha256:
                     changed.append(rel_path)
                     parsed_changed.append(parsed)
@@ -146,6 +144,10 @@ def _write_parsed_files(
     repo_root: str,
     parsed_files: Sequence[ParsedFile],
 ) -> Dict[str, int]:
+    for parsed in parsed_files:
+        if not isinstance(parsed.language, str) or not parsed.language:
+            raise ValueError(f"language is required for file {parsed.rel_path!r}")
+
     now = time.time()
     _write_repo_and_folders(index, project_id, repo_root, parsed_files, now)
 
@@ -211,6 +213,7 @@ def _write_parsed_files(
 
     symbol_node_rows: List[tuple] = []
     for parsed in parsed_files:
+        tokenizer = registry.tokenizer_for(parsed.language)
         for symbol in parsed.symbols:
             parent = symbol.parent_symbol_id or file_node_id(parsed.rel_path)
             metadata = json.dumps(
@@ -220,6 +223,7 @@ def _write_parsed_files(
             symbol_node_rows.append(
                 (
                     symbol.node_id, project_id, parent, symbol.kind, symbol.name, parsed.rel_path,
+                    parsed.language,
                     symbol.signature, symbol.docstring, symbol.start_line, symbol.end_line,
                     symbol.source_hash, metadata, 1 if symbol.is_test else 0, now,
                 )
@@ -240,7 +244,7 @@ def _write_parsed_files(
                     symbol.signature or "",
                     symbol.docstring or "",
                     summary,
-                    " ".join(code_tokenize(symbol.source)),
+                    " ".join(tokenizer.tokenize(symbol.source)),
                 )
             )
 
@@ -252,10 +256,11 @@ def _write_parsed_files(
                 language, sha256, signature, docstring,
                 start_line, end_line, source_hash,
                 parse_status, parse_error, metadata, is_test, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 parent_id = excluded.parent_id,
                 type = excluded.type,
+                language = excluded.language,
                 signature = excluded.signature,
                 docstring = excluded.docstring,
                 start_line = excluded.start_line,
@@ -300,14 +305,18 @@ def _write_parsed_files(
     module_to_file_id = _module_to_file_id(index, project_id)
     edge_rows: List[tuple] = []
     for parsed in parsed_files:
-        current_module = module_name_from_relpath(parsed.rel_path)
+        try:
+            parser = registry.for_extension(Path(parsed.rel_path).suffix)
+        except UnsupportedLanguageError:
+            continue
+        current_module = parser.module_name_from_relpath(parsed.rel_path)
         current_file_id = file_node_id(parsed.rel_path)
         for symbol in parsed.symbols:
             source = symbol.parent_symbol_id if symbol.kind == "method" and symbol.parent_symbol_id else current_file_id
             edge_rows.append((project_id, source, symbol.node_id, "contains", None))
 
         for import_name in parsed.imports:
-            target_file_id = resolve_local_import(import_name, module_to_file_id, current_module)
+            target_file_id = parser.resolve_local_import(import_name, module_to_file_id, current_module)
             if target_file_id:
                 edge_rows.append(
                     (project_id, current_file_id, target_file_id, "imports", json_dumps({"import": import_name}))
@@ -382,10 +391,10 @@ def _write_repo_and_folders(
             language, sha256, signature, docstring,
             start_line, end_line, source_hash,
             parse_status, parse_error, metadata, updated_at
-        ) VALUES(?, ?, NULL, 'repo', ?, '', NULL, NULL, NULL, NULL,
+        ) VALUES(?, ?, NULL, 'repo', ?, '', ?, NULL, NULL, NULL,
                  NULL, NULL, '', NULL, NULL, NULL, ?)
         """,
-        (repo_id, project_id, repo_name, now),
+        (repo_id, project_id, repo_name, _STRUCTURAL_LANGUAGE, now),
     )
 
     folder_paths: set[str] = set()
@@ -404,7 +413,7 @@ def _write_repo_and_folders(
                 language, sha256, signature, docstring,
                 start_line, end_line, source_hash,
                 parse_status, parse_error, metadata, updated_at
-            ) VALUES(?, ?, ?, 'folder', ?, ?, NULL, NULL, NULL, NULL,
+            ) VALUES(?, ?, ?, 'folder', ?, ?, ?, NULL, NULL, NULL,
                      NULL, NULL, '', NULL, NULL, NULL, ?)
             """,
             (
@@ -413,6 +422,7 @@ def _write_repo_and_folders(
                 parent,
                 rel_dir.rsplit("/", 1)[-1],
                 rel_dir,
+                _STRUCTURAL_LANGUAGE,
                 now,
             ),
         )
@@ -440,7 +450,12 @@ def _module_to_file_id(index: ProjectIndex, project_id: int) -> Dict[str, str]:
         "SELECT path FROM nodes WHERE project_id = ? AND type = 'file'",
         (project_id,),
     ):
-        mapping[module_name_from_relpath(row["path"])] = file_node_id(row["path"])
+        path = row["path"]
+        try:
+            parser = registry.for_extension(Path(path).suffix)
+        except UnsupportedLanguageError:
+            continue
+        mapping[parser.module_name_from_relpath(path)] = file_node_id(path)
     return mapping
 
 

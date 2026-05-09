@@ -55,3 +55,8 @@ sandboxes/
 CLAUDE.md
 AGENTS.md
 docs/
+# Added by code-review-graph
+.code-review-graph/
+
+.claude/
+.mcp.json

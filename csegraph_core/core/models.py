@@ -56,6 +56,7 @@ class ContextNode:
     start_line: Optional[int]
     end_line: Optional[int]
     score: float
+    language: str
     raw_code: bool = False
     evidence: List[str] = field(default_factory=list)
     summary: str = ""
@@ -64,6 +65,10 @@ class ContextNode:
     estimated_tokens: int = 0
     reason: List[str] = field(default_factory=list)
     explanation: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.language, str) or not self.language:
+            raise ValueError("ContextNode.language must be a non-empty string")
 
 
 @dataclass
