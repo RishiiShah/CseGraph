@@ -1,3 +1,3 @@
-"""csegraph-cli v1.1.2 — command-line interface for the csegraph SDK."""
+"""csegraph-cli v1.3.0 - CLI for csegraph-core (import: csegraph_core)."""
 
-__version__ = "1.1.2"
+__version__ = "1.3.0"

@@ -5,7 +5,8 @@ from typing import List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from csegraph.languages.python.parser import EXCLUDED_DIRS, parse_python_file
+from csegraph.languages.python.parser import EXCLUDED_DIRS  # TEMPORARY: EXCLUDED_DIRS used as generic skip list; promote to registry-level when adding a second language
+from csegraph.languages.registry import UnsupportedLanguageError, registry
 from csegraph.legacy.adapters import parsed_file_to_filenode
 from models.code_element import FileNode, IngestionPayload
 
@@ -48,7 +49,7 @@ class IngestionAgent:
 
     def extract_nodes_from_file(self, file_path: str) -> FileNode:
         try:
-            parsed = parse_python_file(Path(file_path), Path(self.root_dir))
+            parsed = registry.for_extension(Path(file_path).suffix).parse(Path(file_path), Path(self.root_dir))
         except (OSError, UnicodeDecodeError) as exc:
             print(f"Could not read {file_path}: {exc}")
             return FileNode(file_path=file_path)
@@ -71,11 +72,15 @@ class IngestionAgent:
             for file in sorted(files):
                 if self._is_excluded_file(file):
                     continue
-                if file.endswith('.py'):
-                    full_path = os.path.join(root, file)
-                    if self._is_excluded_path(full_path):
-                        continue
-                    all_files.append(self.extract_nodes_from_file(full_path))
+                ext = os.path.splitext(file)[1]
+                try:
+                    registry.for_extension(ext)
+                except UnsupportedLanguageError:
+                    continue
+                full_path = os.path.join(root, file)
+                if self._is_excluded_path(full_path):
+                    continue
+                all_files.append(self.extract_nodes_from_file(full_path))
         return sorted(all_files, key=lambda file_node: file_node.file_path)
 
     def save_to_json(self, files: List[FileNode], output_path: str):

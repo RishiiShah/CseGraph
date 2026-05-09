@@ -1,313 +1,294 @@
-# Adaptive Memory-Aware Multi-Agent System
+# csegraph
 
-Implementation of **"Adaptive Memory-Aware Multi-Agent System with Context Sufficiency Estimation for Repository-Level Code Generation"** — Hitanshu Oza, Rishabh Shah (Rutgers University).
+csegraph is a repository context engine for coding agents.
 
----
+csegraph gives coding agents the right repository context before they edit: the target code, direct dependencies, relevant imports, small helpers, and explanations for why each piece was selected.
 
-## Architecture
+It indexes Python code into a dependency graph and returns compact, task-specific context bundles so agents like Codex, Claude Code, Cursor, Aider, or custom agent loops do not have to repeatedly grep, cat, and scan the repo.
 
-The pipeline follows a five-stage multi-agent design:
+The goal is simple:
 
+- fewer prompt tokens
+- fewer tool calls
+- less irrelevant context
+- same or better edit accuracy
+
+> **csegraph helps coding agents spend tokens on solving the task, not rediscovering the repository.**
+
+## Why It Exists
+
+Stop making coding agents rediscover your repo with `grep`, `cat`, and `find`. Give them a dependency graph and sufficient context up front.
+
+```text
+developer asks agent to make a change
+        |
+        v
+agent asks csegraph for relevant context
+        |
+        v
+csegraph returns a dependency-aware context bundle
+        |
+        v
+agent edits with less searching, less guessing, and fewer tokens
 ```
-Repository
-    │
-    ▼
-[Ingestion Agent]       — Parse Python source into structured nodes
-    │
-    ▼
-[Linking Agent]         — Build a dependency graph (calls, imports, contains)
-    │
-    ▼
-[Compression Agent]     — Summarise graph nodes; pre-compute context slices
-    │
-    ▼
-[CSE Agent]             — Evaluate context sufficiency; expand if needed
-    │  is_sufficient = True
-    ▼
-[Code Generation Agent] — Generate code using a Groq-hosted LLM
-    │
-    ▼
-generated_<Target>.py
+
+## What csegraph Optimizes For
+
+| Goal | What csegraph does |
+|---|---|
+| Fewer tokens | Returns compact, relevant context instead of whole files. |
+| Fewer tool calls | Answers "what files/symbols matter?" directly. |
+| Same or better accuracy | Includes imports, callers, callees, tests, inheritance, and decorators. |
+| Better agent behavior | Explains why each node/file was included. |
+| Less hallucination | Preserves exact raw code for imports, signatures, small helpers, and risky files. |
+
+## Product Shape
+
+```text
+csegraph-core
+   |-- CLI for external agents
+   |     csegraph context "fix auth bug"
+   |
+   |-- SDK for deeper integrations
+   |     ContextService.get_context(...)
+   |
+   `-- codegen demo / optional adapter
+         not the main product
 ```
 
----
+The primary product surface is `context`: build an index once, refresh changed files, and ask for graph-backed context before an agent edits.
 
-## Implemented Components
+## v1.3.0 Highlights
 
-### 1. Ingestion Agent (`agents/ingestion_agent.py`)
-Parses Python repositories using AST into structured `FileNode` and `CodeNode` objects. Extracts function signatures, class definitions, import statements, and line ranges.
+- **Language registry** — `Parser` and `Tokenizer` protocols with a module-level `registry` singleton (`registry.for_extension(ext)`, `registry.tokenizer_for(language)`). Adding a second language (TypeScript, Go, etc.) now requires only registering a new parser+tokenizer pair; no changes to scoring, metrics, or services.
+- **Mandatory `language` field** — `ContextNode.language` is a required non-empty string. Serialization emits `"language"` in every canonical node; markdown output uses language-aware code fences (` ```python `).
+- **`QueryTokenizer` split** — query-side tokenization is now separate from source-side. Currently behavior-identical to the Python tokenizer; separated so they can diverge in a future patch without touching call sites.
+- **Schema v4** — `nodes.language` is now `NOT NULL`. Existing on-disk indexes at v3 are auto-migrated (NULL values backfilled with `'python'`). Run `csegraph index <repo>` after upgrading to ensure a clean rebuild.
+- **Breaking: `csegraph_core.parser` shim removed** — The backward-compat shim `csegraph_core/parser.py` (and the `csegraph.parser` SDK alias) are gone. Import directly from `csegraph_core.languages.python.parser`.
 
-### 2. Linking Agent (`agents/linking_agent.py`)
-Consumes ingestion output and builds a `LinkGraph` with three edge types:
-- `contains` — file → symbol containment
-- `imports` — cross-file import resolution
-- `calls` — symbol-to-symbol call edges
+## Package Layout
 
-### 3. Compression Agent (`agents/compression_agent.py`)
-Compresses the link graph into a `CompressedGraph` with:
-- Per-node text summaries (name, type, connectivity)
-- High-degree hub identification (top-20 by combined degree)
-- Pre-computed context slices at radius 1 and 2 for each hub
+v1.3.0 uses four installable packages:
 
-### 4. Context Sufficiency Estimator (`agents/cse_agent.py`)
-Evaluates retrieved context against four metrics before allowing generation:
-
-| Metric | Threshold | Description |
+| Package | Location | Purpose |
 |---|---|---|
-| `dependency_completeness` | ≥ 80% | Weighted ratio of Tier-0/Tier-1 deps present in context |
-| `entity_coverage` | ≥ 80% | Fraction of query code-entities found in context node names |
-| `semantic_overlap` | ≥ 50% (strict) / 0% (relaxed when dep+ent both pass) | TF-IDF cosine similarity with code-aware tokenisation, optionally blended with `BAAI/bge-small-en-v1.5` sentence embeddings |
-| `model_confidence` | ≥ 70% | Composite proxy: 0.45·dep + 0.35·ent + 0.20·sem |
+| `csegraph-core` | repo root | Source-of-truth parser, SQLite index, graph traversal, retrieval, CSE metrics. Imported as `csegraph_core`. |
+| `csegraph-cli` | `packages/csegraph-cli/` | Thin command-line surface for agent tools. Depends only on `csegraph-core`. |
+| `csegraph` | `packages/csegraph/` | SDK facade for context retrieval. Depends on `csegraph-core`. |
+| `csegraph-codegen` | `packages/csegraph-codegen/` | Optional LLM-powered code generation add-on. Imported as `csegraph_codegen`. |
 
-**Tiered expansion strategy:**
-- **Tier 0** (direct `calls`): always seeded at 100% before round 0
-- **Tier 1** (file-level `imports`): up to `IMPORT_BUDGET=20` nodes
-- **Tier 2** (2-hop BFS): budget-limited to `CONTEXT_BUDGET=60` total nodes
+Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 
-**Raw Code Fallback:** when `model_confidence < 0.70`, Tier-0 nodes have their compressed summaries replaced with verbatim source code.
-
-**Semantic similarity:** sklearn `TfidfVectorizer` cosine similarity with CamelCase/snake_case identifier splitting. When `sentence-transformers` is importable, `BAAI/bge-small-en-v1.5` embeddings are loaded lazily on the best-available device (Metal/CUDA/CPU) and blended `0.6·emb + 0.4·tfidf`. Falls back transparently to TF-IDF-only if the embedding model can't load — no GPU required.
-
-### 5. Code Generation Agent (`agents/code_gen_agent.py`)
-Generates Python code using a Groq-hosted LLM (`llama-3.3-70b-versatile`), gated by the CSE:
-- Only executes when `cse_result.is_sufficient = True`
-- Prompt assembles: compressed summaries + verbatim raw code for low-confidence nodes
-- Saves both a structured JSON result and a clean `.py` source file
-
----
-
-## Setup
+## Install From Source
 
 ```bash
-# Create and activate virtual environment
-python -m venv env
-source env/bin/activate      # Linux/Mac
-env\Scripts\activate         # Windows
+# Core only: parser, index, retrieval, graph services.
+env/bin/pip install -e .
 
-# Install dependencies
-env/bin/pip install -r requirements.txt
+# SDK facade: programmatic context API.
+env/bin/pip install -e packages/csegraph/
 
-# Set Groq API key (required for code generation)
-# Create a .env file in the project root:
-echo GROQ_API_KEY=your_key_here > .env
+# CLI: exposes the `csegraph` shell command.
+env/bin/pip install -e packages/csegraph-cli/
+
+# Optional codegen add-on.
+env/bin/pip install -e packages/csegraph-codegen/
+
+# Full development install.
+env/bin/pip install -e . -e packages/csegraph/ -e packages/csegraph-cli/ -e packages/csegraph-codegen/
 ```
 
----
-
-## Local Model Setup (Optional)
-
-To use local GGUF models instead of Groq API for code generation:
-
-### 1. Download GGUF Models
-
-The system supports Qwen models. Download the desired quantized model:
+## Simple Commands
 
 ```bash
-# Create codermodel directory if it doesn't exist
-mkdir -p codermodel
+# Build the SQLite graph index once.
+csegraph index .
 
-# Option A: Qwen 3.5 4B model (faster, lower memory)
-wget -O codermodel/Qwen3.5-4B.Q4_K_M.gguf \
-  https://huggingface.co/Qwen/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B.Q4_K_M.gguf
+# Refresh only changed/deleted Python files.
+csegraph refresh .
 
-# Option B: Qwen 3.5 9B model (better quality, more memory intensive)
-wget -O codermodel/Qwen3.5-9B.Q4_K_M.gguf \
-  https://huggingface.co/Qwen/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B.Q4_K_M.gguf
+# Ask for context before an agent edits.
+csegraph context "fix auth token refresh bug" --target refresh_token --repo .
+
+# Tune source materialization for agent token budgets.
+csegraph context "fix auth token refresh bug" --target refresh_token --repo . --include-source auto --max-tokens 4000 --json
+
+# Render agent context as Markdown for human inspection.
+csegraph context "fix auth token refresh bug" --target refresh_token --repo . --format markdown --explain
+
+# Explain why a symbol/file matters.
+csegraph graph refresh_token --repo . --depth 1
 ```
 
-### 2. Automatic Detection
+By default, the index is stored at:
 
-Once models are placed in `codermodel/`, the pipeline automatically:
-- Detects available hardware (Metal/CUDA/ROCm/CPU)
-- Selects the best-available model
-- Loads it without requiring a Groq API key
+```text
+<repo>/.csegraph/index.db
+```
 
-### 3. Run Without Groq API
+Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget.
+
+## JSON-First Agent Surface
+
+Every primary command supports JSON output for agent tools:
 
 ```bash
-# Pipeline will use local model if available (no GROQ_API_KEY needed)
-env/bin/python run_pipeline.py --all-sandboxes
+csegraph index . --json
+csegraph refresh . --json
+csegraph context "update payment retry behavior" --target PaymentClient --repo . --json
+csegraph graph PaymentClient --repo . --depth 2 --json
 ```
 
-**Note:** If no local model is found in `codermodel/`, the pipeline falls back to Groq API (requires `GROQ_API_KEY`).
+A context result includes:
 
-### 4. Hardware Support
+- ranked files and symbols
+- line ranges and source paths
+- optional `source_text` for target symbols and important dependencies
+- `estimated_tokens` per node and for the whole result
+- stable `reason` tags for why each node was selected
+- sufficiency metrics such as dependency completeness and entity coverage
+- raw-code fallbacks for exact imports, signatures, small helpers, and risky context
 
-- **Apple Silicon (Metal)**: Optimized GPU acceleration via Metal
-- **NVIDIA (CUDA)**: GPU acceleration if CUDA toolkit is available
-- **AMD (ROCm)**: GPU acceleration if ROCm is installed
-- **CPU**: Falls back to CPU if no GPU is available
+The v1.3.0 context output is backward-compatible and includes both legacy fields
+(`task`, `target_node_id`, `estimated_tokens`, `metrics`, `context_nodes`) and
+the canonical agent contract:
 
----
-
-## Modes
-
-The codebase exposes the same core in two ways:
-
-- **csegraph SDK / CLI** (`csegraph index ...`, `from csegraph import ContextService`) — SQLite-backed, dependency-light, suitable for embedding in coding agents. See [`docs/csegraph.md`](docs/csegraph.md).
-- **Research mode** (`run_pipeline.py`, `compare_baselines.py`, `agents/`) — JSON-artifact pipeline that produces compile/test metrics for the three retrieval strategies. The agents wrap the same csegraph core but preserve Pydantic JSON shapes for paper reproducibility.
-
-For internals — package layout, CSE algorithm, modern → legacy mapping, schema details — see [`docs/architecture.md`](docs/architecture.md).
-
-## Run Commands
-
-The most common entry points:
-
-```bash
-# Research mode — full pipeline on every sandbox
-env/bin/python run_pipeline.py
-
-# Research mode — single sandbox, no LLM
-env/bin/python run_pipeline.py --root-dir sandboxes/graph_analytics --output-dir data/graph_out --skip-codegen
-
-# Three-strategy comparison (adaptive vs full_context vs static_rag)
-env/bin/python compare_baselines.py --output-dir data
-
-# csegraph SDK + CLI (v1.1.2 — two separate packages)
-# Install:
-#   env/bin/pip install -e .                        (SDK only)
-#   env/bin/pip install -e packages/csegraph-cli/   (CLI, requires SDK)
-env/bin/python -m csegraph_cli index sandboxes/graph_analytics
-env/bin/python -m csegraph_cli context "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics
-env/bin/python -m csegraph_cli codegen "Add a calculator function" --repo sandboxes/graph_analytics
-env/bin/python -m csegraph_cli codegen "Implement shortest_path_length" --target shortest_path_length --repo sandboxes/graph_analytics -o generated.py
-
-# Tests
-env/bin/python -m pytest tests/ -q
+```json
+{
+  "query": "fix auth token refresh bug",
+  "target": "symbol::auth.py::function::refresh_token",
+  "total_estimated_tokens": 4200,
+  "sufficiency": {
+    "sufficient": true,
+    "metrics": {},
+    "thresholds": {}
+  },
+  "nodes": [
+    {
+      "id": "symbol::auth.py::function::refresh_token",
+      "kind": "function",
+      "path": "auth.py",
+      "line_range": [10, 40],
+      "reason": ["target", "direct_call"],
+      "summary": "Refreshes an access token.",
+      "source_text": "def refresh_token(...):\n    ...\n",
+      "estimated_tokens": 120
+    }
+  ]
+}
 ```
 
-The full set of commands (individual agents, benchmarking, plotting, profile flags, custom queries, etc.) lives in [`CLAUDE.md`](CLAUDE.md) and [`docs/csegraph.md`](docs/csegraph.md).
+`nodes[*].reason` is constrained to this fixed enum:
 
----
-
-## Pipeline Outputs
-
-Each sandbox run writes to its output directory (e.g., `data/results/graph_analytics/`):
-
-| File | Contents |
-|---|---|
-| `ingested_data.json` | Parsed file and symbol nodes |
-| `link_graph.json` | Full dependency graph (nodes + edges) |
-| `compressed_graph.json` | Node summaries + pre-computed context slices |
-| `cse_result.json` | Sufficiency evaluation: metrics, context nodes, raw code nodes |
-| `code_gen_result.json` | Full generation record: model, tokens, node IDs used |
-| `generated_<Target>.py` | Generated Python source with metadata header |
-
-### `cse_result.json` fields
-
-| Field | Description |
-|---|---|
-| `is_sufficient` | Whether all four thresholds passed |
-| `metrics` | `dependency_completeness`, `entity_coverage`, `semantic_overlap`, `model_confidence` |
-| `context_node_ids` | Final set of nodes passed to the code generator |
-| `raw_code_nodes` | Nodes where compressed summary was replaced by verbatim source |
-| `expansion_rounds` | How many times CSE expanded context before deciding |
-| `recompressed_rounds` | How many times recompression was triggered by low logprob |
-| `unit_test_pass_rate` | Fraction of sandbox unit tests passed by generated code (0–1) |
-| `reason` | `"All thresholds met"` or `"Max expansion rounds reached"` |
-| `thresholds` | The threshold values used for this run |
-| `query` | The original query text and target node |
-
-### `generated_<Target>.py` header
-
-Every generated file includes a metadata header:
 ```python
-# Generated by CodeGenAgent
-# Model   : llama-3.3-70b-versatile
-# Target  : symbol::metrics/evaluator.py::class::GraphQueryEvaluator
-# CSE     : sufficient=True, rounds=2, context_nodes=17, raw_code_nodes=3
-# Tokens  : prompt=759, completion=391
+VALID_REASONS = {
+    "target",
+    "direct_call",
+    "caller",
+    "import_dependency",
+    "same_file",
+    "parent_class",
+    "small_helper",
+    "test_related",
+    "raw_code_fallback",
+    "lexical_match",
+    "graph_neighbor",
+}
 ```
 
----
+Use `--explain` when you also want human-readable `explanation` text.
 
-## Baseline Comparison Results (7 sandboxes × 3 strategies)
+Source controls:
 
-Three strategies are compared across all sandboxes. Numbers below are **means** across targets per sandbox.
-
-> Re-run `env/bin/python compare_baselines.py` to regenerate fresh results.
-
-### Adaptive strategy — per-sandbox breakdown
-
-| Sandbox | dep% | ent% | conf% | exp rounds | context nodes | compile% | unit_test% |
-|---|---|---|---|---|---|---|---|
-| baseline_import_resolution | 100% | 100% | 81.6% | 2.0 | 27.0 | 100% | 33.3% |
-| etl_pipeline_oop | 100% | 100% | 81.5% | 1.7 | 18.3 | 100% | 66.7% |
-| event_driven_orders | 100% | 100% | 83.2% | 2.0 | 33.7 | 100% | 93.9% |
-| graph_analytics | 100% | 100% | 81.5% | 2.0 | 17.7 | 100% | 66.7% |
-| ml_training_pipeline | 100% | 90.7% | 80.3% | 1.3 | 42.7 | 100% | 100% |
-| nlp_chunking_pipeline | 100% | 94.4% | 79.9% | 1.7 | 21.0 | 100% | 98.0% |
-| user_service_api | 100% | 94.4% | 80.3% | 1.7 | 25.3 | 100% | 88.9% |
-
-### Strategy comparison — global means (7 sandboxes × 3 targets each)
-
-| Strategy | context nodes | exp rounds | dep% | ent% | conf% | prompt tokens† | compile% | unit_test% |
-|---|---|---|---|---|---|---|---|---|
-| **adaptive** | **26.5** | **1.76** | **100%** | 97.1% | **81.2%** | 963 | **100%** | 78.2% |
-| full_context | 33.7 | 0.0 | 87.6% | **100%** | 76.7% | 1179 | **100%** | **90.2%** |
-| static_rag | 19.7 | 0.0 | 93.7% | 96.6% | 75.3% | **686** | **100%** | 72.7% |
-
-†Prompt tokens averaged over sandboxes where codegen ran (compile% = 100% for all).
-
-**Key takeaways:**
-- Adaptive achieves **100% dep_completeness** on every sandbox; full_context averages 87.6%, static_rag 93.7%
-- Adaptive uses **18% fewer tokens** than full_context (963 vs 1179) while maintaining higher model confidence (81.2% vs 76.7%)
-- The `ml_training_pipeline` sandbox (55+ symbols, 4 packages) shows the largest gap: static_rag dep=73.8% vs adaptive dep=100%, confirming adaptive CSE's advantage on larger, more complex repos
-- `efficiency_scatter.png` in `data/plots/` visualises the token-vs-correctness trade-off across all three strategies
-
-### Analysis: `baseline_import_resolution` per-target breakdown
-
-The `baseline_import_resolution` sandbox has the largest variance across targets (3 targets × 3 strategies). Per-target pass rates reveal why the adaptive global mean is low (33.3%):
-
-| Target | adaptive | full_context | static_rag |
-|---|---|---|---|
-| `pkg/service.py::UserService` | **18/18 (100%)** | 0/1 (crash) | 13/18 (72.2%) |
-| `pkg/formatter.py::DefaultPayloadFormatter` | 0/1 (crash) | **18/18 (100%)** | 12/18 (66.7%) |
-| `pkg/utils.py::caller` | 0/1 (crash) | **17/18 (94.4%)** | 0/1 (crash) |
-
-The "0/1 crash" entries are **import errors in the generated code**, not logic failures — the generated file is syntactically valid (ast.parse passes) but contains incorrect import paths or missing helper definitions:
-
-- Adaptive on `formatter.py`: generates `from contracts import PayloadFormatter` (wrong package prefix — should be `from pkg.contracts`)
-- Adaptive on `utils.py`: omits `helper()` function — test file's `from pkg.utils import helper` fails at collection
-- Full-context on `service.py`: generates `from pkg.utils import risk_process` (`risk_process` lives in `pkg.metrics`, not `pkg.utils`)
-
-**Root cause: LLM import path hallucination**, not CSE context insufficiency. Adaptive's dep_completeness is 100% for this sandbox — the right context was gathered. The generation model infers incorrect module locations for small files with simple contracts. Full-context wins by providing verbatim source for every node (raw_code_nodes=19 = context_node_count), letting the LLM copy import paths exactly.
-
-**Implication:** For tiny sandboxes with exact literal returns and short import paths, verbatim raw code is more reliable than compressed summaries. Adaptive's compressed-summary approach is optimised for large, dependency-heavy repos (`ml_training_pipeline` dep=100% vs static_rag 73.8%) but may over-abstract context for micro-repos.
-
----
-
-## Plots (`data/plots/`)
-
-| File | Description |
+| Flag | Behavior |
 |---|---|
-| `baseline_context_nodes.png` | Mean context node count by strategy |
-| `baseline_token_efficiency.png` | Mean prompt tokens by strategy |
-| `baseline_cse_metrics.png` | dep%, ent%, semantic overlap, conf% by strategy |
-| `baseline_compile_rate.png` | Compile success rate by strategy |
-| `baseline_unit_test_pass_rate.png` | Global unit test pass rate by strategy |
-| `baseline_expansion_rounds.png` | Mean CSE expansion rounds by strategy |
-| `per_sandbox_context_nodes.png` | Context nodes per sandbox × strategy |
-| `per_sandbox_entity_coverage.png` | Entity coverage per sandbox × strategy |
-| `per_sandbox_unit_test_pass_rate.png` | Unit test pass rate per sandbox × strategy |
-| `efficiency_scatter.png` | Token cost vs correctness scatter (3 strategy points) |
+| `--include-source auto` | Default. Includes exact source for the target, direct calls, raw-code fallbacks, and small helpers. |
+| `--include-source always` | Tries to include exact source for every returned context node. |
+| `--include-source never` | Returns compact metadata/summaries only. |
+| `--max-tokens <n>` | Caps the returned context bundle using deterministic `ceil(chars / 4)` estimates. |
+| `--format json` | Default. Emits JSON with legacy and canonical context fields. |
+| `--format markdown` | Emits a human-readable Markdown context report. |
+| `--explain` | Adds optional human-readable explanations for node selection. |
 
----
+## Agent Integration Loop
 
-## Design Decisions
+Coding agents should use csegraph as a repo-context preflight:
 
-**Semantic similarity defaults to TF-IDF, with optional embedding boost.** The CSE uses sklearn `TfidfVectorizer` cosine similarity with CamelCase/snake_case identifier splitting as the default signal — no GPU dependency, low latency, and well-suited to sparse code-identifier vocabularies. When `sentence-transformers` is available, `BAAI/bge-small-en-v1.5` embeddings are loaded on the best-available device and blended with TF-IDF (0.6·emb + 0.4·tfidf) for queries where token overlap alone is too sparse. The semantic threshold is relaxed to 0% when both dependency and entity coverage pass, preventing false negatives on short function signatures.
+```bash
+csegraph index . --json
+csegraph refresh . --json
+csegraph context "describe the requested edit" --target SomeSymbol --repo . --include-source auto --max-tokens 6000 --json
+```
 
-**Synthetic sandboxes as the evaluation environment.** The pipeline is evaluated on 7 hand-crafted sandboxes rather than a public benchmark (e.g., SWE-bench, RepoEval). This provides controlled ground truth — exact reference implementations, deterministic unit tests, and reproducible dependency graphs — without license or API constraints. Each sandbox covers a distinct structural pattern (OOP hierarchies, event-driven dispatch, ML training loops, import resolution chains) to stress-test different aspects of the retrieval pipeline.
+The agent should read the returned canonical `nodes`, inspect `source_text` when present, use `reason` for machine behavior, optionally use `explanation` for debugging, then edit the repo with its normal tools.
 
-**What adaptive wins and where it does not.** Adaptive CSE achieves 100% dependency completeness on every sandbox (vs. 87.6% for full_context, 93.7% for static_rag) and uses 18% fewer prompt tokens than full_context. On large, dependency-heavy repos (`ml_training_pipeline`: 55+ symbols, 4 packages), the advantage is decisive — static_rag dep=73.8% vs. adaptive dep=100%. On micro-repos with short import paths and literal return values (`baseline_import_resolution`), full_context's verbatim source inclusion is more reliable because import path precision matters more than dependency coverage. Compressed summaries trade away literal exactness for scalability; this tradeoff favours adaptive as repo size grows.
+## SDK Usage
 
----
+```python
+from csegraph import ContextService, GraphQueryService, IndexService, RefreshService
 
-## Notes
+IndexService(".csegraph/index.db").index(".", profile="medium")
+RefreshService(".csegraph/index.db").refresh(profile="medium")
 
-- All pipeline steps use Python AST — no source files are executed.
-- Groq API key is only required for Step 5 (code generation). Steps 1–4 run fully offline.
-- `--skip-codegen` runs the full structural pipeline without calling any LLM.
-- The CSE uses sklearn TF-IDF with code-aware tokenisation by default; `sentence-transformers` (BGE-small) is used opportunistically when installed but is not required.
-- `system_profile.py` detects Metal/CUDA/ROCm/CPU and selects the best local GGUF model when one is placed in `codermodel/`. It also supplies the embedding device for optional sentence-transformers. Groq API is used when no local model is present.
+context = ContextService(".csegraph/index.db").build_context(
+    task="fix auth token refresh bug",
+    target="refresh_token",
+    profile="medium",
+)
+
+graph = GraphQueryService(".csegraph/index.db").neighborhood(
+    "refresh_token",
+    depth=1,
+)
+```
+
+`CodegenService` is available only from the optional `csegraph-codegen` add-on:
+
+```python
+from csegraph_codegen import CodegenService
+```
+
+The CLI can run without the SDK or codegen add-on installed; `csegraph codegen ...` lazy-loads `csegraph_codegen` and prints an install hint if it is missing.
+
+## How Retrieval Works
+
+1. Parse Python with `ast`; no user repo code is executed.
+2. Store repo/folder/file/class/function/method nodes in SQLite.
+3. Store edges for `contains`, `imports`, `calls`, `inherits`, `decorates`, and `tested_by`.
+4. Rank candidates with FTS5 BM25, exact-name boosts, path/name boosts, and target matching.
+5. Expand across graph neighbors using the active profile budget.
+6. Return the minimum sufficient context bundle with evidence and raw-code fallbacks.
+
+## Profiles
+
+| Profile | Use when |
+|---|---|
+| `small` | You want the tightest context and fastest lookup. |
+| `medium` | Default agent workflow. |
+| `large` | Larger repos or changes that need wider dependency expansion. |
+
+## Development Commands
+
+```bash
+# Full test suite.
+env/bin/python -m pytest tests/ -q
+
+# Compile check.
+env/bin/python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli packages/csegraph-codegen agents models
+```
+
+Additional operational notes for agents live in [`CLAUDE.md`](CLAUDE.md). Architecture details live in [`docs/architecture.md`](docs/architecture.md). CLI/SDK usage lives in [`docs/csegraph.md`](docs/csegraph.md).
+
+## Research And Evaluation Mode
+
+This repository still contains the original research/evaluation pipeline under `agents/`, `models/`, `run_pipeline.py`, and `compare_baselines.py`. That mode is useful for reproducing CSE experiments and sandbox metrics, but it is not the main product surface.
+
+The practical v1.2 line is the SQLite-backed `csegraph-core` engine plus the CLI/SDK context APIs.
+
+## Safety And Scope
+
+- Python only for v1.x.
+- Indexing and retrieval are AST-only; user repository code is not executed.
+- No daemon or server is required.
+- Dense embeddings are optional and not required for default retrieval.
+- Code generation is optional; context retrieval is the product.

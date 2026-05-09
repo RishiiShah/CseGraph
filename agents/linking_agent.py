@@ -7,10 +7,10 @@ from typing import Dict, List, Optional, Set, Tuple
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.ingestion_agent import IngestionAgent
-from csegraph.languages.python.parser import (
-    extract_called_symbols,
-    resolve_local_import,
-)
+from csegraph.languages.python.parser import extract_called_symbols
+from csegraph.languages.registry import registry as _registry
+
+_python_parser = _registry.for_extension(".py")
 from models.code_element import FileNode
 from models.link_graph import GraphEdge, GraphNode, LinkGraph, LinkGraphSummary
 
@@ -134,7 +134,7 @@ class LinkingAgent:
                             seen_edges.add(class_contains_key)
 
             for import_name in sorted(file_node.imports):
-                target_file_id = resolve_local_import(
+                target_file_id = _python_parser.resolve_local_import(
                     import_name,
                     module_to_file,
                     current_module,

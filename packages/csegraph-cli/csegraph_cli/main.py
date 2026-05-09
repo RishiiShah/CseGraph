@@ -1,7 +1,8 @@
-"""csegraph_cli.main — CLI entrypoint for the csegraph SDK.
+"""csegraph_cli.main — CLI entrypoint for csegraph.
 
 Provides the `csegraph` shell command (registered via pyproject_cli.toml).
-Importable standalone; has no effect on the csegraph SDK package.
+Importable standalone; depends on csegraph-core and lazy-loads optional
+add-ons only when their subcommands need them.
 """
 from __future__ import annotations
 
@@ -11,12 +12,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from csegraph.codegen.service import CodegenService
-from csegraph.config.profiles import PROFILES
-from csegraph.core.models import to_dict
-from csegraph.graph.queries import GraphQueryService
-from csegraph.index.services import IndexService, RefreshService
-from csegraph.retrieval.context import ContextService
+from csegraph_core.config.profiles import PROFILES
+from csegraph_core.core.models import to_dict
+from csegraph_core.graph.queries import GraphQueryService
+from csegraph_core.index.services import IndexService, RefreshService
+from csegraph_core.retrieval.context import ContextService
+from csegraph_cli.errors import CsegraphCLIError, error_payload
+from csegraph_cli.renderer import render_context_markdown, render_json
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,17 +26,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        _validate_cli_options(args)
         result = _dispatch(args)
     except Exception as exc:
-        payload = {"error": str(exc)}
-        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        print(json.dumps(error_payload(exc), indent=2, sort_keys=True), file=sys.stderr)
         return 1
 
     payload = to_dict(result)
-    if args.json:
-        print(json.dumps(payload, sort_keys=True))
+    if args.command == "context" and args.output_format == "markdown":
+        print(render_context_markdown(payload), end="")
     else:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(render_json(payload, compact=args.json))
     return 0
 
 
@@ -66,6 +68,30 @@ def _build_parser() -> argparse.ArgumentParser:
     context.add_argument("--task", default=None, help="Natural-language task.")
     context.add_argument("--target", default=None, help="Optional target node, symbol name, or file path.")
     context.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    context.add_argument(
+        "--include-source",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="Control source_text materialization in context nodes (default: auto).",
+    )
+    context.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Approximate max tokens for returned context nodes.",
+    )
+    context.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for context results (default: json).",
+    )
+    context.add_argument(
+        "--explain",
+        action="store_true",
+        help="Include human-readable explanations for context node selection.",
+    )
     context.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     graph = subparsers.add_parser("graph", help="Explain a graph neighborhood.")
@@ -113,6 +139,9 @@ def _dispatch(args: argparse.Namespace) -> Any:
             task=task,
             target=args.target,
             profile=args.profile,
+            include_source=args.include_source,
+            max_tokens=args.max_tokens,
+            explain=args.explain,
         )
     if args.command == "graph":
         repo = Path(args.repo or ".").resolve()
@@ -121,6 +150,15 @@ def _dispatch(args: argparse.Namespace) -> Any:
             raise ValueError("graph requires a node. Example: csegraph graph MyClass.method")
         return GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
     if args.command == "codegen":
+        try:
+            from csegraph_codegen.service import CodegenService
+        except ImportError as exc:
+            raise CsegraphCLIError(
+                "codegen requires the optional csegraph-codegen package. "
+                "Install with: pip install csegraph-codegen",
+                error_code="missing_optional_dependency",
+                install="pip install csegraph-codegen",
+            ) from exc
         repo = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg
         if not task:
@@ -147,6 +185,18 @@ def _dispatch(args: argparse.Namespace) -> Any:
             output_path=args.output,
         )
     raise ValueError(f"Unknown command: {args.command}")
+
+
+def _validate_cli_options(args: argparse.Namespace) -> None:
+    if (
+        getattr(args, "command", None) == "context"
+        and getattr(args, "json", False)
+        and getattr(args, "output_format", "json") == "markdown"
+    ):
+        raise CsegraphCLIError(
+            "--json cannot be combined with --format markdown",
+            error_code="invalid_cli_options",
+        )
 
 
 def _repo_arg(args: argparse.Namespace) -> str:
