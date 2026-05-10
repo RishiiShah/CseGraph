@@ -9,7 +9,6 @@ If working from source (monorepo):
     pip install -e . -e packages/csegraph-cli/
 
 Then use: csegraph index . / csegraph context "..."
-For codegen, also install: pip install -e packages/csegraph-codegen/
 """
 
 import sys
@@ -23,8 +22,6 @@ def _main() -> None:
         "The command-line interface lives in the `csegraph-cli` package.\n\n"
         "To install the CLI from source in the monorepo, run:\n"
         "    pip install -e . -e packages/csegraph-cli/\n\n"
-        "For the optional codegen subcommand, also install:\n"
-        "    pip install -e packages/csegraph-codegen/\n\n"
         "Then you can run the CLI via:\n"
         "    csegraph <command>\n"
         "    python -m csegraph_cli <command>",
