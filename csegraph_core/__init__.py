@@ -9,9 +9,9 @@ package (`csegraph`), CLI package (`csegraph-cli`), and optional codegen
 add-on (`csegraph-codegen`) depend on this package and never on each other.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.3.2"
 
-from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile
+from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph_core.core.models import (
     ContextNode,
     ContextResult,
@@ -48,5 +48,6 @@ __all__ = [
     "SufficiencyMetrics",
     "VALID_REASONS",
     "get_profile",
+    "load_profile",
     "to_dict",
 ]

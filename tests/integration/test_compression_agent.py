@@ -185,6 +185,19 @@ class TestCompressionAgent(unittest.TestCase):
         self.assertGreater(len(edges_r1), 0)
         self.assertTrue(any(e in edges_r1 for e in ["contains", "imports", "calls"]))
 
+        graph.edges.append(
+            GraphEdge(
+                source="file::main.py",
+                target="symbol::main.py::function::process",
+                relation="imports",
+            )
+        )
+        self._save_mock_graph(graph, self.graph_path)
+        agent = CompressionAgent(str(self.graph_path))
+        _, multi_edges = agent._get_neighborhood("file::main.py", radius=1, max_nodes=50)
+        self.assertEqual(multi_edges["contains"], 2)
+        self.assertEqual(multi_edges["imports"], 2)
+
         # Test radius 2 neighborhood (should be larger)
         neighborhood_r2, edges_r2 = agent._get_neighborhood(
             "file::main.py", radius=2, max_nodes=50

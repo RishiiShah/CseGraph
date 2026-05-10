@@ -148,6 +148,28 @@ class TestDependencyCompleteness:
         )
         assert score == 1.0
 
+
+class TestProfileOverrides:
+    def test_agent_uses_profile_thresholds(self, simple_graph_dir):
+        from dataclasses import replace
+
+        from csegraph_core.config.profiles import get_profile
+
+        lg_path, cg_path = simple_graph_dir
+        cfg = replace(get_profile("medium"), dep_threshold=0.50, confidence_threshold=0.40)
+        agent = CSEAgent(lg_path, cg_path, profile=cfg)
+        assert agent.DEP_THRESHOLD == 0.50
+        assert agent.CONFIDENCE_THRESHOLD == 0.40
+        assert agent.ENTITY_THRESHOLD == 0.80
+
+    def test_no_profile_uses_class_defaults(self, simple_graph_dir):
+        lg_path, cg_path = simple_graph_dir
+        agent = CSEAgent(lg_path, cg_path)
+        assert agent.DEP_THRESHOLD == 0.80
+        assert agent.CONFIDENCE_THRESHOLD == 0.70
+
+
+class TestDependencyCompletenessRemaining:
     def test_missing_dep(self, missing_dep_graph_dir):
         lg_path, cg_path = missing_dep_graph_dir
         agent = CSEAgent(lg_path, cg_path)

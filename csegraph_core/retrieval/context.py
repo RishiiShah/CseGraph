@@ -4,13 +4,9 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from csegraph_core.config.profiles import get_profile
+from csegraph_core.config.profiles import load_profile
 from csegraph_core.core.models import ContextNode, ContextResult
 from csegraph_core.cse.metrics import (
-    CONFIDENCE_THRESHOLD,
-    DEP_THRESHOLD,
-    ENTITY_THRESHOLD,
-    SEMANTIC_THRESHOLD,
     all_pass,
     compute_metrics,
     raw_code_nodes,
@@ -19,6 +15,7 @@ from csegraph_core.index.loaders import edge_maps, load_edges, load_summaries, l
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.explain import build_explanation, normalize_reasons
 from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
+from csegraph_core.text.source_reader import read_source_lines
 
 
 class ContextService:
@@ -29,12 +26,12 @@ class ContextService:
         self,
         task: str,
         target: Optional[str] = None,
-        profile: str = "small",
+        profile: Optional[str] = None,
         include_source: str = "auto",
         max_tokens: Optional[int] = None,
         explain: bool = False,
+        config_path: Optional[str] = None,
     ) -> ContextResult:
-        config = get_profile(profile)
         include_source = _validate_include_source(include_source)
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError("max_tokens must be a positive integer when provided.")
@@ -44,6 +41,7 @@ class ContextService:
             project = index.get_project()
             project_id = int(project["id"])
             repo_root = project["root_dir"]
+            config = load_profile(profile, config_path=config_path, repo_root=repo_root)
 
             symbols = load_symbols(index, project_id)
             summaries = load_summaries(index, project_id)
@@ -81,13 +79,21 @@ class ContextService:
                 config.context_budget,
             )
             metrics = compute_metrics(task, target_node_id, context_ids, symbols, summaries, outgoing)
-            is_sufficient = all_pass(metrics)
+            is_sufficient = all_pass(
+                metrics,
+                dep_threshold=config.dep_threshold,
+                entity_threshold=config.entity_threshold,
+                semantic_threshold=config.semantic_threshold,
+                semantic_threshold_relaxed=config.semantic_threshold_relaxed,
+                confidence_threshold=config.confidence_threshold,
+            )
             raw_nodes = raw_code_nodes(
                 target_node_id,
                 context_ids,
                 outgoing,
                 metrics,
                 config.raw_code_budget,
+                confidence_threshold=config.confidence_threshold,
             )
             source_ids = _source_candidate_ids(
                 include_source,
@@ -146,7 +152,14 @@ class ContextService:
             context_nodes = _apply_token_budget(context_nodes, max_tokens)
             context_ids = [node.node_id for node in context_nodes]
             metrics = compute_metrics(task, target_node_id, context_ids, symbols, summaries, outgoing)
-            is_sufficient = all_pass(metrics)
+            is_sufficient = all_pass(
+                metrics,
+                dep_threshold=config.dep_threshold,
+                entity_threshold=config.entity_threshold,
+                semantic_threshold=config.semantic_threshold,
+                semantic_threshold_relaxed=config.semantic_threshold_relaxed,
+                confidence_threshold=config.confidence_threshold,
+            )
             raw_nodes = {node.node_id for node in context_nodes if node.raw_code}
             estimated_tokens = sum(node.estimated_tokens for node in context_nodes)
 
@@ -189,10 +202,11 @@ class ContextService:
                 context_nodes=context_nodes,
                 raw_code_nodes=sorted(raw_nodes),
                 thresholds={
-                    "dependency_completeness": DEP_THRESHOLD,
-                    "entity_coverage": ENTITY_THRESHOLD,
-                    "semantic_overlap": SEMANTIC_THRESHOLD,
-                    "model_confidence": CONFIDENCE_THRESHOLD,
+                    "dependency_completeness": config.dep_threshold,
+                    "entity_coverage": config.entity_threshold,
+                    "semantic_overlap": config.semantic_threshold,
+                    "semantic_overlap_relaxed": config.semantic_threshold_relaxed,
+                    "model_confidence": config.confidence_threshold,
                 },
                 run_id=run_id,
                 estimated_tokens=estimated_tokens,
@@ -317,16 +331,7 @@ def _read_node_source(repo_root: str, row: Dict[str, Any]) -> Optional[str]:
     end_line = row.get("end_line")
     if not file_path or start_line is None or end_line is None:
         return None
-    path = Path(repo_root) / str(file_path)
-    if not path.is_file():
-        return None
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return None
-    start = max(0, int(start_line) - 1)
-    end = min(len(lines), int(end_line))
-    return "\n".join(lines[start:end]) + ("\n" if end > start else "")
+    return read_source_lines(repo_root, str(file_path), int(start_line), int(end_line))
 
 
 def _estimate_node_tokens(

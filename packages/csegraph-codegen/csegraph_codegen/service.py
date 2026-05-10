@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from csegraph_core.core.models import ContextNode, ContextResult
 from csegraph_core.retrieval.context import ContextService
+from csegraph_core.text.source_reader import read_source_lines
 from csegraph_codegen.models import CodegenResult
 
 
@@ -91,8 +92,9 @@ class CodegenService:
         task: str,
         *,
         target: Optional[str] = None,
-        profile: str = "medium",
+        profile: Optional[str] = None,
         output_path: Optional[str] = None,
+        config_path: Optional[str] = None,
     ) -> CodegenResult:
         """Retrieve context and generate code in one step.
 
@@ -117,6 +119,7 @@ class CodegenService:
             task=task,
             target=target,
             profile=profile,
+            config_path=config_path,
         )
 
         system_msg, user_msg = self._build_prompt(task, context)
@@ -350,17 +353,7 @@ def _read_node_source(repo_root: str, node: ContextNode) -> str:
     """Read verbatim source lines for a context node."""
     if not node.file_path or node.start_line is None or node.end_line is None:
         return ""
-    abs_path = os.path.join(repo_root, node.file_path)
-    if not os.path.isfile(abs_path):
-        return ""
-    try:
-        with open(abs_path, encoding="utf-8") as fh:
-            lines = fh.readlines()
-        start = max(0, node.start_line - 1)
-        end = min(len(lines), node.end_line)
-        return "".join(lines[start:end])
-    except Exception:
-        return ""
+    return read_source_lines(repo_root, node.file_path, node.start_line, node.end_line) or ""
 
 
 def _init_groq_client(api_key: str) -> Any:

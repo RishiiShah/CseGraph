@@ -12,6 +12,7 @@ from models.code_gen_result import CodeGenResult
 from models.compressed_graph import CompressedGraph
 from models.cse_result import SufficiencyResult
 from models.link_graph import GraphNode, LinkGraph
+from csegraph_core.text.source_reader import read_source_lines
 from system_profile import build_system_profile, select_gguf_model
 
 
@@ -381,17 +382,15 @@ class CodeGenAgent:
         """Read verbatim source lines for a node using its line range."""
         if not node.file_path or node.start_line is None or node.end_line is None:
             return ""
-        abs_path = os.path.join(self._link_graph.root_dir, node.file_path)
-        if not os.path.isfile(abs_path):
-            return ""
-        try:
-            with open(abs_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            start = max(0, node.start_line - 1)
-            end = min(len(lines), node.end_line)
-            return "".join(lines[start:end])
-        except Exception:
-            return ""
+        return (
+            read_source_lines(
+                self._link_graph.root_dir,
+                node.file_path,
+                node.start_line,
+                node.end_line,
+            )
+            or ""
+        )
 
     @staticmethod
     def _extract_code_block(text: str) -> str:

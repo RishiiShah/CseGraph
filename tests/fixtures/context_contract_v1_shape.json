@@ -1,0 +1,33 @@
+{
+  "schema_version": "csegraph-context-v1",
+  "legacy_fields": [
+    "task",
+    "target_node_id",
+    "estimated_tokens",
+    "metrics",
+    "context_nodes"
+  ],
+  "canonical_fields": [
+    "query",
+    "target",
+    "total_estimated_tokens",
+    "sufficiency",
+    "nodes"
+  ],
+  "canonical_node_fields": [
+    "id",
+    "kind",
+    "language",
+    "path",
+    "line_range",
+    "reason",
+    "summary",
+    "source_text",
+    "estimated_tokens"
+  ],
+  "sufficiency_fields": [
+    "sufficient",
+    "metrics",
+    "thresholds"
+  ]
+}

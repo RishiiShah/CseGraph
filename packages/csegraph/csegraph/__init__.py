@@ -1,4 +1,4 @@
-"""csegraph v1.3.0 SDK.
+"""csegraph v1.3.2 SDK.
 
 Thin facade over `csegraph-core` (import namespace: `csegraph_core`) for
 coding-agent context retrieval. Code generation lives in the optional
@@ -32,7 +32,7 @@ from csegraph_core import (
     to_dict,
 )
 
-__version__ = "1.3.0"
+__version__ = "1.3.2"
 
 # Backward-compat shims: legacy callers import `csegraph.languages.python.parser`,
 # `csegraph.legacy.adapters`, `csegraph.core.models`, `csegraph.cse.metrics`,

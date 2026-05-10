@@ -5,13 +5,17 @@ import os
 import sys
 import textwrap
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.compressed_graph import CompressedGraph, ContextSlice, NodeSummary
 from models.link_graph import LinkGraph, GraphEdge, GraphNode
+from csegraph_core.text.source_reader import read_source_lines
 from system_profile import SystemProfile, build_system_profile, select_gguf_model
+
+if TYPE_CHECKING:
+    from csegraph_core.core.models import ProfileConfig
 
 
 class CompressionAgent:
@@ -32,12 +36,16 @@ class CompressionAgent:
         gguf_model_path: Optional[str] = None,
         summary_cache_path: str = "data/summary_cache.json",
         groq_api_key: Optional[str] = None,
+        profile: Optional["ProfileConfig"] = None,
     ):
         self.graph_path = graph_path
         self._use_llm = use_llm
         self._gguf_model_path = gguf_model_path or os.environ.get("GGUF_MODEL_PATH", "")
         self._summary_cache_path = summary_cache_path
         self._groq_api_key = groq_api_key if groq_api_key is not None else os.environ.get("GROQ_API_KEY", "")
+        self._hub_count = profile.compression_hub_count if profile else 20
+        self._max_nodes_per_slice = profile.compression_max_nodes_per_slice if profile else 50
+        self._source_char_limit = profile.compression_source_char_limit if profile else 800
 
         self.graph: LinkGraph = self._load_graph(graph_path)
         self.root_dir = self.graph.root_dir
@@ -45,6 +53,7 @@ class CompressionAgent:
         # Build adjacency structures for efficient traversal
         self._outgoing: Dict[str, List[str]] = defaultdict(list)
         self._incoming: Dict[str, List[str]] = defaultdict(list)
+        self._edge_relations: Dict[Tuple[str, str], List[str]] = defaultdict(list)
         self._node_lookup: Dict[str, GraphNode] = {}
 
         for node in self.graph.nodes:
@@ -53,6 +62,7 @@ class CompressionAgent:
         for edge in self.graph.edges:
             self._outgoing[edge.source].append(edge.target)
             self._incoming[edge.target].append(edge.source)
+            self._edge_relations[(edge.source, edge.target)].append(edge.relation)
 
         # Index file → contained symbol IDs (used for file-node summaries)
         self._file_contains: Dict[str, List[str]] = defaultdict(list)
@@ -171,7 +181,7 @@ class CompressionAgent:
         prompt = self._SUMMARIZE_PROMPT.format(
             node_type=node.type,
             name=node.name,
-            source=source[:800],
+            source=source[: self._source_char_limit],
         )
         summary = self._call_llm(prompt)
         if summary:
@@ -262,15 +272,15 @@ class CompressionAgent:
         """Read the raw source lines for a symbol node."""
         if not node.file_path or node.start_line is None or node.end_line is None:
             return ""
-        abs_path = os.path.join(self.root_dir, node.file_path)
-        if not os.path.isfile(abs_path):
-            return ""
-        try:
-            with open(abs_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            return "".join(lines[node.start_line - 1 : node.end_line])
-        except OSError:
-            return ""
+        return (
+            read_source_lines(
+                self.root_dir,
+                node.file_path,
+                node.start_line,
+                node.end_line,
+            )
+            or ""
+        )
 
     def _extract_signature(self, node: GraphNode) -> str:
         """Return the def/class signature line from source (first line of the node)."""
@@ -331,20 +341,16 @@ class CompressionAgent:
                     if neighbor not in visited and len(visited) < max_nodes:
                         visited.add(neighbor)
                         next_layer.add(neighbor)
-                        # Count edge type
-                        for edge in self.graph.edges:
-                            if edge.source == node_id and edge.target == neighbor:
-                                edge_type_counts[edge.relation] += 1
+                        for relation in self._edge_relations.get((node_id, neighbor), []):
+                            edge_type_counts[relation] += 1
 
                 # Add incoming neighbors
                 for neighbor in self._incoming.get(node_id, []):
                     if neighbor not in visited and len(visited) < max_nodes:
                         visited.add(neighbor)
                         next_layer.add(neighbor)
-                        # Count edge type
-                        for edge in self.graph.edges:
-                            if edge.source == neighbor and edge.target == node_id:
-                                edge_type_counts[edge.relation] += 1
+                        for relation in self._edge_relations.get((neighbor, node_id), []):
+                            edge_type_counts[relation] += 1
 
             current_layer = next_layer
 
@@ -392,7 +398,7 @@ class CompressionAgent:
             )
 
         # Identify high-degree nodes
-        high_degree = self._compute_high_degree_nodes(top_k=20)
+        high_degree = self._compute_high_degree_nodes(top_k=self._hub_count)
         print(f"Identified {len(high_degree)} high-degree hub nodes")
 
         # Generate context slices for high-degree nodes
@@ -404,7 +410,7 @@ class CompressionAgent:
             # Create slices at different radii
             for radius in [1, 2]:
                 neighborhood, edge_types = self._get_neighborhood(
-                    anchor_node_id, radius=radius, max_nodes=50
+                    anchor_node_id, radius=radius, max_nodes=self._max_nodes_per_slice
                 )
                 context_size = len(neighborhood)
                 compression_ratio = self._estimate_compression_ratio(
