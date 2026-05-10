@@ -5,11 +5,11 @@ The install/distribution name is `csegraph-core`; Python imports use
 
 This package is the source-of-truth context engine for coding agents:
 parser, SQLite index, graph traversal, retrieval, and CSE metrics. The SDK
-package (`csegraph`), CLI package (`csegraph-cli`), and optional codegen
-add-on (`csegraph-codegen`) depend on this package and never on each other.
+package (`csegraph`) and CLI package (`csegraph-cli`) depend on this package
+and never on each other.
 """
 
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph_core.core.models import (

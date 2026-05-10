@@ -1,8 +1,7 @@
-"""csegraph_cli.main — CLI entrypoint for csegraph.
+"""csegraph_cli.main - CLI entrypoint for csegraph.
 
 Provides the `csegraph` shell command (registered via pyproject_cli.toml).
-Importable standalone; depends on csegraph-core and lazy-loads optional
-add-ons only when their subcommands need them.
+Importable standalone; depends on csegraph-core.
 """
 from __future__ import annotations
 
@@ -103,25 +102,6 @@ def _build_parser() -> argparse.ArgumentParser:
     graph.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
     graph.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
-    codegen = subparsers.add_parser(
-        "codegen",
-        help="Generate code from graph-backed context + LLM.",
-    )
-    codegen.add_argument("task_arg", help="Natural-language task (required). Example: 'Add a calculator function'.")
-    codegen.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    codegen.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    codegen.add_argument("--task", default=None, help="Natural-language task (alternative to positional).")
-    codegen.add_argument("--target", default=None, help="Optional target node, symbol name, or file path.")
-    codegen.add_argument("--profile", choices=sorted(PROFILES), default=None)
-    codegen.add_argument("--config", default=None, help="Path to csegraph.json/toml for context retrieval thresholds.")
-    codegen.add_argument("-o", "--output", default=None, help="Write generated .py to this path.")
-    codegen.add_argument("--model-path", default=None, help="Explicit GGUF model path (overrides auto-selection).")
-    codegen.add_argument("--model-dir", default=None, help="Directory of GGUF models for auto-selection.")
-    codegen.add_argument("--groq-model", default=None, help="Groq model ID for API fallback.")
-    codegen.add_argument("--temperature", type=float, default=0.2, help="LLM sampling temperature (default: 0.2).")
-    codegen.add_argument("--max-tokens", type=int, default=2048, help="Max tokens in completion (default: 2048).")
-    codegen.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
-
     return parser
 
 
@@ -152,42 +132,6 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if not node:
             raise ValueError("graph requires a node. Example: csegraph graph MyClass.method")
         return GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
-    if args.command == "codegen":
-        try:
-            from csegraph_codegen.service import CodegenService
-        except ImportError as exc:
-            raise CsegraphCLIError(
-                "codegen requires the optional csegraph-codegen package. "
-                "Install with: pip install csegraph-codegen",
-                error_code="missing_optional_dependency",
-                install="pip install csegraph-codegen",
-            ) from exc
-        repo = Path(args.repo or ".").resolve()
-        task = args.task or args.task_arg
-        if not task:
-            raise ValueError(
-                'codegen requires a task. Example: csegraph codegen "Add a calculator function"'
-            )
-        kwargs: dict[str, Any] = {}
-        if args.groq_model:
-            kwargs["groq_model"] = args.groq_model
-        if args.model_path:
-            kwargs["model_path"] = args.model_path
-        if args.model_dir:
-            kwargs["model_dir"] = args.model_dir
-        svc = CodegenService(
-            _db_arg(args, str(repo)),
-            temperature=args.temperature,
-            max_tokens=args.max_tokens,
-            **kwargs,
-        )
-        return svc.generate(
-            task=task,
-            target=args.target,
-            profile=args.profile,
-            output_path=args.output,
-            config_path=args.config,
-        )
     raise ValueError(f"Unknown command: {args.command}")
 
 

@@ -5,7 +5,7 @@ from csegraph_core.languages.python.tokenizer import code_tokenize
 from csegraph_core.text.query_tokenizer import QueryTokenizer, query_tokenizer
 
 _CORPUS = [
-    "Implement run_pipeline for graph_analytics shortest_path",
+    "Implement shortest_path for graph_analytics module",
     "Fix the bug in UserService.create_user method",
     "Add logging to buildReport function",
     "Refactor DataProcessor class to use registry pattern",
