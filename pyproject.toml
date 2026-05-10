@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csegraph-core"
-version = "1.3.1"
+version = "1.3.2"
 description = "Core repository context engine for coding agents. Distribution: csegraph-core; import: csegraph_core."
 requires-python = ">=3.10"
 dependencies = []

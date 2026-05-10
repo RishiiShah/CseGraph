@@ -49,6 +49,7 @@ def test_context_json_contract_has_versioned_legacy_and_canonical_shapes(tmp_pat
     assert payload["sufficiency"]["sufficient"] is payload["is_sufficient"]
     assert payload["sufficiency"]["metrics"] == payload["metrics"]
     assert payload["sufficiency"]["thresholds"] == payload["thresholds"]
+    assert "semantic_overlap_relaxed" in payload["thresholds"]
 
     assert [node["id"] for node in payload["nodes"]] == [
         node["node_id"] for node in payload["context_nodes"]

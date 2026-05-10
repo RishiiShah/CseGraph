@@ -16,3 +16,12 @@ def _default_text_tokenize(text: str) -> List[str]:
     text = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", text)
     text = re.sub(r"[^a-zA-Z0-9]+", " ", text)
     return [token.lower() for token in text.split() if len(token) > 1 and token.lower() not in _STOP_WORDS]
+
+
+def code_tokenize(text: str) -> List[str]:
+    """Tokenize text with code-identifier awareness.
+
+    Splits CamelCase, snake_case, dotted names into sub-tokens.
+    Filters stop words and single-character tokens.
+    """
+    return _default_text_tokenize(text)

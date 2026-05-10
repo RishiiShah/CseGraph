@@ -58,6 +58,11 @@ csegraph-core
 
 The primary product surface is `context`: build an index once, refresh changed files, and ask for graph-backed context before an agent edits.
 
+## v1.3.2 Highlights
+
+- **Configurable CSE tuning** — `csegraph.json` / `csegraph.toml` can override profile defaults for CSE thresholds, expansion budgets, and compression settings. Use `--config` on `context` or `codegen`; see [`docs/csegraph.md`](docs/csegraph.md#configuration-file).
+- **Structural cleanup** — shared source-reading and tokenizer utilities remove duplicate code paths, and compression edge-relation counting now uses an indexed lookup.
+
 ## v1.3.1 Highlights
 
 - **Versioned context contract** — JSON context output now includes `"schema_version": "csegraph-context-v1"`. Contract tests lock both legacy fields and canonical fields so agent integrations can depend on stable shapes and ranking order.
@@ -115,6 +120,7 @@ csegraph refresh .
 
 # Ask for context before an agent edits.
 csegraph context "fix auth token refresh bug" --target refresh_token --repo .
+csegraph context "fix auth token refresh bug" --target refresh_token --repo . --config csegraph.json
 
 # Tune source materialization for agent token budgets.
 csegraph context "fix auth token refresh bug" --target refresh_token --repo . --include-source auto --max-tokens 4000 --json
@@ -133,6 +139,7 @@ By default, the index is stored at:
 ```
 
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget.
+Use `csegraph.json` / `csegraph.toml` or `--config` to tune CSE thresholds without editing source; the full schema is in [`docs/csegraph.md`](docs/csegraph.md#configuration-file).
 
 ## JSON-First Agent Surface
 
@@ -155,7 +162,7 @@ A context result includes:
 - sufficiency metrics such as dependency completeness and entity coverage
 - raw-code fallbacks for exact imports, signatures, small helpers, and risky context
 
-The v1.3.1 context output is backward-compatible and includes both legacy fields
+The v1.3.2 context output is backward-compatible and includes both legacy fields
 (`task`, `target_node_id`, `estimated_tokens`, `metrics`, `context_nodes`) and
 the canonical agent contract:
 

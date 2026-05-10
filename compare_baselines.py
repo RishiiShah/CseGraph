@@ -44,6 +44,7 @@ from agents.compression_agent import CompressionAgent
 from agents.cse_agent import CSEAgent
 from agents.full_context_agent import FullContextAgent
 from agents.static_rag_agent import StaticRAGAgent
+from csegraph_core.core.models import ProfileConfig
 from models.cse_result import SufficiencyQuery, SufficiencyResult
 
 
@@ -340,6 +341,7 @@ def run_comparison(
     top_k: int = 20,
     skip_codegen: bool = False,
     num_targets: int = 3,
+    profile: Optional[ProfileConfig] = None,
 ) -> None:
     abs_root = os.path.abspath(sandbox_root)
     sandbox_names = sorted(
@@ -367,7 +369,7 @@ def run_comparison(
             link_graph_path = os.path.join(tmp_dir, "link_graph.json")
             linking_agent.save_graph(graph, link_graph_path)
 
-            compression_agent = CompressionAgent(link_graph_path)
+            compression_agent = CompressionAgent(link_graph_path, profile=profile)
             compressed = compression_agent.compress()
 
             compressed_graph_path = os.path.join(tmp_dir, "compressed_graph.json")
@@ -380,12 +382,18 @@ def run_comparison(
                 link_graph_path,
                 compressed_graph_path,
                 resummary_fn=compression_agent._generate_node_summary,
+                profile=profile,
             )
             targets = cse.pick_top_n_targets(n=num_targets)
             node_summary_count = len(compressed.node_summaries)
 
-            full_agent = FullContextAgent(link_graph_path, compressed_graph_path)
-            rag_agent = StaticRAGAgent(link_graph_path, compressed_graph_path, top_k=top_k)
+            full_agent = FullContextAgent(link_graph_path, compressed_graph_path, profile=profile)
+            rag_agent = StaticRAGAgent(
+                link_graph_path,
+                compressed_graph_path,
+                top_k=top_k,
+                profile=profile,
+            )
 
             for target_idx, (target_id, target_file, auto_query) in enumerate(targets):
                 print(f"  target [{target_idx + 1}/{len(targets)}]: {target_id}")

@@ -67,7 +67,8 @@ def _build_parser() -> argparse.ArgumentParser:
     context.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     context.add_argument("--task", default=None, help="Natural-language task.")
     context.add_argument("--target", default=None, help="Optional target node, symbol name, or file path.")
-    context.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    context.add_argument("--profile", choices=sorted(PROFILES), default=None)
+    context.add_argument("--config", default=None, help="Path to csegraph.json/toml with threshold overrides.")
     context.add_argument(
         "--include-source",
         choices=("auto", "always", "never"),
@@ -111,7 +112,8 @@ def _build_parser() -> argparse.ArgumentParser:
     codegen.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     codegen.add_argument("--task", default=None, help="Natural-language task (alternative to positional).")
     codegen.add_argument("--target", default=None, help="Optional target node, symbol name, or file path.")
-    codegen.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    codegen.add_argument("--profile", choices=sorted(PROFILES), default=None)
+    codegen.add_argument("--config", default=None, help="Path to csegraph.json/toml for context retrieval thresholds.")
     codegen.add_argument("-o", "--output", default=None, help="Write generated .py to this path.")
     codegen.add_argument("--model-path", default=None, help="Explicit GGUF model path (overrides auto-selection).")
     codegen.add_argument("--model-dir", default=None, help="Directory of GGUF models for auto-selection.")
@@ -142,6 +144,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             include_source=args.include_source,
             max_tokens=args.max_tokens,
             explain=args.explain,
+            config_path=args.config,
         )
     if args.command == "graph":
         repo = Path(args.repo or ".").resolve()
@@ -183,6 +186,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             target=args.target,
             profile=args.profile,
             output_path=args.output,
+            config_path=args.config,
         )
     raise ValueError(f"Unknown command: {args.command}")
 

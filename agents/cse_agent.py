@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from collections import defaultdict, deque
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -18,7 +18,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.compressed_graph import CompressedGraph
 from models.cse_result import SufficiencyMetrics, SufficiencyQuery, SufficiencyResult
 from models.link_graph import GraphEdge, GraphNode, LinkGraph
+from csegraph_core.text.source_reader import read_source_lines
 from system_profile import build_system_profile, embedding_device
+
+if TYPE_CHECKING:
+    from csegraph_core.core.models import ProfileConfig
 
 # ---------------------------------------------------------------------------
 # Sentence-embedding model — lazy singleton, loaded on first use.
@@ -129,6 +133,7 @@ class CSEAgent:
         link_graph_path: str,
         compressed_graph_path: str,
         resummary_fn: Optional[Callable[[str], str]] = None,
+        profile: Optional["ProfileConfig"] = None,
     ) -> None:
         """
         Parameters
@@ -148,6 +153,19 @@ class CSEAgent:
         self._resummary_fn = resummary_fn
         self.link_graph = self._load_link_graph(link_graph_path)
         self.compressed_graph = self._load_compressed_graph(compressed_graph_path)
+
+        if profile is not None:
+            self.DEP_THRESHOLD = profile.dep_threshold
+            self.ENTITY_THRESHOLD = profile.entity_threshold
+            self.SEMANTIC_THRESHOLD = profile.semantic_threshold
+            self.SEMANTIC_THRESHOLD_RELAXED = profile.semantic_threshold_relaxed
+            self.CONFIDENCE_THRESHOLD = profile.confidence_threshold
+            self.MAX_ROUNDS = profile.max_expansion_rounds
+            self.CONTEXT_BUDGET = profile.context_budget
+            self.IMPORT_BUDGET = profile.import_budget
+            self.TIER0_TARGET = profile.tier0_target
+            self.TIER1_TARGET = profile.tier1_target
+            self.CONFIDENCE_DROP_THRESHOLD = profile.confidence_drop_threshold
 
         # Adjacency indices
         self._outgoing: Dict[str, List[GraphEdge]] = defaultdict(list)
@@ -541,22 +559,9 @@ class CSEAgent:
         return found / len(code_entities)
 
     def _code_tokenize(self, text: str) -> List[str]:
-        """Tokenise text into lowercase sub-tokens with code-identifier awareness.
+        from csegraph_core.text.tokens import code_tokenize
 
-        Used by StaticRAGAgent for BM25 node ranking. Handles CamelCase,
-        snake_case, and dot/slash splits; filters short stop words.
-        """
-        text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
-        text = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", text)
-        text = re.sub(r"[^a-zA-Z0-9]+", " ", text)
-        tokens = [t.lower() for t in text.split() if len(t) > 1]
-        _STOP = {
-            "in", "on", "by", "to", "of", "at", "is", "it", "or", "an",
-            "do", "be", "no", "up", "as", "if", "so", "we", "my", "py",
-            "the", "and", "for", "with", "from", "that", "this", "into",
-            "are", "was", "has", "had", "not", "its",
-        }
-        return [t for t in tokens if t not in _STOP]
+        return code_tokenize(text)
 
     def _compute_tfidf_similarity(
         self, query_text: str, context_summaries: List[str]
@@ -712,17 +717,15 @@ class CSEAgent:
         """Fetch verbatim source code lines for a node using its line range."""
         if not node.file_path or node.start_line is None or node.end_line is None:
             return ""
-        abs_path = os.path.join(self.link_graph.root_dir, node.file_path)
-        if not os.path.isfile(abs_path):
-            return ""
-        try:
-            with open(abs_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            start_idx = max(0, node.start_line - 1)
-            end_idx = min(len(lines), node.end_line)
-            return "".join(lines[start_idx:end_idx])
-        except Exception:
-            return ""
+        return (
+            read_source_lines(
+                self.link_graph.root_dir,
+                node.file_path,
+                node.start_line,
+                node.end_line,
+            )
+            or ""
+        )
 
     def _recompress_nodes(self, node_ids: Set[str]) -> None:
         """Regenerate summaries for *node_ids* via ``self._resummary_fn``.
@@ -827,6 +830,7 @@ class CSEAgent:
                 "dependency_completeness": self.DEP_THRESHOLD,
                 "entity_coverage": self.ENTITY_THRESHOLD,
                 "semantic_overlap": self.SEMANTIC_THRESHOLD,
+                "semantic_overlap_relaxed": self.SEMANTIC_THRESHOLD_RELAXED,
                 "model_confidence": self.CONFIDENCE_THRESHOLD,
             },
             reason=reason,

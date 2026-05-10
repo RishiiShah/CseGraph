@@ -5,12 +5,15 @@ import math
 import os
 import sys
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.cse_agent import CSEAgent
 from models.cse_result import SufficiencyQuery, SufficiencyResult
+
+if TYPE_CHECKING:
+    from csegraph_core.core.models import ProfileConfig
 
 
 class StaticRAGAgent:
@@ -23,8 +26,9 @@ class StaticRAGAgent:
         link_graph_path: str,
         compressed_graph_path: str,
         top_k: int = DEFAULT_TOP_K,
+        profile: Optional["ProfileConfig"] = None,
     ) -> None:
-        self._cse = CSEAgent(link_graph_path, compressed_graph_path)
+        self._cse = CSEAgent(link_graph_path, compressed_graph_path, profile=profile)
         self.top_k = top_k
 
     # Public API

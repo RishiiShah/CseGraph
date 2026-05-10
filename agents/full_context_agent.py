@@ -3,19 +3,27 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import List
+from typing import TYPE_CHECKING, List, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.cse_agent import CSEAgent
 from models.cse_result import SufficiencyMetrics, SufficiencyQuery, SufficiencyResult
 
+if TYPE_CHECKING:
+    from csegraph_core.core.models import ProfileConfig
+
 
 class FullContextAgent:
     """Baseline: all repository symbols included as raw verbatim source."""
 
-    def __init__(self, link_graph_path: str, compressed_graph_path: str) -> None:
-        self._cse = CSEAgent(link_graph_path, compressed_graph_path)
+    def __init__(
+        self,
+        link_graph_path: str,
+        compressed_graph_path: str,
+        profile: Optional["ProfileConfig"] = None,
+    ) -> None:
+        self._cse = CSEAgent(link_graph_path, compressed_graph_path, profile=profile)
 
     # Public API
     def build_context(self, query: SufficiencyQuery) -> SufficiencyResult:

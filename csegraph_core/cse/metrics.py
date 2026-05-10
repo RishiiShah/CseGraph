@@ -79,16 +79,24 @@ def compute_metrics(
     )
 
 
-def all_pass(metrics: SufficiencyMetrics) -> bool:
+def all_pass(
+    metrics: SufficiencyMetrics,
+    *,
+    dep_threshold: float = DEP_THRESHOLD,
+    entity_threshold: float = ENTITY_THRESHOLD,
+    semantic_threshold: float = SEMANTIC_THRESHOLD,
+    semantic_threshold_relaxed: float = SEMANTIC_THRESHOLD_RELAXED,
+    confidence_threshold: float = CONFIDENCE_THRESHOLD,
+) -> bool:
     structural_ok = (
-        metrics.dependency_completeness >= DEP_THRESHOLD
-        and metrics.entity_coverage >= ENTITY_THRESHOLD
+        metrics.dependency_completeness >= dep_threshold
+        and metrics.entity_coverage >= entity_threshold
     )
-    sem_threshold = SEMANTIC_THRESHOLD_RELAXED if structural_ok else SEMANTIC_THRESHOLD
+    sem_threshold = semantic_threshold_relaxed if structural_ok else semantic_threshold
     return (
         structural_ok
         and metrics.semantic_overlap >= sem_threshold
-        and metrics.model_confidence >= CONFIDENCE_THRESHOLD
+        and metrics.model_confidence >= confidence_threshold
     )
 
 
@@ -98,8 +106,10 @@ def raw_code_nodes(
     outgoing: Dict[str, List[Dict[str, Any]]],
     metrics: SufficiencyMetrics,
     budget: int,
+    *,
+    confidence_threshold: float = CONFIDENCE_THRESHOLD,
 ) -> Set[str]:
-    if metrics.model_confidence >= CONFIDENCE_THRESHOLD:
+    if metrics.model_confidence >= confidence_threshold:
         return set()
     raw: List[str] = []
     for edge in outgoing.get(target_node_id, []):

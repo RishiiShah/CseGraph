@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -257,6 +258,27 @@ def test_context_reason_enum_is_strict(tmp_path):
         assert node.reason
         assert set(node.reason).issubset(VALID_REASONS)
         assert all("expanded-from-" not in reason for reason in node.reason)
+
+
+def test_context_service_config_path_overrides_thresholds(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    config_file = tmp_path / "csegraph.json"
+    config_file.write_text(
+        json.dumps({"dep_threshold": 0.65}),
+        encoding="utf-8",
+    )
+
+    context = ContextService(db_path).build_context(
+        task="Implement build_report using format_user",
+        target="symbol::main.py::function::build_report",
+        config_path=str(config_file),
+    )
+    assert context.thresholds["dependency_completeness"] == 0.65
+    assert "semantic_overlap_relaxed" in context.thresholds
 
 
 def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):

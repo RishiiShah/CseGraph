@@ -7,7 +7,7 @@ import csegraph_codegen
 import csegraph_core
 
 
-EXPECTED_VERSION = "1.3.1"
+EXPECTED_VERSION = "1.3.2"
 
 
 def _project_version(path: Path) -> str:

@@ -207,6 +207,33 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
     assert helper is None or helper["source_text"] is None
 
 
+def test_context_config_overrides_thresholds(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    config_file = tmp_path / "csegraph.json"
+    config_file.write_text(
+        json.dumps({"dep_threshold": 0.65, "confidence_threshold": 0.55}),
+        encoding="utf-8",
+    )
+
+    context = _run_cli(
+        "context",
+        "Implement create_user with clean_name",
+        "--target",
+        "create_user",
+        "--repo",
+        str(repo),
+        "--config",
+        str(config_file),
+        "--json",
+    )
+    assert context["thresholds"]["dependency_completeness"] == 0.65
+    assert context["thresholds"]["model_confidence"] == 0.55
+    assert "semantic_overlap_relaxed" in context["thresholds"]
+
+
 def test_context_cli_explain_and_markdown_format(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
