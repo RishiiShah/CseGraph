@@ -17,7 +17,12 @@ from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.index.services import IndexService, RefreshService
 from csegraph_core.retrieval.context import ContextService
 from csegraph_cli.errors import CsegraphCLIError, error_payload
-from csegraph_cli.renderer import render_context_markdown, render_json
+from csegraph_cli.renderer import (
+    render_context_markdown,
+    render_index_summary,
+    render_json,
+    render_refresh_summary,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,8 +39,14 @@ def main(argv: list[str] | None = None) -> int:
     payload = to_dict(result)
     if args.command == "context" and args.output_format == "markdown":
         print(render_context_markdown(payload), end="")
+    elif args.json:
+        print(render_json(payload, compact=True))
+    elif args.command == "index":
+        print(render_index_summary(payload), end="")
+    elif args.command == "refresh":
+        print(render_refresh_summary(payload), end="")
     else:
-        print(render_json(payload, compact=args.json))
+        print(render_json(payload, compact=False))
     return 0
 
 
