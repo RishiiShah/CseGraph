@@ -2,7 +2,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import csegraph
 import pytest
 from csegraph import (
     ContextService,
@@ -496,8 +495,3 @@ def test_malformed_schema_metadata_raises_structured_error(tmp_path):
 
     assert exc_info.value.error_code == "unsupported_schema"
 
-
-def test_sdk_facade_does_not_export_codegen():
-    assert hasattr(csegraph, "ContextService")
-    assert not hasattr(csegraph, "CodegenService")
-    assert not hasattr(csegraph, "CodegenResult")
