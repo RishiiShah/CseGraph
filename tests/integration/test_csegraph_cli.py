@@ -135,6 +135,70 @@ def test_cli_json_contracts(tmp_path):
     assert refreshed["deleted_files"] == []
 
 
+def test_index_default_output_is_human_summary(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "csegraph_cli", "index", str(repo)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Parsing:" in proc.stdout
+    assert "2 files" in proc.stdout
+    assert "Indexing:" in proc.stdout
+    assert "symbols" in proc.stdout
+    assert "edges" in proc.stdout
+    assert "  Files:" in proc.stdout
+    assert "  Symbols:" in proc.stdout
+    assert "  Edges:" in proc.stdout
+    assert "  Profile:" in proc.stdout
+    assert "  DB:" in proc.stdout
+
+
+def test_refresh_default_output_is_human_summary(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "csegraph_cli", "refresh", str(repo)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Scanning:" in proc.stdout
+    assert "  Changed:" in proc.stdout
+    assert "  Unchanged:" in proc.stdout
+    assert "  Profile:" in proc.stdout
+    assert "  DB:" in proc.stdout
+
+
+def test_index_json_flag_returns_parseable_json(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    result = _run_cli("index", str(repo), "--json")
+
+    assert result["command"] == "index"
+    assert result["files_indexed"] == 2
+    assert isinstance(result["changed_files"], list)
+
+
+def test_refresh_json_flag_returns_parseable_json(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli("refresh", str(repo), "--json")
+
+    assert result["command"] == "refresh"
+    assert isinstance(result["unchanged_files"], list)
+
+
 def test_legacy_explicit_db_flags_still_work(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "custom.db"
