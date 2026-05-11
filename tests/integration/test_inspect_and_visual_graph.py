@@ -365,3 +365,123 @@ def test_graph_visual_export_no_deprecation_warning(tmp_path):
         text=True,
     )
     assert "deprecated" not in proc.stderr.lower()
+
+
+def test_inspect_resolves_folder_node(tmp_path):
+    repo = tmp_path / "repo"
+    _write_nested_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        "folder::pkg",
+        "--repo",
+        str(repo),
+        "--depth",
+        "1",
+        "--json",
+    )
+    assert result["command"] == "inspect"
+    assert result["node_id"] == "folder::pkg"
+    assert any(n["kind"] == "folder" for n in result["nodes"])
+    assert any(edge["relation"] == "contains" for edge in result["edges"])
+
+
+def test_inspect_resolves_folder_by_name(tmp_path):
+    repo = tmp_path / "repo"
+    _write_nested_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        "pkg",
+        "--repo",
+        str(repo),
+        "--json",
+    )
+    assert result["node_id"] == "folder::pkg"
+
+
+def test_inspect_resolves_repo_node(tmp_path):
+    repo = tmp_path / "repo"
+    _write_nested_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        "repo::repo",
+        "--repo",
+        str(repo),
+        "--depth",
+        "1",
+        "--json",
+    )
+    assert result["command"] == "inspect"
+    assert result["node_id"] == "repo::repo"
+    assert any(n["kind"] == "repo" for n in result["nodes"])
+
+
+def test_inspect_folder_includes_child_contains_edges(tmp_path):
+    repo = tmp_path / "repo"
+    _write_nested_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        "folder::pkg",
+        "--repo",
+        str(repo),
+        "--depth",
+        "1",
+        "--json",
+    )
+    contains_targets = [
+        edge["target"] for edge in result["edges"] if edge["relation"] == "contains"
+    ]
+    assert "file::pkg/__init__.py" in contains_targets
+    assert "file::pkg/worker.py" in contains_targets
+
+
+def test_inspect_dot_resolves_to_repo_node(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        ".",
+        "--repo",
+        str(repo),
+        "--json",
+    )
+    assert result["node_id"] == "repo::repo"
+
+
+def test_inspect_repo_absolute_path_resolves_to_repo_node(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        str(repo),
+        "--repo",
+        str(repo),
+        "--json",
+    )
+    assert result["node_id"] == "repo::repo"
+
+
+def test_inspect_repo_basename_resolves_to_repo_node(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _run_cli("index", str(repo), "--json")
+
+    result = _run_cli(
+        "inspect",
+        "repo",
+        "--repo",
+        str(repo),
+        "--json",
+    )
+    assert result["node_id"] == "repo::repo"
