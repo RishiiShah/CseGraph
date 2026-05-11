@@ -154,6 +154,7 @@ class ReportResult:
     knowledge_gaps: List[Dict[str, Any]] = field(default_factory=list)
     surprising_connections: List[Dict[str, Any]] = field(default_factory=list)
     suggested_questions: List[str] = field(default_factory=list)
+    sections: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def to_dict(value: Any) -> Any:

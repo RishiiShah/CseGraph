@@ -176,6 +176,20 @@ def render_report_markdown(payload: Dict[str, Any]) -> str:
             )
         lines.append("")
 
+    if payload.get("sections"):
+        lines.append("## Sections")
+        lines.append("")
+        lines.append("| Section | Files | Symbols | Internal edges | Cross-section deps |")
+        lines.append("|---|---:|---:|---:|---|")
+        for section in payload["sections"]:
+            deps = ", ".join(section.get("cross_section_deps", []))
+            lines.append(
+                f"| `{section['name']}` | {section['files']:,} "
+                f"| {section['symbols']:,} | {section['internal_edges']:,} "
+                f"| {deps} |"
+            )
+        lines.append("")
+
     if payload.get("surprising_connections"):
         lines.append("## Surprising Connections")
         lines.append("")
