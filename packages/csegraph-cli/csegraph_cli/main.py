@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         _validate_cli_options(args)
+        _emit_deprecation_warnings(args)
         result = _dispatch(args)
     except Exception as exc:
         print(json.dumps(error_payload(exc), indent=2, sort_keys=True), file=sys.stderr)
@@ -109,8 +110,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     context.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
-    graph = subparsers.add_parser("graph", help="Explain a graph neighborhood.")
-    graph.add_argument("node_arg", nargs="?", help="Node ID, symbol name, or file path.")
+    inspect = subparsers.add_parser("inspect", help="Inspect a graph neighborhood.")
+    inspect.add_argument("node_arg", nargs="?", help="Node ID, symbol name, or file path.")
+    inspect.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    inspect.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    inspect.add_argument("--node", default=None, help="Node ID, symbol name, or file path.")
+    inspect.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
+    inspect.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
+    graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
+    graph.add_argument("node_arg", nargs="?", help="(Deprecated) Node ID for neighborhood inspection.")
     graph.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
     graph.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     graph.add_argument("--node", default=None, help="Node ID, symbol name, or file path.")
@@ -147,7 +156,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             explain=args.explain,
             config_path=args.config,
         )
-    if args.command == "graph":
+    if args.command == "inspect":
         repo = Path(args.repo or ".").resolve()
         node = args.node or args.node_arg
         if not node:
@@ -169,6 +178,19 @@ def _validate_cli_options(args: argparse.Namespace) -> None:
             "--json cannot be combined with --format markdown",
             error_code="invalid_cli_options",
         )
+
+
+def _emit_deprecation_warnings(args: argparse.Namespace) -> None:
+    if args.command == "graph" and (args.node or args.node_arg):
+        print(
+            "Warning: csegraph graph <node> is deprecated; "
+            "use csegraph inspect <node> instead.",
+            file=sys.stderr,
+        )
+
+
+def _is_visual_graph_export(args: argparse.Namespace) -> bool:
+    return args.command == "graph" and not (args.node or args.node_arg)
 
 
 def _repo_arg(args: argparse.Namespace) -> str:
