@@ -20,10 +20,14 @@ from csegraph_core.core.models import (
     GraphResult,
     IndexResult,
     RefreshResult,
+    ReportResult,
+    VisualExportResult,
     to_dict,
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
 from csegraph_core.graph.queries import GraphQueryService
+from csegraph_core.graph.report import ReportService
+from csegraph_core.graph.visual import VisualExportService
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.index.services import IndexService, RefreshService
 from csegraph_core.retrieval.constants import VALID_REASONS
@@ -45,8 +49,12 @@ __all__ = [
     "ProjectIndex",
     "RefreshResult",
     "RefreshService",
+    "ReportResult",
+    "ReportService",
     "SufficiencyMetrics",
     "VALID_REASONS",
+    "VisualExportResult",
+    "VisualExportService",
     "get_profile",
     "load_profile",
     "to_dict",

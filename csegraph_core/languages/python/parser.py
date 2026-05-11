@@ -72,15 +72,28 @@ class PythonParser:
     extensions = (".py",)
 
     def iter_files(self, root_dir: Path) -> List[Path]:
+        from csegraph_core.ignore import load_ignore_filter
+
+        ignore = load_ignore_filter(root_dir)
+        resolved_root = root_dir.resolve()
         paths: List[Path] = []
         for root, dirs, files in os.walk(root_dir):
+            rel_root = Path(root).resolve().relative_to(resolved_root).as_posix()
             dirs[:] = sorted(
-                name for name in dirs if name not in EXCLUDED_DIRS and not name.startswith(".")
+                name for name in dirs
+                if name not in EXCLUDED_DIRS
+                and not name.startswith(".")
+                and not ignore.is_ignored(
+                    f"{rel_root}/{name}" if rel_root != "." else name,
+                    is_dir=True,
+                )
             )
             for filename in sorted(files):
                 if filename.startswith(".") or not filename.endswith(".py"):
                     continue
-                paths.append(Path(root) / filename)
+                rel_path = f"{rel_root}/{filename}" if rel_root != "." else filename
+                if not ignore.is_ignored(rel_path):
+                    paths.append(Path(root) / filename)
         return sorted(paths)
 
     def parse(self, path: Path, root_dir: Path) -> ParsedFile:

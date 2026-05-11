@@ -420,7 +420,9 @@ def test_cli_help_lists_only_product_commands():
     assert "index" in proc.stdout
     assert "refresh" in proc.stdout
     assert "context" in proc.stdout
+    assert "inspect" in proc.stdout
     assert "graph" in proc.stdout
+    assert "report" in proc.stdout
     removed_command = "code" + "gen"
     assert removed_command not in proc.stdout
 

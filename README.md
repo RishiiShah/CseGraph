@@ -16,7 +16,7 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 |---|---|---|
 | `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, CSE metrics, and migrations. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
-| `csegraph-cli` | `packages/csegraph-cli/` | CLI with `index`, `refresh`, `context`, and `graph`. |
+| `csegraph-cli` | `packages/csegraph-cli/` | CLI with `index`, `refresh`, `context`, `inspect`, `graph`, and `report`. |
 
 Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 
@@ -46,12 +46,22 @@ csegraph context "fix auth token refresh bug" --target refresh_token --repo . --
 csegraph context "fix auth token refresh bug" --target refresh_token --repo . --format markdown --explain
 
 # Inspect a graph neighborhood.
-csegraph graph refresh_token --repo . --depth 1 --json
+csegraph inspect refresh_token --repo . --depth 1 --json
+
+# Export a visual HTML graph to .csegraph/csegraph-graph.html.
+csegraph graph --repo .
+
+# Generate a project report from the index.
+csegraph report . --json
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
 
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
+
+## .csegraphignore
+
+Place a `.csegraphignore` file in the repository root to exclude files and directories from indexing. Supports a `.gitignore`-like subset: blank lines, `#` comments, glob patterns (`*.generated.py`), directory patterns (`data/`), rooted patterns (`/scripts/`), and negation (`!important.py`).
 
 ## SDK
 

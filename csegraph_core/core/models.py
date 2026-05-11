@@ -129,6 +129,34 @@ class GraphResult:
     edges: List[GraphEdgeView]
 
 
+@dataclass
+class VisualExportResult:
+    command: str
+    db_path: str
+    repo_root: str
+    output_path: str
+    total_nodes: int
+    total_edges: int
+
+
+@dataclass
+class ReportResult:
+    command: str
+    db_path: str
+    repo_root: str
+    total_files: int
+    total_symbols: int
+    total_edges: int
+    parse_error_count: int
+    node_counts: Dict[str, int] = field(default_factory=dict)
+    edge_counts: Dict[str, int] = field(default_factory=dict)
+    god_nodes: List[Dict[str, Any]] = field(default_factory=list)
+    knowledge_gaps: List[Dict[str, Any]] = field(default_factory=list)
+    surprising_connections: List[Dict[str, Any]] = field(default_factory=list)
+    suggested_questions: List[str] = field(default_factory=list)
+    sections: List[Dict[str, Any]] = field(default_factory=list)
+
+
 def to_dict(value: Any) -> Any:
     from csegraph_core.core.serializer import to_dict as serialize
 
