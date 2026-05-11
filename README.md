@@ -47,11 +47,18 @@ csegraph context "fix auth token refresh bug" --target refresh_token --repo . --
 
 # Inspect a graph neighborhood.
 csegraph graph refresh_token --repo . --depth 1 --json
+
+# Generate a project report from the index.
+csegraph report . --json
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
 
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
+
+## .csegraphignore
+
+Place a `.csegraphignore` file in the repository root to exclude files and directories from indexing. Supports a `.gitignore`-like subset: blank lines, `#` comments, glob patterns (`*.generated.py`), directory patterns (`data/`), rooted patterns (`/scripts/`), and negation (`!important.py`).
 
 ## SDK
 

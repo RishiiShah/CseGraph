@@ -116,6 +116,84 @@ def _line_range_text(line_range: Optional[List[int]]) -> str:
     return f":{line_range[0]}-{line_range[1]}"
 
 
+def render_report_markdown(payload: Dict[str, Any]) -> str:
+    lines: List[str] = ["# csegraph report", ""]
+
+    lines.append("## Corpus Check")
+    lines.append("")
+    lines.append(f"| Metric | Count |")
+    lines.append(f"|---|---:|")
+    lines.append(f"| Files | {payload['total_files']:,} |")
+    lines.append(f"| Symbols | {payload['total_symbols']:,} |")
+    lines.append(f"| Edges | {payload['total_edges']:,} |")
+    lines.append(f"| Parse errors | {payload['parse_error_count']:,} |")
+    lines.append("")
+
+    lines.append("## Summary")
+    lines.append("")
+    if payload.get("node_counts"):
+        lines.append("### Nodes by type")
+        lines.append("")
+        lines.append("| Type | Count |")
+        lines.append("|---|---:|")
+        for ntype, count in sorted(payload["node_counts"].items()):
+            lines.append(f"| {ntype} | {count:,} |")
+        lines.append("")
+    if payload.get("edge_counts"):
+        lines.append("### Edges by relation")
+        lines.append("")
+        lines.append("| Relation | Count |")
+        lines.append("|---|---:|")
+        for relation, count in sorted(payload["edge_counts"].items()):
+            lines.append(f"| {relation} | {count:,} |")
+        lines.append("")
+
+    if payload.get("god_nodes"):
+        lines.append("## God Nodes")
+        lines.append("")
+        lines.append("| Rank | Name | Kind | Path | Degree |")
+        lines.append("|---:|---|---|---|---:|")
+        for rank, node in enumerate(payload["god_nodes"], start=1):
+            lines.append(
+                f"| {rank} | `{node['name']}` | {node['kind']} "
+                f"| {node['path']} | {node['degree']} |"
+            )
+        lines.append("")
+
+    if payload.get("knowledge_gaps"):
+        lines.append("## Knowledge Gaps")
+        lines.append("")
+        lines.append("| Name | Kind | Path | Degree |")
+        lines.append("|---|---|---|---:|")
+        for node in payload["knowledge_gaps"]:
+            lines.append(
+                f"| `{node['name']}` | {node['kind']} "
+                f"| {node['path']} | {node['degree']} |"
+            )
+        lines.append("")
+
+    if payload.get("surprising_connections"):
+        lines.append("## Surprising Connections")
+        lines.append("")
+        lines.append("| Source | Relation | Target |")
+        lines.append("|---|---|---|")
+        for edge in payload["surprising_connections"]:
+            lines.append(
+                f"| `{edge['source_path']}` | {edge['relation']} "
+                f"| `{edge['target_path']}` |"
+            )
+        lines.append("")
+
+    if payload.get("suggested_questions"):
+        lines.append("## Suggested Questions")
+        lines.append("")
+        for question in payload["suggested_questions"]:
+            lines.append(f"- {question}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _display_path(path: str, repo_root: str) -> str:
     resolved = Path(path).resolve()
     root = Path(repo_root).resolve()

@@ -14,6 +14,7 @@ from typing import Any
 from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_core.graph.queries import GraphQueryService
+from csegraph_core.graph.report import ReportService
 from csegraph_core.index.services import IndexService, RefreshService
 from csegraph_core.retrieval.context import ContextService
 from csegraph_cli.errors import CsegraphCLIError, error_payload
@@ -22,6 +23,7 @@ from csegraph_cli.renderer import (
     render_index_summary,
     render_json,
     render_refresh_summary,
+    render_report_markdown,
 )
 
 
@@ -39,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     payload = to_dict(result)
     if args.command == "context" and args.output_format == "markdown":
         print(render_context_markdown(payload), end="")
+    elif args.command == "report" and not args.json:
+        print(render_report_markdown(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
     elif args.command == "index":
@@ -113,6 +117,12 @@ def _build_parser() -> argparse.ArgumentParser:
     graph.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
     graph.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    report = subparsers.add_parser("report", help="Generate a project report from the index.")
+    report.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
+    report.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
+    report.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    report.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     return parser
 
 
@@ -143,6 +153,9 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if not node:
             raise ValueError("graph requires a node. Example: csegraph graph MyClass.method")
         return GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
+    if args.command == "report":
+        repo = _repo_arg(args)
+        return ReportService(_db_arg(args, repo)).report()
     raise ValueError(f"Unknown command: {args.command}")
 
 
