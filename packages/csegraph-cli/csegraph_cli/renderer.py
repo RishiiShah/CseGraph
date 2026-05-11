@@ -24,13 +24,16 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
         indexing += f" ({len(parse_errors)} parse errors)"
     progress.append(indexing)
 
+    embeddings = payload.get("embeddings_indexed", 0)
+
     detail = [
         "",
-        f"  Files:   {files:,}",
-        f"  Symbols: {symbols:,}",
-        f"  Edges:   {edges:,}",
-        f"  Profile: {payload.get('profile', '')}",
-        f"  DB:      {db}",
+        f"  Files:      {files:,}",
+        f"  Symbols:    {symbols:,}",
+        f"  Edges:      {edges:,}",
+        f"  Embeddings: {embeddings:,}",
+        f"  Profile:    {payload.get('profile', '')}",
+        f"  DB:         {db}",
     ]
     detail.extend(_render_parse_errors(parse_errors))
 
@@ -56,11 +59,13 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
         f"  Deleted:   {deleted:,}",
         f"  Unchanged: {unchanged:,}",
     ]
+    embeddings = payload.get("embeddings_indexed", 0)
     if changed or deleted:
         detail.extend(
             [
-                f"  Symbols:   {symbols:,}",
-                f"  Edges:     {edges:,}",
+                f"  Symbols:    {symbols:,}",
+                f"  Edges:      {edges:,}",
+                f"  Embeddings: {embeddings:,}",
             ]
         )
     detail.extend(

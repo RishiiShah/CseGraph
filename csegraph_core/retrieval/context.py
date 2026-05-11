@@ -11,10 +11,10 @@ from csegraph_core.cse.metrics import (
     compute_metrics,
     raw_code_nodes,
 )
-from csegraph_core.index.loaders import edge_maps, load_edges, load_summaries, load_symbols
+from csegraph_core.index.loaders import edge_maps, load_edges, load_embeddings, load_summaries, load_symbols
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.explain import build_explanation, normalize_reasons
-from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
+from csegraph_core.retrieval.scoring import apply_graph_expansion, embedding_scores, fts_lexical_scores, lexical_scores
 from csegraph_core.text.source_reader import read_source_lines
 
 
@@ -54,6 +54,14 @@ class ContextService:
             target_node_id = _resolve_target(target, task, symbols, summaries, index, project_id)
             fts_seed = fts_lexical_scores(index.conn, project_id, task)
             scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
+
+            embeddings = load_embeddings(index, project_id)
+            embed_scores = embedding_scores(task, embeddings)
+            for node_id, sim in embed_scores.items():
+                if node_id in symbols:
+                    scores[node_id] += sim * 3.0
+                    evidence[node_id].append("embedding_match")
+
             if target_node_id:
                 scores[target_node_id] += 4.0
                 evidence[target_node_id].append("target")

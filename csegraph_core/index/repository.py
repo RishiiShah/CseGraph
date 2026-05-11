@@ -119,6 +119,10 @@ class ProjectIndex:
                 f"DELETE FROM summaries WHERE node_id IN ({placeholders})",
                 node_ids,
             )
+            self.conn.execute(
+                f"DELETE FROM embedding_cache WHERE node_id IN ({placeholders})",
+                node_ids,
+            )
         self.conn.execute("DELETE FROM edges WHERE project_id = ?", (project_id,))
         self.conn.execute("DELETE FROM nodes WHERE project_id = ?", (project_id,))
         self.conn.commit()
@@ -159,6 +163,7 @@ class ProjectIndex:
         for node_id in node_ids:
             self.conn.execute("DELETE FROM lexical_index WHERE node_id = ?", (node_id,))
             self.conn.execute("DELETE FROM summaries WHERE node_id = ?", (node_id,))
+            self.conn.execute("DELETE FROM embedding_cache WHERE node_id = ?", (node_id,))
         self.conn.execute(
             f"DELETE FROM nodes WHERE project_id = ? AND id IN ({placeholders})",
             params,

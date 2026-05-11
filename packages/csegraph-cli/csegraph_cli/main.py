@@ -71,6 +71,7 @@ def _build_parser() -> argparse.ArgumentParser:
     index.add_argument("--repo", dest="repo_opt", help="Repository root to index.")
     index.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     index.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    index.add_argument("--no-embed", action="store_true", help="Skip embedding generation.")
     index.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
@@ -78,6 +79,7 @@ def _build_parser() -> argparse.ArgumentParser:
     refresh.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
     refresh.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     refresh.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    refresh.add_argument("--no-embed", action="store_true", help="Skip embedding generation.")
     refresh.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
@@ -148,10 +150,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def _dispatch(args: argparse.Namespace) -> Any:
     if args.command == "index":
         repo = _repo_arg(args)
-        return IndexService(_db_arg(args, repo)).index(repo, profile=args.profile)
+        return IndexService(_db_arg(args, repo)).index(repo, profile=args.profile, embed=not args.no_embed)
     if args.command == "refresh":
         repo = _repo_arg(args)
-        return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)
+        return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile, embed=not args.no_embed)
     if args.command == "context":
         repo = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg

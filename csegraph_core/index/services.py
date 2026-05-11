@@ -20,7 +20,7 @@ class IndexService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def index(self, repo: str | Path, profile: str = "small") -> IndexResult:
+    def index(self, repo: str | Path, profile: str = "small", embed: bool = True) -> IndexResult:
         config = get_profile(profile)
         repo_root = str(Path(repo).resolve())
         parsed_files = [
@@ -33,7 +33,7 @@ class IndexService:
             index.initialize_schema()
             project_id = index.upsert_project(repo_root, config.name)
             index.clear_project_graph(project_id)
-            stats = _write_parsed_files(index, project_id, repo_root, parsed_files)
+            stats = _write_parsed_files(index, project_id, repo_root, parsed_files, embed=embed)
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
                 for parsed in parsed_files
@@ -47,6 +47,7 @@ class IndexService:
                 files_indexed=len(parsed_files),
                 symbols_indexed=stats["symbols"],
                 edges_indexed=stats["edges"],
+                embeddings_indexed=stats["embeddings"],
                 changed_files=[parsed.rel_path for parsed in parsed_files],
                 parse_errors=parse_errors,
             )
@@ -58,7 +59,7 @@ class RefreshService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def refresh(self, profile: str = "small") -> RefreshResult:
+    def refresh(self, profile: str = "small", embed: bool = True) -> RefreshResult:
         config = get_profile(profile)
         index = ProjectIndex(self.db_path)
         try:
@@ -111,7 +112,7 @@ class RefreshService:
                     index.delete_file_payload(project_id, rel_path, remove_incoming=False)
                 )
 
-            stats = _write_parsed_files(index, project_id, str(repo_root), parsed_changed)
+            stats = _write_parsed_files(index, project_id, str(repo_root), parsed_changed, embed=embed)
             index.cleanup_orphan_edges(project_id)
             index.cleanup_orphan_folders(project_id)
             changed_symbols.extend(symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols)
@@ -128,6 +129,7 @@ class RefreshService:
                 files_indexed=len(parsed_changed),
                 symbols_indexed=stats["symbols"],
                 edges_indexed=stats["edges"],
+                embeddings_indexed=stats["embeddings"],
                 unchanged_files=sorted(set(current_files) - set(changed)),
                 changed_files=changed,
                 deleted_files=deleted,
@@ -143,6 +145,7 @@ def _write_parsed_files(
     project_id: int,
     repo_root: str,
     parsed_files: Sequence[ParsedFile],
+    embed: bool = True,
 ) -> Dict[str, int]:
     for parsed in parsed_files:
         if not isinstance(parsed.language, str) or not parsed.language:
@@ -362,6 +365,10 @@ def _write_parsed_files(
             """,
             edge_rows,
         )
+    embeddings_count = 0
+    if embed:
+        embeddings_count = _write_embeddings(index, project_id, parsed_files, now)
+
     index.conn.commit()
 
     total_edges = int(
@@ -372,7 +379,57 @@ def _write_parsed_files(
     return {
         "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
         "edges": total_edges if len(parsed_files) > 1 else (total_edges - edges_before),
+        "embeddings": embeddings_count,
     }
+
+
+def _write_embeddings(
+    index: ProjectIndex,
+    project_id: int,
+    parsed_files: Sequence[ParsedFile],
+    now: float,
+) -> int:
+    from csegraph_core.embeddings.encoder import (
+        EMBEDDING_MODEL,
+        build_embedding_text,
+        encode_texts,
+        is_available,
+        vector_to_blob,
+    )
+
+    if not is_available():
+        return 0
+
+    items: list[tuple[str, str, str]] = []
+    for parsed in parsed_files:
+        for symbol in parsed.symbols:
+            text = build_embedding_text(symbol.signature, symbol.docstring, symbol.name)
+            items.append((symbol.node_id, symbol.source_hash, text))
+
+    if not items:
+        return 0
+
+    texts = [text for _, _, text in items]
+    vectors = encode_texts(texts)
+
+    rows = []
+    for (node_id, source_hash, _), vector in zip(items, vectors):
+        rows.append((node_id, project_id, EMBEDDING_MODEL, source_hash, vector_to_blob(vector), now))
+
+    index.conn.executemany(
+        """
+        INSERT INTO embedding_cache(node_id, project_id, model, source_hash, vector, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?)
+        ON CONFLICT(node_id) DO UPDATE SET
+            project_id = excluded.project_id,
+            model = excluded.model,
+            source_hash = excluded.source_hash,
+            vector = excluded.vector,
+            updated_at = excluded.updated_at
+        """,
+        rows,
+    )
+    return len(rows)
 
 
 def _write_repo_and_folders(

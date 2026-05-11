@@ -24,6 +24,7 @@ EXPLANATION_BY_REASON = {
     "small_helper": "it is a small helper where exact source is cheap and useful.",
     "test_related": "it is test-related context for the target.",
     "raw_code_fallback": "exact source was selected as a raw-code fallback.",
+    "embedding_match": "it is semantically similar to the task (embedding match).",
     "lexical_match": "it matched the task text lexically.",
     "graph_neighbor": "it is near the target in the code graph.",
 }
@@ -63,6 +64,8 @@ def normalize_reasons(
         reasons.add("test_related")
     if node_id in raw_set:
         reasons.add("raw_code_fallback")
+    if any(item == "embedding_match" for item in evidence):
+        reasons.add("embedding_match")
     if any(item in LEXICAL_EVIDENCE for item in evidence):
         reasons.add("lexical_match")
     if lineage or any(item.startswith("graph-") for item in evidence):

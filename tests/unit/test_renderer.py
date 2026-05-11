@@ -20,9 +20,9 @@ def test_render_index_summary_with_parse_errors():
     assert "Parsing: 10 files" in out
     assert "Indexing: 25 symbols, 42 edges" in out
     assert "2 parse errors" in out
-    assert "  Files:   10" in out
-    assert "  Symbols: 25" in out
-    assert "  Edges:   42" in out
+    assert "  Files:      10" in out
+    assert "  Symbols:    25" in out
+    assert "  Edges:      42" in out
     assert "Errors:" in out
     assert "broken.py: SyntaxError at line 5" in out
     assert "bad.py: IndentationError" in out
@@ -44,4 +44,4 @@ def test_render_index_summary_shows_absolute_db_path_outside_repo(tmp_path):
 
     out = render_index_summary(payload)
 
-    assert f"DB:      {outside_db.resolve()}" in out
+    assert f"DB:         {outside_db.resolve()}" in out

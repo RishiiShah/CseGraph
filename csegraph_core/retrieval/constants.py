@@ -10,6 +10,7 @@ REASON_ORDER = (
     "small_helper",
     "test_related",
     "raw_code_fallback",
+    "embedding_match",
     "lexical_match",
     "graph_neighbor",
 )

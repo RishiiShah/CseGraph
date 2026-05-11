@@ -37,6 +37,7 @@ class IndexResult:
     files_indexed: int
     symbols_indexed: int
     edges_indexed: int
+    embeddings_indexed: int = 0
     unchanged_files: List[str] = field(default_factory=list)
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)
@@ -52,6 +53,7 @@ class RefreshResult:
     files_indexed: int
     symbols_indexed: int
     edges_indexed: int
+    embeddings_indexed: int = 0
     unchanged_files: List[str] = field(default_factory=list)
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)

@@ -70,6 +70,16 @@ def load_edges(index: ProjectIndex, project_id: int) -> List[Dict[str, Any]]:
     return rows
 
 
+def load_embeddings(index: ProjectIndex, project_id: int) -> Dict[str, bytes]:
+    return {
+        row["node_id"]: row["vector"]
+        for row in index.conn.execute(
+            "SELECT node_id, vector FROM embedding_cache WHERE project_id = ?",
+            (project_id,),
+        )
+    }
+
+
 def edge_maps(
     edges: Sequence[Dict[str, Any]],
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:

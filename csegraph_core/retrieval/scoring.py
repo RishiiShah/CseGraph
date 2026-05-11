@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 
 from csegraph_core.languages.registry import registry
 from csegraph_core.text.query_tokenizer import query_tokenizer
+from csegraph_core.embeddings.encoder import blob_to_vector
 
 
 RELATION_WEIGHTS: Dict[str, float] = {
@@ -100,6 +101,35 @@ def lexical_scores(
             evidence[node_id].append("file-path-match")
         scores[node_id] += 0.01
     return scores, evidence
+
+
+def embedding_scores(
+    task: str,
+    embeddings: Dict[str, bytes],
+    limit: int = 200,
+) -> Dict[str, float]:
+    from csegraph_core.embeddings.encoder import encode_single, is_available
+
+    if not is_available() or not embeddings:
+        return {}
+    query_vec = encode_single(task)
+    scored: List[Tuple[str, float]] = []
+    for node_id, blob in embeddings.items():
+        vec = blob_to_vector(blob)
+        sim = _cosine_similarity(query_vec, vec)
+        if sim > 0.0:
+            scored.append((node_id, sim))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return dict(scored[:limit])
+
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 _BFS_CTE = """
