@@ -28,6 +28,8 @@ from csegraph_core import (
     ReportService,
     SufficiencyMetrics,
     VALID_REASONS,
+    VisualExportResult,
+    VisualExportService,
     get_profile,
     to_dict,
 )
@@ -49,6 +51,7 @@ for _name in (
     "graph",
     "graph.queries",
     "graph.report",
+    "graph.visual",
     "index",
     "index.loaders",
     "index.repository",
@@ -103,6 +106,8 @@ __all__ = [
     "ReportService",
     "SufficiencyMetrics",
     "VALID_REASONS",
+    "VisualExportResult",
+    "VisualExportService",
     "get_profile",
     "to_dict",
 ]

@@ -130,6 +130,16 @@ class GraphResult:
 
 
 @dataclass
+class VisualExportResult:
+    command: str
+    db_path: str
+    repo_root: str
+    output_path: str
+    total_nodes: int
+    total_edges: int
+
+
+@dataclass
 class ReportResult:
     command: str
     db_path: str

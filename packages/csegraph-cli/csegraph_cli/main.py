@@ -15,6 +15,7 @@ from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.graph.report import ReportService
+from csegraph_core.graph.visual import VisualExportService
 from csegraph_core.index.services import IndexService, RefreshService
 from csegraph_core.retrieval.context import ContextService
 from csegraph_cli.errors import CsegraphCLIError, error_payload
@@ -24,6 +25,7 @@ from csegraph_cli.renderer import (
     render_json,
     render_refresh_summary,
     render_report_markdown,
+    render_visual_export_summary,
 )
 
 
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_context_markdown(payload), end="")
     elif args.command == "report" and not args.json:
         print(render_report_markdown(payload), end="")
+    elif _is_visual_graph_export(args) and not args.json:
+        print(render_visual_export_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
     elif args.command == "index":
@@ -122,8 +126,14 @@ def _build_parser() -> argparse.ArgumentParser:
     graph.add_argument("node_arg", nargs="?", help="(Deprecated) Node ID for neighborhood inspection.")
     graph.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
     graph.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    graph.add_argument("--node", default=None, help="Node ID, symbol name, or file path.")
-    graph.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
+    graph.add_argument("--node", default=None, help="(Deprecated) Node ID for neighborhood inspection.")
+    graph.add_argument("--depth", type=int, default=1, help="Neighborhood depth (deprecated, use inspect).")
+    graph.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        help="Output HTML file path (default: beside the SQLite index DB).",
+    )
     graph.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
@@ -160,8 +170,18 @@ def _dispatch(args: argparse.Namespace) -> Any:
         repo = Path(args.repo or ".").resolve()
         node = args.node or args.node_arg
         if not node:
-            raise ValueError("graph requires a node. Example: csegraph graph MyClass.method")
-        return GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
+            raise ValueError("inspect requires a node. Example: csegraph inspect MyClass.method")
+        result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
+        result.command = "inspect"
+        return result
+    if args.command == "graph":
+        repo = Path(args.repo or ".").resolve()
+        node = args.node or args.node_arg
+        db_path = _db_arg(args, str(repo))
+        if node:
+            return GraphQueryService(db_path).neighborhood(node, depth=args.depth)
+        output = args.output or _default_graph_output_path(db_path)
+        return VisualExportService(db_path).export(output)
     if args.command == "report":
         repo = _repo_arg(args)
         return ReportService(_db_arg(args, repo)).report()
@@ -201,3 +221,7 @@ def _db_arg(args: argparse.Namespace, repo: str) -> str:
     if args.db:
         return str(Path(args.db).resolve())
     return str(Path(repo).resolve() / ".csegraph" / "index.db")
+
+
+def _default_graph_output_path(db_path: str) -> str:
+    return str(Path(db_path).resolve().with_name("csegraph-graph.html"))

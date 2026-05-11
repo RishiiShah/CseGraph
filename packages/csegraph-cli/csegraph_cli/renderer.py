@@ -74,6 +74,10 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(progress + detail) + "\n"
 
 
+def render_visual_export_summary(payload: Dict[str, Any]) -> str:
+    return f"Graph file created at: {payload['output_path']}\n"
+
+
 def render_context_markdown(payload: Dict[str, Any]) -> str:
     lines: List[str] = [
         "# csegraph context",
