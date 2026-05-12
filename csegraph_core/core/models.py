@@ -152,6 +152,7 @@ class ReportResult:
     edge_counts: Dict[str, int] = field(default_factory=dict)
     god_nodes: List[Dict[str, Any]] = field(default_factory=list)
     knowledge_gaps: List[Dict[str, Any]] = field(default_factory=list)
+    knowledge_gap_groups: List[Dict[str, Any]] = field(default_factory=list)
     surprising_connections: List[Dict[str, Any]] = field(default_factory=list)
     suggested_questions: List[str] = field(default_factory=list)
     sections: List[Dict[str, Any]] = field(default_factory=list)

@@ -35,6 +35,7 @@ class ReportService:
             node_info = _node_info(index, project_id)
             god_nodes = _god_nodes(degree, node_info)
             knowledge_gaps = _knowledge_gaps(degree, node_info)
+            knowledge_gap_groups = _knowledge_gap_groups(knowledge_gaps)
             surprising = _surprising_connections(index, project_id, node_info)
             sections = _sections(index, project_id, node_info, degree)
             questions = _suggested_questions(god_nodes, knowledge_gaps, surprising)
@@ -51,6 +52,7 @@ class ReportService:
                 edge_counts=dict(sorted(edge_counts.items())),
                 god_nodes=god_nodes,
                 knowledge_gaps=knowledge_gaps,
+                knowledge_gap_groups=knowledge_gap_groups,
                 surprising_connections=surprising,
                 suggested_questions=questions,
                 sections=sections,
@@ -121,8 +123,10 @@ def _god_nodes(
 ) -> List[Dict[str, Any]]:
     ranked = sorted(degree.items(), key=lambda kv: (-kv[1], kv[0]))
     result: List[Dict[str, Any]] = []
-    for node_id, deg in ranked[:limit]:
+    for node_id, deg in ranked:
         info = node_info.get(node_id, {})
+        if _is_god_node_noise(info):
+            continue
         result.append({
             "node_id": node_id,
             "name": info.get("name", ""),
@@ -130,7 +134,18 @@ def _god_nodes(
             "path": info.get("path", ""),
             "degree": deg,
         })
+        if len(result) >= limit:
+            break
     return result
+
+
+_GOD_NODE_NOISY_FILES = frozenset({"__init__.py", "__main__.py"})
+
+
+def _is_god_node_noise(info: Dict[str, Any]) -> bool:
+    if info.get("type") != "file":
+        return False
+    return Path(str(info.get("path") or info.get("name") or "")).name in _GOD_NODE_NOISY_FILES
 
 
 _GAP_EXCLUDED_NAMES = frozenset({
@@ -143,6 +158,16 @@ _GAP_EXCLUDED_PATH_SEGMENTS = frozenset({
     "migrations",
 })
 
+_GAP_REASON_LABELS = {
+    "isolated_symbol": "Isolated",
+    "only_contained": "Only contained",
+}
+
+_GAP_REASON_DESCRIPTIONS = {
+    "isolated_symbol": "No graph edges reference this symbol.",
+    "only_contained": "Only the containing file references this symbol.",
+}
+
 
 def _is_gap_noise(name: str, path: str) -> bool:
     bare = name.rsplit(".", 1)[-1] if "." in name else name
@@ -154,6 +179,10 @@ def _is_gap_noise(name: str, path: str) -> bool:
     if any(seg in _GAP_EXCLUDED_PATH_SEGMENTS for seg in path_parts):
         return True
     return False
+
+
+def _gap_reason(degree: int) -> str:
+    return "isolated_symbol" if degree == 0 else "only_contained"
 
 
 def _knowledge_gaps(
@@ -176,12 +205,35 @@ def _knowledge_gaps(
     result: List[Dict[str, Any]] = []
     for node_id, deg in candidates[:limit]:
         info = node_info[node_id]
+        reason = _gap_reason(deg)
         result.append({
             "node_id": node_id,
             "name": info["name"],
             "kind": info["type"],
             "path": info["path"],
             "degree": deg,
+            "reason": reason,
+            "reason_label": _GAP_REASON_LABELS[reason],
+        })
+    return result
+
+
+def _knowledge_gap_groups(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_reason: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for gap in gaps:
+        by_reason[gap["reason"]].append(gap)
+
+    result: List[Dict[str, Any]] = []
+    for reason in ("isolated_symbol", "only_contained"):
+        nodes = by_reason.get(reason)
+        if not nodes:
+            continue
+        result.append({
+            "reason": reason,
+            "label": _GAP_REASON_LABELS[reason],
+            "description": _GAP_REASON_DESCRIPTIONS[reason],
+            "count": len(nodes),
+            "examples": [node["name"] for node in nodes[:5]],
         })
     return result
 
@@ -281,25 +333,36 @@ def _suggested_questions(
     surprising: List[Dict[str, Any]],
 ) -> List[str]:
     questions: List[str] = []
+    seen: Set[str] = set()
+
+    def add(question: str) -> None:
+        if question not in seen:
+            seen.add(question)
+            questions.append(question)
+
     for node in god_nodes[:3]:
-        questions.append(
-            f"Why does `{node['name']}` have {node['degree']} connections? "
-            f"Could it be decomposed?"
+        target = node["node_id"] or node["name"]
+        add(
+            f"Which callers, imports, and tests make `{node['name']}` a "
+            f"{node['degree']}-edge hub? Run `csegraph inspect {target}` "
+            "before changing its responsibilities."
         )
     for node in gaps[:3]:
-        if node["degree"] == 0:
-            questions.append(
-                f"`{node['name']}` ({node['kind']}) is completely isolated. "
-                f"Is it dead code?"
+        if node.get("reason") == "isolated_symbol":
+            add(
+                f"`{node['name']}` ({node['kind']}) has no graph edges. "
+                "Should it be exported, called, tested, or removed?"
             )
         else:
-            questions.append(
-                f"`{node['name']}` ({node['kind']}) has only {node['degree']} "
-                f"connection. Is it under-tested or under-used?"
+            add(
+                f"`{node['name']}` ({node['kind']}) is only connected to "
+                "its containing file. What caller or test should prove it is still active?"
             )
     for edge in surprising[:2]:
-        questions.append(
-            f"`{edge['source_path']}` {edge['relation']} `{edge['target_path']}`. "
-            f"Is this cross-package dependency intentional?"
+        src_section = edge["source_path"].split("/")[0]
+        tgt_section = edge["target_path"].split("/")[0]
+        add(
+            f"Does the `{src_section}` -> `{tgt_section}` dependency via "
+            f"`{edge['relation']}` match the intended package layering?"
         )
     return questions

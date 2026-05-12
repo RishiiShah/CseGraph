@@ -167,13 +167,32 @@ def render_report_markdown(payload: Dict[str, Any]) -> str:
     if payload.get("knowledge_gaps"):
         lines.append("## Knowledge Gaps")
         lines.append("")
-        lines.append("| Name | Kind | Path | Degree |")
-        lines.append("|---|---|---|---:|")
-        for node in payload["knowledge_gaps"]:
-            lines.append(
-                f"| `{node['name']}` | {node['kind']} "
-                f"| {node['path']} | {node['degree']} |"
-            )
+        groups = payload.get("knowledge_gap_groups") or []
+        if groups:
+            for group in groups:
+                lines.append(f"### {group['label']}")
+                lines.append("")
+                if group.get("description"):
+                    lines.append(group["description"])
+                    lines.append("")
+                lines.append("| Name | Kind | Path | Degree |")
+                lines.append("|---|---|---|---:|")
+                for node in payload["knowledge_gaps"]:
+                    if node.get("reason") != group["reason"]:
+                        continue
+                    lines.append(
+                        f"| `{node['name']}` | {node['kind']} "
+                        f"| {node['path']} | {node['degree']} |"
+                    )
+                lines.append("")
+        else:
+            lines.append("| Name | Kind | Path | Degree |")
+            lines.append("|---|---|---|---:|")
+            for node in payload["knowledge_gaps"]:
+                lines.append(
+                    f"| `{node['name']}` | {node['kind']} "
+                    f"| {node['path']} | {node['degree']} |"
+                )
         lines.append("")
 
     if payload.get("sections"):
