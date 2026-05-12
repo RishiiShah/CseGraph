@@ -18,7 +18,11 @@ def _make_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text(
-        'def greet(name: str) -> str:\n    """Say hello."""\n    return f"Hello, {name}"\n',
+        'from helpers import fmt\n\ndef greet(name: str) -> str:\n    """Say hello."""\n    return fmt(name)\n',
+        encoding="utf-8",
+    )
+    (repo / "helpers.py").write_text(
+        'def fmt(name: str) -> str:\n    return f"Hello, {name}"\n',
         encoding="utf-8",
     )
     return repo
@@ -32,6 +36,8 @@ class TestToolListing:
             "csegraph_refresh",
             "csegraph_context",
             "csegraph_graph",
+            "csegraph_path",
+            "csegraph_tree",
             "csegraph_report",
         }
 
@@ -109,6 +115,39 @@ class TestHandleTool:
             "db": db,
         })
         assert result["total_files"] >= 1
+
+    def test_path_found(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "test.db")
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
+
+        result = _handle_tool("csegraph_path", {
+            "source": "greet",
+            "target": "fmt",
+            "repo": str(repo),
+            "db": db,
+        })
+        assert result["found"] is True
+        assert result["length"] >= 1
+        assert len(result["nodes"]) >= 2
+        assert len(result["edges"]) >= 1
+
+    def test_path_via_contains(self, tmp_path):
+        repo = tmp_path / "repo2"
+        repo.mkdir()
+        (repo / "a.py").write_text("def alpha(): pass\n", encoding="utf-8")
+        (repo / "b.py").write_text("def beta(): pass\n", encoding="utf-8")
+        db = str(tmp_path / "test2.db")
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
+
+        result = _handle_tool("csegraph_path", {
+            "source": "alpha",
+            "target": "beta",
+            "repo": str(repo),
+            "db": db,
+        })
+        assert result["found"] is True
+        assert result["length"] >= 1
 
     def test_unknown_tool_raises(self):
         with pytest.raises(ValueError, match="Unknown tool"):

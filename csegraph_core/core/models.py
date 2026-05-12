@@ -136,6 +136,35 @@ class GraphResult:
 
 
 @dataclass
+class PathStep:
+    node_id: str
+    kind: str
+    name: str
+    path: str
+    line_range: Optional[List[int]] = None
+
+
+@dataclass
+class PathEdge:
+    source: str
+    target: str
+    relation: str
+
+
+@dataclass
+class PathResult:
+    command: str
+    db_path: str
+    repo_root: str
+    source: str
+    target: str
+    found: bool
+    length: int
+    nodes: List[PathStep]
+    edges: List[PathEdge]
+
+
+@dataclass
 class VisualExportResult:
     command: str
     db_path: str

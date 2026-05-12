@@ -149,6 +149,60 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_path",
+        description=(
+            "Find the shortest path between two nodes in the csegraph dependency graph. "
+            "Returns the sequence of nodes and edges connecting them via BFS."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": "Source node ID, symbol name, or file path.",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Target node ID, symbol name, or file path.",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["source", "target", "repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_tree",
+        description=(
+            "Export an interactive HTML file tree visualization of the indexed repository. "
+            "Shows the full hierarchy of folders, files, classes, functions, and methods."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "Output HTML file path. Default: <repo>/.csegraph/csegraph-tree.html",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
         name="csegraph_report",
         description=(
             "Generate a structural report from a csegraph index. "
@@ -218,6 +272,21 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         depth = arguments.get("depth", 1)
         return to_dict(GraphQueryService(db).neighborhood(arguments["node"], depth=depth))
+
+    if name == "csegraph_path":
+        from csegraph_core.graph.queries import GraphQueryService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(GraphQueryService(db).shortest_path(arguments["source"], arguments["target"]))
+
+    if name == "csegraph_tree":
+        from csegraph_core.graph.tree import TreeExportService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        output = arguments.get("output") or str(Path(db).with_name("csegraph-tree.html"))
+        return to_dict(TreeExportService(db).export(output))
 
     if name == "csegraph_report":
         from csegraph_core.graph.report import ReportService

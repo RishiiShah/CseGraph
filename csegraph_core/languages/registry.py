@@ -64,6 +64,9 @@ class LanguageRegistry:
 
         return results
 
+    def supported_extensions(self) -> Set[str]:
+        return set(self._ext_to_parser.keys())
+
     def tokenizer_for(self, language: str) -> Tokenizer:
         try:
             return self._tokenizers[language]

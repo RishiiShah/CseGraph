@@ -37,6 +37,7 @@ all-languages = [
     "tree-sitter-kotlin>=0.23",
 ]
 mcp = ["mcp>=1.0.0"]
+watch = ["watchfiles>=1.0.0"]
 test = ["pytest>=9.0.3"]
 
 [project.urls]

@@ -45,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_report_markdown(payload), end="")
     elif args.command == "graph" and not args.json:
         print(render_visual_export_summary(payload), end="")
+    elif args.command == "tree" and not args.json:
+        print(render_visual_export_summary(payload), end="")
     elif args.command == "benchmark" and not args.json:
         print(render_benchmark_summary(payload), end="")
     elif args.json:
@@ -113,6 +115,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     context.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    path = subparsers.add_parser("path", help="Find the shortest path between two nodes.")
+    path.add_argument("source_arg", nargs="?", help="Source node ID, symbol name, or file path.")
+    path.add_argument("target_arg", nargs="?", help="Target node ID, symbol name, or file path.")
+    path.add_argument("--source", default=None, help="Source node.")
+    path.add_argument("--target", default=None, help="Target node.")
+    path.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    path.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    path.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     inspect = subparsers.add_parser("inspect", help="Inspect a graph neighborhood.")
     inspect.add_argument("node_arg", nargs="?", help="Node ID, symbol name, or file path.")
     inspect.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
@@ -132,11 +143,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     graph.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    tree = subparsers.add_parser("tree", help="Export an interactive HTML file tree visualization.")
+    tree.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    tree.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    tree.add_argument(
+        "--output", "-o", default=None,
+        help="Output HTML file path (default: beside the SQLite index DB).",
+    )
+    tree.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
     report.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
     report.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
     report.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     report.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
+    watch = subparsers.add_parser("watch", help="Watch for file changes and auto-refresh the index.")
+    watch.add_argument("repo_arg", nargs="?", help="Repository root to watch (default: current directory).")
+    watch.add_argument("--repo", dest="repo_opt", help="Repository root to watch.")
+    watch.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    watch.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    watch.add_argument("--debounce", type=int, default=500, help="Debounce interval in milliseconds (default: 500).")
+    watch.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
     serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
     serve.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
@@ -177,6 +205,14 @@ def _dispatch(args: argparse.Namespace) -> Any:
             explain=args.explain,
             config_path=args.config,
         )
+    if args.command == "path":
+        from csegraph_core.graph.queries import GraphQueryService
+        repo = Path(args.repo or ".").resolve()
+        source = args.source or args.source_arg
+        target = args.target or args.target_arg
+        if not source or not target:
+            raise ValueError("path requires two nodes. Example: csegraph path greet main")
+        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(source, target)
     if args.command == "inspect":
         from csegraph_core.graph.queries import GraphQueryService
         repo = Path(args.repo or ".").resolve()
@@ -192,10 +228,21 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db_path = _db_arg(args, str(repo))
         output = args.output or _default_graph_output_path(db_path)
         return VisualExportService(db_path).export(output)
+    if args.command == "tree":
+        from csegraph_core.graph.tree import TreeExportService
+        repo = Path(args.repo or ".").resolve()
+        db_path = _db_arg(args, str(repo))
+        output = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
+        return TreeExportService(db_path).export(output)
     if args.command == "report":
         from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)
         return ReportService(_db_arg(args, repo)).report()
+    if args.command == "watch":
+        from csegraph_core.watch import watch as run_watch
+        repo = _repo_arg(args)
+        run_watch(repo, _db_arg(args, repo), profile=args.profile, debounce_ms=args.debounce)
+        return None
     if args.command == "serve":
         import asyncio
         from csegraph_core.server import run_stdio

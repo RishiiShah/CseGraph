@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from csegraph_core.core.models import GraphEdgeView, GraphNodeView, GraphResult
+from csegraph_core.core.models import (
+    GraphEdgeView,
+    GraphNodeView,
+    GraphResult,
+    PathEdge,
+    PathResult,
+    PathStep,
+)
 from csegraph_core.index.repository import ProjectIndex, json_loads
 
 
@@ -90,6 +98,110 @@ class GraphQueryService:
             )
         finally:
             index.close()
+
+
+    def shortest_path(self, source: str, target: str) -> PathResult:
+        index = ProjectIndex(self.db_path)
+        try:
+            index.initialize_schema()
+            metadata = index.metadata()
+            repo_root = metadata["root_dir"]
+
+            src = _resolve_graph_node(index, source, repo_root)
+            dst = _resolve_graph_node(index, target, repo_root)
+
+            adj: Dict[str, List[Tuple[str, str]]] = {}
+            for row in index.conn.execute("SELECT source, target, relation FROM edges"):
+                s, t, r = row["source"], row["target"], row["relation"]
+                adj.setdefault(s, []).append((t, r))
+                adj.setdefault(t, []).append((s, r))
+
+            prev: Dict[str, Optional[Tuple[str, str]]] = {src: None}
+            queue: deque[str] = deque([src])
+            found = False
+            while queue:
+                current = queue.popleft()
+                if current == dst:
+                    found = True
+                    break
+                for neighbor, relation in adj.get(current, []):
+                    if neighbor not in prev:
+                        prev[neighbor] = (current, relation)
+                        queue.append(neighbor)
+
+            if not found:
+                return PathResult(
+                    command="path",
+                    db_path=self.db_path,
+                    repo_root=repo_root,
+                    source=src,
+                    target=dst,
+                    found=False,
+                    length=0,
+                    nodes=[],
+                    edges=[],
+                )
+
+            path_ids: List[str] = []
+            path_edges: List[PathEdge] = []
+            node = dst
+            while node is not None:
+                path_ids.append(node)
+                entry = prev[node]
+                if entry is not None:
+                    parent, relation = entry
+                    path_edges.append(PathEdge(source=parent, target=node, relation=relation))
+                    node = parent
+                else:
+                    node = None
+            path_ids.reverse()
+            path_edges.reverse()
+
+            placeholders = ",".join("?" for _ in path_ids)
+            node_rows: Dict[str, Dict[str, Any]] = {}
+            for row in index.conn.execute(
+                f"SELECT * FROM nodes WHERE id IN ({placeholders})",
+                path_ids,
+            ):
+                node_rows[row["id"]] = dict(row)
+
+            steps = [_path_step_from_row(nid, node_rows) for nid in path_ids]
+
+            return PathResult(
+                command="path",
+                db_path=self.db_path,
+                repo_root=repo_root,
+                source=src,
+                target=dst,
+                found=True,
+                length=len(path_edges),
+                nodes=steps,
+                edges=path_edges,
+            )
+        finally:
+            index.close()
+
+
+def _path_step_from_row(node_id: str, node_rows: Dict[str, Dict[str, Any]]) -> PathStep:
+    row = node_rows.get(node_id)
+    if row is None:
+        return PathStep(
+            node_id=node_id,
+            kind="external",
+            name=node_id.split("::")[-1],
+            path="",
+        )
+    ntype = row["type"]
+    start = row.get("start_line")
+    end = row.get("end_line")
+    line_range = [int(start), int(end)] if start is not None and end is not None else None
+    return PathStep(
+        node_id=node_id,
+        kind=ntype,
+        name=row.get("name", ""),
+        path=row.get("path", ""),
+        line_range=line_range,
+    )
 
 
 def _resolve_graph_node(
