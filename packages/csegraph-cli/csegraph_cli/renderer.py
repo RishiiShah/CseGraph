@@ -276,6 +276,11 @@ def _render_parse_errors(parse_errors: Dict[str, str]) -> List[str]:
 
 
 def _benchmark_stats(stats: Dict[str, Any]) -> str:
+    if "raw_tokens" in stats:
+        return (
+            f"raw={stats['raw_tokens']}, context={stats['context_tokens']}, "
+            f"reduction={stats['reduction_percent']}%"
+        )
     preferred = (
         "files",
         "symbols",

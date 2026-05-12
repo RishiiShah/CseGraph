@@ -227,7 +227,7 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     assert result["total_elapsed_ms"] >= 0
 
     steps = result["steps"]
-    assert [step["name"] for step in steps] == ["index", "context", "graph", "report"]
+    assert [step["name"] for step in steps] == ["index", "context", "graph", "report", "token_reduction"]
     assert all(step["elapsed_ms"] >= 0 for step in steps)
 
     by_name = {step["name"]: step for step in steps}
