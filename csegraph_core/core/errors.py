@@ -33,5 +33,5 @@ class UnsupportedSchemaError(CsegraphError):
         super().__init__(
             "Unsupported csegraph index schema",
             error_code="unsupported_schema",
-            hint="Rebuild the index or install a compatible csegraph-core version.",
+            hint="Rebuild the index with the current csegraph-core version.",
         )

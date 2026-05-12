@@ -41,6 +41,7 @@ class IndexResult:
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -61,12 +62,11 @@ class RefreshResult:
 
 @dataclass
 class ContextNode:
-    node_id: str
+    id: str
     kind: str
     name: str
-    file_path: str
-    start_line: Optional[int]
-    end_line: Optional[int]
+    path: str
+    line_range: Optional[List[int]]
     score: float
     language: str
     raw_code: bool = False
@@ -84,30 +84,34 @@ class ContextNode:
 
 
 @dataclass
+class SufficiencyResult:
+    sufficient: bool
+    metrics: SufficiencyMetrics
+    thresholds: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class ContextResult:
     command: str
     db_path: str
     repo_root: str
     profile: str
-    task: str
-    target_node_id: str
-    is_sufficient: bool
-    metrics: SufficiencyMetrics
-    context_nodes: List[ContextNode]
+    query: str
+    target: str
+    sufficiency: SufficiencyResult
+    total_estimated_tokens: int
+    nodes: List[ContextNode]
     raw_code_nodes: List[str] = field(default_factory=list)
-    thresholds: Dict[str, float] = field(default_factory=dict)
     run_id: Optional[int] = None
-    estimated_tokens: int = 0
 
 
 @dataclass
 class GraphNodeView:
-    node_id: str
+    id: str
     kind: str
     name: str
-    file_path: str
-    start_line: Optional[int] = None
-    end_line: Optional[int] = None
+    path: str
+    line_range: Optional[List[int]] = None
 
 
 @dataclass
@@ -116,6 +120,8 @@ class GraphEdgeView:
     target: str
     relation: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    confidence: float = 1.0
+    confidence_tier: str = "EXTRACTED"
 
 
 @dataclass
@@ -123,7 +129,7 @@ class GraphResult:
     command: str
     db_path: str
     repo_root: str
-    node_id: str
+    target: str
     depth: int
     nodes: List[GraphNodeView]
     edges: List[GraphEdgeView]
@@ -140,6 +146,26 @@ class VisualExportResult:
 
 
 @dataclass
+class BenchmarkStep:
+    name: str
+    elapsed_ms: float
+    stats: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BenchmarkResult:
+    command: str
+    db_path: str
+    repo_root: str
+    profile: str
+    query: str
+    target: Optional[str]
+    graph_output_path: str
+    total_elapsed_ms: float
+    steps: List[BenchmarkStep] = field(default_factory=list)
+
+
+@dataclass
 class ReportResult:
     command: str
     db_path: str
@@ -152,6 +178,7 @@ class ReportResult:
     edge_counts: Dict[str, int] = field(default_factory=dict)
     god_nodes: List[Dict[str, Any]] = field(default_factory=list)
     knowledge_gaps: List[Dict[str, Any]] = field(default_factory=list)
+    knowledge_gap_groups: List[Dict[str, Any]] = field(default_factory=list)
     surprising_connections: List[Dict[str, Any]] = field(default_factory=list)
     suggested_questions: List[str] = field(default_factory=list)
     sections: List[Dict[str, Any]] = field(default_factory=list)

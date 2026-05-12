@@ -10,11 +10,15 @@ _STOP_WORDS = {
     "from", "that", "this", "into", "are", "was", "has", "had", "not", "its",
 }
 
+_RE_CAMEL_SPLIT = re.compile(r"([a-z0-9])([A-Z])")
+_RE_ACRONYM_SPLIT = re.compile(r"([A-Z]{2,})([A-Z][a-z])")
+_RE_NON_ALNUM = re.compile(r"[^a-zA-Z0-9]+")
+
 
 def _default_text_tokenize(text: str) -> List[str]:
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
-    text = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", text)
-    text = re.sub(r"[^a-zA-Z0-9]+", " ", text)
+    text = _RE_CAMEL_SPLIT.sub(r"\1 \2", text)
+    text = _RE_ACRONYM_SPLIT.sub(r"\1 \2", text)
+    text = _RE_NON_ALNUM.sub(" ", text)
     return [token.lower() for token in text.split() if len(token) > 1 and token.lower() not in _STOP_WORDS]
 
 

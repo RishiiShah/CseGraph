@@ -18,6 +18,7 @@ class FakeTokenizer:
 class FakeParser:
     language = "fake"
     extensions = (".fake",)
+    excluded_dirs = frozenset()
 
     def parse(self, path: Path, root: Path) -> object:
         raise NotImplementedError
@@ -79,3 +80,15 @@ def test_python_parser_satisfies_widened_protocol():
     assert isinstance(parser, Parser)
     assert hasattr(parser, "module_name_from_relpath")
     assert hasattr(parser, "resolve_local_import")
+
+
+def test_typescript_parser_registered_when_available():
+    ts = pytest.importorskip("tree_sitter")
+    from csegraph_core.languages import registry
+    from csegraph_core.languages.treesitter.parser import TreeSitterParser
+    parser = registry.for_extension(".ts")
+    assert isinstance(parser, TreeSitterParser)
+    assert parser.language == "typescript"
+    assert ".tsx" in parser.extensions
+    tokenizer = registry.tokenizer_for("typescript")
+    assert tokenizer is not None

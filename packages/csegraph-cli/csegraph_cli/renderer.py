@@ -78,6 +78,32 @@ def render_visual_export_summary(payload: Dict[str, Any]) -> str:
     return f"Graph file created at: {payload['output_path']}\n"
 
 
+def render_benchmark_summary(payload: Dict[str, Any]) -> str:
+    repo = _display_path(str(payload.get("repo_root", "")), str(payload.get("repo_root", "")))
+    lines = [
+        f"Benchmark: {repo}",
+        "",
+        "Step      Time (ms)  Stats",
+        "--------  ---------  -----",
+    ]
+    for step in payload.get("steps", []):
+        lines.append(
+            f"{step['name']:<8}  {step['elapsed_ms']:>9.3f}  {_benchmark_stats(step.get('stats') or {})}"
+        )
+        phases = (step.get("stats") or {}).get("phases") or {}
+        for phase, elapsed_ms in phases.items():
+            lines.append(f"  {phase:<18} {elapsed_ms:>9.3f}")
+    lines.extend(
+        [
+            "",
+            f"Total: {payload.get('total_elapsed_ms', 0):.3f} ms",
+            f"DB: {_display_path(str(payload.get('db_path', '')), str(payload.get('repo_root', '')))}",
+            f"Graph: {_display_path(str(payload.get('graph_output_path', '')), str(payload.get('repo_root', '')))}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def render_context_markdown(payload: Dict[str, Any]) -> str:
     lines: List[str] = [
         "# csegraph context",
@@ -167,13 +193,32 @@ def render_report_markdown(payload: Dict[str, Any]) -> str:
     if payload.get("knowledge_gaps"):
         lines.append("## Knowledge Gaps")
         lines.append("")
-        lines.append("| Name | Kind | Path | Degree |")
-        lines.append("|---|---|---|---:|")
-        for node in payload["knowledge_gaps"]:
-            lines.append(
-                f"| `{node['name']}` | {node['kind']} "
-                f"| {node['path']} | {node['degree']} |"
-            )
+        groups = payload.get("knowledge_gap_groups") or []
+        if groups:
+            for group in groups:
+                lines.append(f"### {group['label']}")
+                lines.append("")
+                if group.get("description"):
+                    lines.append(group["description"])
+                    lines.append("")
+                lines.append("| Name | Kind | Path | Degree |")
+                lines.append("|---|---|---|---:|")
+                for node in payload["knowledge_gaps"]:
+                    if node.get("reason") != group["reason"]:
+                        continue
+                    lines.append(
+                        f"| `{node['name']}` | {node['kind']} "
+                        f"| {node['path']} | {node['degree']} |"
+                    )
+                lines.append("")
+        else:
+            lines.append("| Name | Kind | Path | Degree |")
+            lines.append("|---|---|---|---:|")
+            for node in payload["knowledge_gaps"]:
+                lines.append(
+                    f"| `{node['name']}` | {node['kind']} "
+                    f"| {node['path']} | {node['degree']} |"
+                )
         lines.append("")
 
     if payload.get("sections"):
@@ -228,3 +273,19 @@ def _render_parse_errors(parse_errors: Dict[str, str]) -> List[str]:
     for path, error in sorted(parse_errors.items()):
         lines.append(f"    {path}: {error}")
     return lines
+
+
+def _benchmark_stats(stats: Dict[str, Any]) -> str:
+    preferred = (
+        "files",
+        "symbols",
+        "edges",
+        "nodes",
+        "total_estimated_tokens",
+        "knowledge_gaps",
+        "surprising_connections",
+        "parse_errors",
+        "output_size_bytes",
+    )
+    parts = [f"{key}={stats[key]}" for key in preferred if key in stats]
+    return ", ".join(parts)

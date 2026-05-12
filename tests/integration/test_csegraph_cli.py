@@ -78,21 +78,18 @@ def test_cli_json_contracts(tmp_path):
     assert context["command"] == "context"
     assert context["query"] == "Implement create_user with clean_name"
     assert context["target"] == "symbol::service.py::function::create_user"
-    assert context["total_estimated_tokens"] == context["estimated_tokens"]
-    assert context["sufficiency"]["sufficient"] is context["is_sufficient"]
-    assert context["sufficiency"]["metrics"] == context["metrics"]
-    assert context["sufficiency"]["thresholds"] == context["thresholds"]
-    assert context["target_node_id"] == "symbol::service.py::function::create_user"
-    assert context["is_sufficient"] is True
-    assert [node["id"] for node in context["nodes"]] == [
-        node["node_id"] for node in context["context_nodes"]
-    ]
+    assert context["sufficiency"]["sufficient"] is True
+    assert "target_node_id" not in context
+    assert "context_nodes" not in context
+    assert "estimated_tokens" not in context
+    assert "metrics" not in context
+    assert "thresholds" not in context
+    assert "is_sufficient" not in context
     assert any(
-        node["node_id"] == "symbol::helpers.py::function::clean_name"
-        for node in context["context_nodes"]
+        node["id"] == "symbol::helpers.py::function::clean_name"
+        for node in context["nodes"]
     )
-    assert context["estimated_tokens"] >= 1
-    nodes_by_id = {node["node_id"]: node for node in context["context_nodes"]}
+    assert context["total_estimated_tokens"] >= 1
     canonical_by_id = {node["id"]: node for node in context["nodes"]}
     target_node = canonical_by_id["symbol::service.py::function::create_user"]
     helper_node = canonical_by_id["symbol::helpers.py::function::clean_name"]
@@ -107,13 +104,13 @@ def test_cli_json_contracts(tmp_path):
     )
     assert all("expanded-from-" not in reason for node in context["nodes"] for reason in node["reason"])
     assert all("explanation" not in node for node in context["nodes"])
-    assert "source_text" in nodes_by_id["symbol::service.py::function::create_user"]
-    assert "def create_user(name: str) -> dict:" in nodes_by_id["symbol::service.py::function::create_user"]["source_text"]
-    assert "def clean_name(value: str) -> str:" in nodes_by_id["symbol::helpers.py::function::clean_name"]["source_text"]
-    assert nodes_by_id["symbol::service.py::function::create_user"]["estimated_tokens"] >= 1
+    assert "source_text" in target_node
+    assert "def create_user(name: str) -> dict:" in target_node["source_text"]
+    assert "def clean_name(value: str) -> str:" in helper_node["source_text"]
+    assert target_node["estimated_tokens"] >= 1
 
-    graph = _run_cli(
-        "graph",
+    neighborhood = _run_cli(
+        "inspect",
         "symbol::service.py::function::create_user",
         "--repo",
         str(repo),
@@ -121,9 +118,18 @@ def test_cli_json_contracts(tmp_path):
         "1",
         "--json",
     )
+    assert neighborhood["command"] == "inspect"
+    assert neighborhood["target"] == "symbol::service.py::function::create_user"
+    assert any(edge["relation"] == "calls" for edge in neighborhood["edges"])
+
+    graph = _run_cli(
+        "graph",
+        "--repo",
+        str(repo),
+        "--json",
+    )
     assert graph["command"] == "graph"
-    assert graph["node_id"] == "symbol::service.py::function::create_user"
-    assert any(edge["relation"] == "calls" for edge in graph["edges"])
+    assert graph["output_path"] == str(repo / ".csegraph" / "csegraph-graph.html")
 
     refreshed = _run_cli(
         "refresh",
@@ -199,7 +205,85 @@ def test_refresh_json_flag_returns_parseable_json(tmp_path):
     assert isinstance(result["unchanged_files"], list)
 
 
-def test_legacy_explicit_db_flags_still_work(tmp_path):
+def test_benchmark_json_profiles_core_commands(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    result = _run_cli(
+        "benchmark",
+        str(repo),
+        "--target",
+        "create_user",
+        "--query",
+        "Implement create_user with clean_name",
+        "--json",
+    )
+
+    assert result["command"] == "benchmark"
+    assert result["profile"] == "medium"
+    assert result["repo_root"] == str(repo)
+    assert result["db_path"] == str(repo / ".csegraph" / "index.db")
+    assert result["graph_output_path"] == str(repo / ".csegraph" / "csegraph-graph.html")
+    assert result["total_elapsed_ms"] >= 0
+
+    steps = result["steps"]
+    assert [step["name"] for step in steps] == ["index", "context", "graph", "report"]
+    assert all(step["elapsed_ms"] >= 0 for step in steps)
+
+    by_name = {step["name"]: step for step in steps}
+    assert by_name["index"]["stats"]["files"] == 2
+    assert by_name["index"]["stats"]["symbols"] == 2
+    assert by_name["index"]["stats"]["edges"] >= 1
+    assert set(by_name["index"]["stats"]["phases"]) == {
+        "discover_parse",
+        "initialize_schema",
+        "clear_graph",
+        "write_graph",
+        "parse_errors",
+    }
+    assert all(
+        elapsed_ms >= 0
+        for elapsed_ms in by_name["index"]["stats"]["phases"].values()
+    )
+    assert by_name["context"]["stats"]["nodes"] >= 1
+    assert by_name["context"]["stats"]["target"] == "symbol::service.py::function::create_user"
+    assert by_name["graph"]["stats"]["nodes"] >= 1
+    assert by_name["graph"]["stats"]["edges"] >= 1
+    assert by_name["graph"]["stats"]["output_size_bytes"] > 0
+    assert by_name["report"]["stats"]["files"] == 2
+    assert by_name["report"]["stats"]["symbols"] == 2
+    assert (repo / ".csegraph" / "csegraph-graph.html").exists()
+
+
+def test_benchmark_default_output_is_human_summary(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "csegraph_cli",
+            "benchmark",
+            str(repo),
+            "--target",
+            "create_user",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Benchmark:" in proc.stdout
+    assert "index" in proc.stdout
+    assert "context" in proc.stdout
+    assert "graph" in proc.stdout
+    assert "report" in proc.stdout
+    assert "Total:" in proc.stdout
+    assert "DB:" in proc.stdout
+
+
+def test_custom_db_flags_work(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "custom.db"
     _write_repo(repo)
@@ -227,7 +311,7 @@ def test_legacy_explicit_db_flags_still_work(tmp_path):
         "create_user",
         "--json",
     )
-    assert context["target_node_id"] == "symbol::service.py::function::create_user"
+    assert context["target"] == "symbol::service.py::function::create_user"
 
 
 def test_context_cli_source_controls_and_token_budget(tmp_path):
@@ -246,10 +330,10 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
         "never",
         "--json",
     )
-    assert compact["estimated_tokens"] == sum(
-        node["estimated_tokens"] for node in compact["context_nodes"]
+    assert compact["total_estimated_tokens"] == sum(
+        node["estimated_tokens"] for node in compact["nodes"]
     )
-    assert all(node["source_text"] is None for node in compact["context_nodes"])
+    assert all(node["source_text"] is None for node in compact["nodes"])
 
     budgeted = _run_cli(
         "context",
@@ -264,8 +348,8 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
         "20",
         "--json",
     )
-    assert budgeted["estimated_tokens"] <= 20
-    budgeted_nodes = {node["node_id"]: node for node in budgeted["context_nodes"]}
+    assert budgeted["total_estimated_tokens"] <= 20
+    budgeted_nodes = {node["id"]: node for node in budgeted["nodes"]}
     assert "symbol::service.py::function::create_user" in budgeted_nodes
     helper = budgeted_nodes.get("symbol::helpers.py::function::clean_name")
     assert helper is None or helper["source_text"] is None
@@ -293,9 +377,10 @@ def test_context_config_overrides_thresholds(tmp_path):
         str(config_file),
         "--json",
     )
-    assert context["thresholds"]["dependency_completeness"] == 0.65
-    assert context["thresholds"]["model_confidence"] == 0.55
-    assert "semantic_overlap_relaxed" in context["thresholds"]
+    thresholds = context["sufficiency"]["thresholds"]
+    assert thresholds["dependency_completeness"] == 0.65
+    assert thresholds["model_confidence"] == 0.55
+    assert "semantic_overlap_relaxed" in thresholds
 
 
 def test_context_cli_explain_and_markdown_format(tmp_path):
@@ -406,7 +491,7 @@ def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
     assert err == {
         "error": "Unsupported csegraph index schema",
         "error_code": "unsupported_schema",
-        "hint": "Rebuild the index or install a compatible csegraph-core version.",
+        "hint": "Rebuild the index with the current csegraph-core version.",
     }
 
 
@@ -423,6 +508,7 @@ def test_cli_help_lists_only_product_commands():
     assert "inspect" in proc.stdout
     assert "graph" in proc.stdout
     assert "report" in proc.stdout
+    assert "benchmark" in proc.stdout
     removed_command = "code" + "gen"
     assert removed_command not in proc.stdout
 
@@ -457,7 +543,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         if line.startswith("csegraph ") or line.split()[0:1] == ["csegraph"]
     ]
     assert sdk_lines == [], f"SDK should not be installed: {sdk_lines}"
-    # index/refresh/context/graph must work.
+    # index/refresh/context/inspect/graph must work.
     sample = tmp_path / "repo"
     _write_repo(sample)
     proc = subprocess.run(
@@ -480,12 +566,25 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert json.loads(proc.stdout)["target_node_id"] == "symbol::service.py::function::create_user"
+    assert json.loads(proc.stdout)["target"] == "symbol::service.py::function::create_user"
+    proc = subprocess.run(
+        [
+            str(csegraph_bin),
+            "inspect",
+            "symbol::service.py::function::create_user",
+            "--repo",
+            str(sample),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(proc.stdout)["command"] == "inspect"
     proc = subprocess.run(
         [
             str(csegraph_bin),
             "graph",
-            "symbol::service.py::function::create_user",
             "--repo",
             str(sample),
             "--json",

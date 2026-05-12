@@ -88,7 +88,9 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
             (
                 "import csegraph; "
                 "from csegraph import ContextService; "
-                "import csegraph.languages.python.parser"
+                "import importlib.util; "
+                "assert ContextService is not None; "
+                "assert importlib.util.find_spec('csegraph.languages') is None"
             ),
         ],
         check=True,

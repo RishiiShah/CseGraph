@@ -32,7 +32,7 @@ EXPLANATION_BY_REASON = {
 def normalize_reasons(
     *,
     node_id: str,
-    target_node_id: str,
+    target_id: str,
     row: Dict[str, Any],
     target_row: Dict[str, Any],
     evidence: Sequence[str],
@@ -45,19 +45,19 @@ def normalize_reasons(
     reasons: set[str] = set()
     raw_set = set(raw_nodes)
 
-    if node_id == target_node_id:
+    if node_id == target_id:
         reasons.add("target")
-    if _edge_exists(outgoing.get(target_node_id, []), node_id, "calls"):
+    if _edge_exists(outgoing.get(target_id, []), node_id, "calls"):
         reasons.add("direct_call")
-    if _edge_exists(incoming.get(target_node_id, []), node_id, "calls", source=True):
+    if _edge_exists(incoming.get(target_id, []), node_id, "calls", source=True):
         reasons.add("caller")
     if _is_import_dependency(row, target_row, outgoing, incoming):
         reasons.add("import_dependency")
-    if node_id != target_node_id and row.get("file_path") == target_row.get("file_path"):
+    if node_id != target_id and row.get("file_path") == target_row.get("file_path"):
         reasons.add("same_file")
-    if _is_parent_class(node_id, target_node_id, row, target_row, symbols):
+    if _is_parent_class(node_id, target_id, row, target_row, symbols):
         reasons.add("parent_class")
-    if _is_small_helper(node_id, target_node_id, row):
+    if _is_small_helper(node_id, target_id, row):
         reasons.add("small_helper")
     if _is_test_related(row):
         reasons.add("test_related")
@@ -114,7 +114,7 @@ def _is_import_dependency(
 
 def _is_parent_class(
     node_id: str,
-    target_node_id: str,
+    target_id: str,
     row: Dict[str, Any],
     target_row: Dict[str, Any],
     symbols: Dict[str, Dict[str, Any]],
@@ -123,7 +123,7 @@ def _is_parent_class(
     node_parent = row.get("parent_symbol_id") or row.get("parent_id")
     if target_parent and node_id == target_parent:
         return True
-    if node_parent and node_parent == target_node_id:
+    if node_parent and node_parent == target_id:
         return True
     if target_parent and node_parent and target_parent == node_parent:
         parent = symbols.get(str(target_parent), {})
@@ -131,8 +131,8 @@ def _is_parent_class(
     return False
 
 
-def _is_small_helper(node_id: str, target_node_id: str, row: Dict[str, Any]) -> bool:
-    if node_id == target_node_id or row.get("kind") not in {"function", "method"}:
+def _is_small_helper(node_id: str, target_id: str, row: Dict[str, Any]) -> bool:
+    if node_id == target_id or row.get("kind") not in {"function", "method"}:
         return False
     start = row.get("start_line")
     end = row.get("end_line")

@@ -4,16 +4,17 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from csegraph_core.config.profiles import get_profile
 from csegraph_core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph_core.core.models import IndexResult, RefreshResult
 from csegraph_core.index.repository import ProjectIndex, json_dumps
-from csegraph_core.languages.types import ParsedFile, ParsedSymbol
 from csegraph_core.languages.registry import UnsupportedLanguageError, registry
+from csegraph_core.languages.types import ParsedFile, ParsedSymbol
 
 _STRUCTURAL_LANGUAGE = "non_code"
+_EXTRACTED = "EXTRACTED"
 
 
 class IndexService:
@@ -21,24 +22,38 @@ class IndexService:
         self.db_path = str(Path(db_path))
 
     def index(self, repo: str | Path, profile: str = "small") -> IndexResult:
+        timings_ms: Dict[str, float] = {}
         config = get_profile(profile)
         repo_root = str(Path(repo).resolve())
+        start = time.perf_counter()
         parsed_files = [
             parser.parse(path, Path(repo_root))
             for parser, path in registry.iter_files(Path(repo_root))
         ]
+        timings_ms["discover_parse"] = _elapsed_ms(start)
 
         index = ProjectIndex(self.db_path)
         try:
+            start = time.perf_counter()
             index.initialize_schema()
-            project_id = index.upsert_project(repo_root, config.name)
-            index.clear_project_graph(project_id)
-            stats = _write_parsed_files(index, project_id, repo_root, parsed_files)
+            index.set_metadata(repo_root, config.name)
+            timings_ms["initialize_schema"] = _elapsed_ms(start)
+
+            start = time.perf_counter()
+            index.clear_graph()
+            timings_ms["clear_graph"] = _elapsed_ms(start)
+
+            start = time.perf_counter()
+            stats = _write_parsed_files(index, repo_root, parsed_files)
+            timings_ms["write_graph"] = _elapsed_ms(start)
+
+            start = time.perf_counter()
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
                 for parsed in parsed_files
                 if parsed.parse_status != "ok"
             }
+            timings_ms["parse_errors"] = _elapsed_ms(start)
             return IndexResult(
                 command="index",
                 db_path=self.db_path,
@@ -49,6 +64,7 @@ class IndexService:
                 edges_indexed=stats["edges"],
                 changed_files=[parsed.rel_path for parsed in parsed_files],
                 parse_errors=parse_errors,
+                timings_ms=timings_ms,
             )
         finally:
             index.close()
@@ -63,10 +79,9 @@ class RefreshService:
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
-            project = index.get_project()
-            project_id = int(project["id"])
-            repo_root = Path(project["root_dir"]).resolve()
-            index.upsert_project(str(repo_root), config.name)
+            metadata = index.metadata()
+            repo_root = Path(metadata["root_dir"]).resolve()
+            index.set_metadata(str(repo_root), config.name)
 
             current_files = {
                 path.resolve().relative_to(repo_root).as_posix(): (parser, path)
@@ -75,8 +90,7 @@ class RefreshService:
             stored = {
                 row["path"]: row["sha256"]
                 for row in index.conn.execute(
-                    "SELECT path, sha256 FROM nodes WHERE project_id = ? AND type = 'file'",
-                    (project_id,),
+                    "SELECT path, sha256 FROM nodes WHERE type = 'file'",
                 )
             }
 
@@ -103,17 +117,13 @@ class RefreshService:
 
             changed_symbols: List[str] = []
             for rel_path in deleted:
-                changed_symbols.extend(
-                    index.delete_file_payload(project_id, rel_path, remove_incoming=True)
-                )
+                changed_symbols.extend(index.delete_file_payload(rel_path, remove_incoming=True))
             for rel_path in changed:
-                changed_symbols.extend(
-                    index.delete_file_payload(project_id, rel_path, remove_incoming=False)
-                )
+                changed_symbols.extend(index.delete_file_payload(rel_path, remove_incoming=False))
 
-            stats = _write_parsed_files(index, project_id, str(repo_root), parsed_changed)
-            index.cleanup_orphan_edges(project_id)
-            index.cleanup_orphan_folders(project_id)
+            stats = _write_parsed_files(index, str(repo_root), parsed_changed)
+            index.cleanup_orphan_edges()
+            index.cleanup_orphan_folders()
             changed_symbols.extend(symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols)
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
@@ -140,7 +150,6 @@ class RefreshService:
 
 def _write_parsed_files(
     index: ProjectIndex,
-    project_id: int,
     repo_root: str,
     parsed_files: Sequence[ParsedFile],
 ) -> Dict[str, int]:
@@ -149,7 +158,7 @@ def _write_parsed_files(
             raise ValueError(f"language is required for file {parsed.rel_path!r}")
 
     now = time.time()
-    _write_repo_and_folders(index, project_id, repo_root, parsed_files, now)
+    structural_edges = _write_repo_and_folders(index, repo_root, parsed_files, now)
 
     file_node_rows: List[tuple] = []
     summary_rows: List[tuple] = []
@@ -162,13 +171,13 @@ def _write_parsed_files(
         file_meta = json.dumps({"size": parsed.size, "mtime": parsed.mtime}, sort_keys=True)
         file_node_rows.append(
             (
-                node_id, project_id, parent, Path(parsed.rel_path).name, parsed.rel_path,
+                node_id, parent, Path(parsed.rel_path).name, parsed.rel_path,
                 parsed.language, parsed.sha256, parsed.sha256,
                 parsed.parse_status, parsed.parse_error, file_meta, now,
             )
         )
         file_summary = _file_summary(parsed)
-        summary_rows.append((node_id, project_id, parsed.sha256, file_summary, "file", now))
+        summary_rows.append((node_id, parsed.sha256, file_summary, "file", now))
         lexical_delete_ids.append((node_id,))
         lexical_rows.append(
             (node_id, Path(parsed.rel_path).name, parsed.rel_path, "", "", file_summary, "")
@@ -178,11 +187,11 @@ def _write_parsed_files(
         index.conn.executemany(
             """
             INSERT INTO nodes(
-                id, project_id, parent_id, type, name, path,
+                id, parent_id, type, name, path,
                 language, sha256, signature, docstring,
                 start_line, end_line, source_hash,
                 parse_status, parse_error, metadata, is_test, updated_at
-            ) VALUES(?, ?, ?, 'file', ?, ?, ?, ?, NULL, NULL,
+            ) VALUES(?, ?, 'file', ?, ?, ?, ?, NULL, NULL,
                      NULL, NULL, ?, ?, ?, ?, 0, ?)
             ON CONFLICT(id) DO UPDATE SET
                 parent_id = excluded.parent_id,
@@ -202,9 +211,8 @@ def _write_parsed_files(
     for row in index.conn.execute(
         """
         SELECT id, name, path FROM nodes
-        WHERE project_id = ? AND type IN ('class','function','method')
+        WHERE type IN ('class','function','method')
         """,
-        (project_id,),
     ):
         symbol_by_name[row["name"]].append(row["id"])
         if "." in row["name"]:
@@ -222,7 +230,7 @@ def _write_parsed_files(
             )
             symbol_node_rows.append(
                 (
-                    symbol.node_id, project_id, parent, symbol.kind, symbol.name, parsed.rel_path,
+                    symbol.node_id, parent, symbol.kind, symbol.name, parsed.rel_path,
                     parsed.language,
                     symbol.signature, symbol.docstring, symbol.start_line, symbol.end_line,
                     symbol.source_hash, metadata, 1 if symbol.is_test else 0, now,
@@ -234,7 +242,7 @@ def _write_parsed_files(
             node_to_file_node[symbol.node_id] = file_node_id(parsed.rel_path)
 
             summary = _symbol_summary(symbol)
-            summary_rows.append((symbol.node_id, project_id, symbol.source_hash, summary, symbol.kind, now))
+            summary_rows.append((symbol.node_id, symbol.source_hash, summary, symbol.kind, now))
             lexical_delete_ids.append((symbol.node_id,))
             lexical_rows.append(
                 (
@@ -252,11 +260,11 @@ def _write_parsed_files(
         index.conn.executemany(
             """
             INSERT INTO nodes(
-                id, project_id, parent_id, type, name, path,
+                id, parent_id, type, name, path,
                 language, sha256, signature, docstring,
                 start_line, end_line, source_hash,
                 parse_status, parse_error, metadata, is_test, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+            ) VALUES(?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 parent_id = excluded.parent_id,
                 type = excluded.type,
@@ -276,10 +284,9 @@ def _write_parsed_files(
     if summary_rows:
         index.conn.executemany(
             """
-            INSERT INTO summaries(node_id, project_id, source_hash, summary, kind, updated_at)
-            VALUES(?, ?, ?, ?, ?, ?)
+            INSERT INTO summaries(node_id, source_hash, summary, kind, updated_at)
+            VALUES(?, ?, ?, ?, ?)
             ON CONFLICT(node_id) DO UPDATE SET
-                project_id = excluded.project_id,
                 source_hash = excluded.source_hash,
                 summary = excluded.summary,
                 kind = excluded.kind,
@@ -302,8 +309,8 @@ def _write_parsed_files(
             lexical_rows,
         )
 
-    module_to_file_id = _module_to_file_id(index, project_id)
-    edge_rows: List[tuple] = []
+    module_to_file_id = _module_to_file_id(index)
+    edge_rows: List[tuple] = list(structural_edges)
     for parsed in parsed_files:
         try:
             parser = registry.for_extension(Path(parsed.rel_path).suffix)
@@ -313,88 +320,76 @@ def _write_parsed_files(
         current_file_id = file_node_id(parsed.rel_path)
         for symbol in parsed.symbols:
             source = symbol.parent_symbol_id if symbol.kind == "method" and symbol.parent_symbol_id else current_file_id
-            edge_rows.append((project_id, source, symbol.node_id, "contains", None))
+            edge_rows.append(_edge(source, symbol.node_id, "contains"))
 
         for import_name in parsed.imports:
             target_file_id = parser.resolve_local_import(import_name, module_to_file_id, current_module)
             if target_file_id:
-                edge_rows.append(
-                    (project_id, current_file_id, target_file_id, "imports", json_dumps({"import": import_name}))
-                )
+                edge_rows.append(_edge(current_file_id, target_file_id, "imports", {"import": import_name}))
 
         for symbol in parsed.symbols:
             for call in symbol.calls:
                 target = _pick_call_target(call, current_file_id, symbol_by_name, node_to_file_node)
                 if target and target != symbol.node_id:
-                    edge_rows.append(
-                        (project_id, symbol.node_id, target, "calls", json_dumps({"symbol": call}))
-                    )
+                    edge_rows.append(_edge(symbol.node_id, target, "calls", {"symbol": call}))
             for base in symbol.bases:
                 target = _pick_call_target(base, current_file_id, symbol_by_name, node_to_file_node)
                 if target and target != symbol.node_id:
-                    edge_rows.append(
-                        (project_id, symbol.node_id, target, "inherits", json_dumps({"base": base}))
-                    )
+                    edge_rows.append(_edge(symbol.node_id, target, "inherits", {"base": base}))
             for decorator in symbol.decorators:
                 target = _pick_call_target(decorator, current_file_id, symbol_by_name, node_to_file_node)
                 if target and target != symbol.node_id:
-                    edge_rows.append(
-                        (project_id, target, symbol.node_id, "decorates", json_dumps({"decorator": decorator}))
-                    )
+                    edge_rows.append(_edge(target, symbol.node_id, "decorates", {"decorator": decorator}))
             if symbol.is_test:
                 for call in symbol.calls:
                     target = _pick_call_target(call, current_file_id, symbol_by_name, node_to_file_node)
                     if target and target != symbol.node_id:
-                        edge_rows.append(
-                            (project_id, target, symbol.node_id, "tested_by", json_dumps({"via": call}))
-                        )
+                        edge_rows.append(_edge(target, symbol.node_id, "tested_by", {"via": call}))
 
-    edges_before = int(
-        index.conn.execute(
-            "SELECT COUNT(*) AS c FROM edges WHERE project_id = ?", (project_id,)
-        ).fetchone()["c"]
-    )
     if edge_rows:
         index.conn.executemany(
             """
-            INSERT OR IGNORE INTO edges(project_id, source_node_id, target_node_id, relation, metadata)
-            VALUES(?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO edges(source, target, relation, metadata, confidence, confidence_tier)
+            VALUES(?, ?, ?, ?, ?, ?)
             """,
             edge_rows,
         )
     index.conn.commit()
 
-    total_edges = int(
-        index.conn.execute(
-            "SELECT COUNT(*) AS c FROM edges WHERE project_id = ?", (project_id,)
-        ).fetchone()["c"]
-    )
+    total_edges = int(index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"])
     return {
         "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
-        "edges": total_edges if len(parsed_files) > 1 else (total_edges - edges_before),
+        "edges": total_edges,
     }
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 3)
 
 
 def _write_repo_and_folders(
     index: ProjectIndex,
-    project_id: int,
     repo_root: str,
     parsed_files: Sequence[ParsedFile],
     now: float,
-) -> None:
+) -> List[tuple]:
     repo_name = Path(repo_root).name or "repo"
     repo_id = repo_node_id(repo_name)
     index.conn.execute(
         """
-        INSERT OR IGNORE INTO nodes(
-            id, project_id, parent_id, type, name, path,
+        INSERT INTO nodes(
+            id, parent_id, type, name, path,
             language, sha256, signature, docstring,
             start_line, end_line, source_hash,
             parse_status, parse_error, metadata, updated_at
-        ) VALUES(?, ?, NULL, 'repo', ?, '', ?, NULL, NULL, NULL,
+        ) VALUES(?, NULL, 'repo', ?, '', ?, NULL, NULL, NULL,
                  NULL, NULL, '', NULL, NULL, NULL, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            language = excluded.language,
+            updated_at = excluded.updated_at
         """,
-        (repo_id, project_id, repo_name, _STRUCTURAL_LANGUAGE, now),
+        (repo_id, repo_name, _STRUCTURAL_LANGUAGE, now),
     )
 
     folder_paths: set[str] = set()
@@ -403,22 +398,29 @@ def _write_repo_and_folders(
         for i in range(1, len(parts) + 1):
             folder_paths.add("/".join(parts[:i]))
 
+    edges: List[tuple] = []
     for rel_dir in sorted(folder_paths, key=lambda p: p.count("/")):
         parent_parts = rel_dir.split("/")[:-1]
         parent = folder_node_id("/".join(parent_parts)) if parent_parts else repo_id
+        folder_id = folder_node_id(rel_dir)
         index.conn.execute(
             """
-            INSERT OR IGNORE INTO nodes(
-                id, project_id, parent_id, type, name, path,
+            INSERT INTO nodes(
+                id, parent_id, type, name, path,
                 language, sha256, signature, docstring,
                 start_line, end_line, source_hash,
                 parse_status, parse_error, metadata, updated_at
-            ) VALUES(?, ?, ?, 'folder', ?, ?, ?, NULL, NULL, NULL,
+            ) VALUES(?, ?, 'folder', ?, ?, ?, NULL, NULL, NULL,
                      NULL, NULL, '', NULL, NULL, NULL, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_id = excluded.parent_id,
+                name = excluded.name,
+                path = excluded.path,
+                language = excluded.language,
+                updated_at = excluded.updated_at
             """,
             (
-                folder_node_id(rel_dir),
-                project_id,
+                folder_id,
                 parent,
                 rel_dir.rsplit("/", 1)[-1],
                 rel_dir,
@@ -426,6 +428,14 @@ def _write_repo_and_folders(
                 now,
             ),
         )
+        edges.append(_edge(parent, folder_id, "contains"))
+
+    for parsed in parsed_files:
+        parent_dir = "/".join(parsed.rel_path.split("/")[:-1])
+        parent = folder_node_id(parent_dir) if parent_dir else repo_id
+        edges.append(_edge(parent, file_node_id(parsed.rel_path), "contains"))
+
+    return edges
 
 
 def _file_summary(parsed: ParsedFile) -> str:
@@ -444,12 +454,9 @@ def _symbol_summary(symbol: ParsedSymbol) -> str:
     return " - ".join(part for part in parts if part)
 
 
-def _module_to_file_id(index: ProjectIndex, project_id: int) -> Dict[str, str]:
+def _module_to_file_id(index: ProjectIndex) -> Dict[str, str]:
     mapping: Dict[str, str] = {}
-    for row in index.conn.execute(
-        "SELECT path FROM nodes WHERE project_id = ? AND type = 'file'",
-        (project_id,),
-    ):
+    for row in index.conn.execute("SELECT path FROM nodes WHERE type = 'file'"):
         path = row["path"]
         try:
             parser = registry.for_extension(Path(path).suffix)
@@ -472,3 +479,21 @@ def _pick_call_target(
         if node_to_file_node.get(node_id) == current_file_id:
             return node_id
     return candidates[0]
+
+
+def _edge(
+    source: str,
+    target: str,
+    relation: str,
+    metadata: Optional[Dict[str, object]] = None,
+    confidence: float = 1.0,
+    confidence_tier: str = _EXTRACTED,
+) -> tuple:
+    return (
+        source,
+        target,
+        relation,
+        json_dumps(metadata),
+        confidence,
+        confidence_tier,
+    )

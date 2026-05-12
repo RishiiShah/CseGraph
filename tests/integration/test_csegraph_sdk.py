@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from csegraph import (
+    BenchmarkService,
     ContextService,
     GraphQueryService,
     IndexService,
@@ -58,8 +59,8 @@ def test_project_index_schema_is_idempotent(tmp_path):
             )
         }
 
-    assert "schema_meta" in tables
-    assert "projects" in tables
+    assert "metadata" in tables
+    assert "projects" not in tables
     assert "nodes" in tables
     assert "edges" in tables
     assert "summaries" in tables
@@ -72,11 +73,23 @@ def test_project_index_schema_is_idempotent(tmp_path):
 
     with sqlite3.connect(db_path) as conn:
         version = conn.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
+            "SELECT value FROM metadata WHERE key='schema_version'"
         ).fetchone()
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version[0] == "csegraph-sqlite-v4"
-    assert user_version == 4
+        node_columns = {row[1] for row in conn.execute("PRAGMA table_info(nodes)")}
+        edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
+        run_columns = {row[1] for row in conn.execute("PRAGMA table_info(retrieval_runs)")}
+
+    assert version[0] == "csegraph-sqlite-v5"
+    assert user_version == 5
+    assert "project_id" not in node_columns
+    assert {"source", "target", "relation", "metadata", "confidence", "confidence_tier"}.issubset(edge_columns)
+    assert "source_node_id" not in edge_columns
+    assert "target_node_id" not in edge_columns
+    assert {"query", "target", "sufficient"}.issubset(run_columns)
+    assert "query_text" not in run_columns
+    assert "target_node_id" not in run_columns
+    assert "is_sufficient" not in run_columns
 
 
 def test_index_context_graph_and_incremental_refresh(tmp_path):
@@ -97,13 +110,14 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
         profile="small",
     )
 
-    context_ids = {node.node_id for node in context.context_nodes}
-    assert context.target_node_id == "symbol::main.py::function::build_report"
+    context_ids = {node.id for node in context.nodes}
+    assert context.query == "Implement build_report using format_user"
+    assert context.target == "symbol::main.py::function::build_report"
     assert "symbol::main.py::function::build_report" in context_ids
     assert "symbol::utils.py::function::format_user" in context_ids
-    assert context.metrics.dependency_completeness == 1.0
-    assert context.metrics.entity_coverage == 1.0
-    assert context.is_sufficient is True
+    assert context.sufficiency.metrics.dependency_completeness == 1.0
+    assert context.sufficiency.metrics.entity_coverage == 1.0
+    assert context.sufficiency.sufficient is True
 
     graph = GraphQueryService(db_path).neighborhood(
         "symbol::main.py::function::build_report",
@@ -146,7 +160,40 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
         target="format_title",
         profile="small",
     )
-    assert refreshed_context.target_node_id == "symbol::utils.py::function::format_title"
+    assert refreshed_context.target == "symbol::utils.py::function::format_title"
+
+
+def test_benchmark_service_runs_core_pipeline(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+
+    result = BenchmarkService(db_path).run(
+        repo,
+        profile="small",
+        query="Implement build_report using format_user",
+        target="build_report",
+        graph_output_path=tmp_path / "graph.html",
+    )
+
+    assert result.command == "benchmark"
+    assert result.profile == "small"
+    assert result.repo_root == str(repo)
+    assert result.db_path == str(db_path)
+    assert result.graph_output_path == str(tmp_path / "graph.html")
+    assert result.total_elapsed_ms >= 0
+    assert [step.name for step in result.steps] == ["index", "context", "graph", "report"]
+    assert result.steps[0].stats["files"] == 2
+    assert list(result.steps[0].stats["phases"]) == [
+        "discover_parse",
+        "initialize_schema",
+        "clear_graph",
+        "write_graph",
+        "parse_errors",
+    ]
+    assert result.steps[1].stats["target"] == "symbol::main.py::function::build_report"
+    assert result.steps[2].stats["output_size_bytes"] > 0
+    assert result.steps[3].stats["symbols"] == 2
 
 
 def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_path):
@@ -161,7 +208,7 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
         profile="small",
     )
 
-    by_id = {node.node_id: node for node in context.context_nodes}
+    by_id = {node.id: node for node in context.nodes}
     target = by_id["symbol::main.py::function::build_report"]
     helper = by_id["symbol::utils.py::function::format_user"]
 
@@ -171,7 +218,7 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
     assert "return name.strip().title()" in helper.source_text
     assert target.estimated_tokens >= 1
     assert helper.estimated_tokens >= 1
-    assert context.estimated_tokens >= target.estimated_tokens + helper.estimated_tokens
+    assert context.total_estimated_tokens >= target.estimated_tokens + helper.estimated_tokens
     assert "target" in target.reason
     assert "direct_call" in helper.reason
     assert set(target.reason).issubset(VALID_REASONS)
@@ -193,7 +240,7 @@ def test_context_explain_populates_human_explanations(tmp_path):
         explain=True,
     )
 
-    by_id = {node.node_id: node for node in context.context_nodes}
+    by_id = {node.id: node for node in context.nodes}
     assert by_id["symbol::main.py::function::build_report"].explanation
     assert "target" in by_id["symbol::main.py::function::build_report"].reason
     helper = by_id["symbol::utils.py::function::format_user"]
@@ -214,10 +261,10 @@ def test_context_include_source_never_stays_compact(tmp_path):
         include_source="never",
     )
 
-    assert context.context_nodes
-    assert all(node.source_text is None for node in context.context_nodes)
-    assert all(node.estimated_tokens >= 1 for node in context.context_nodes)
-    assert context.estimated_tokens == sum(node.estimated_tokens for node in context.context_nodes)
+    assert context.nodes
+    assert all(node.source_text is None for node in context.nodes)
+    assert all(node.estimated_tokens >= 1 for node in context.nodes)
+    assert context.total_estimated_tokens == sum(node.estimated_tokens for node in context.nodes)
 
 
 def test_context_max_tokens_limits_source_materialization(tmp_path):
@@ -234,8 +281,8 @@ def test_context_max_tokens_limits_source_materialization(tmp_path):
         max_tokens=30,
     )
 
-    by_id = {node.node_id: node for node in context.context_nodes}
-    assert context.estimated_tokens <= 30
+    by_id = {node.id: node for node in context.nodes}
+    assert context.total_estimated_tokens <= 30
     assert "symbol::main.py::function::build_report" in by_id
     helper = by_id.get("symbol::utils.py::function::format_user")
     assert helper is None or helper.source_text is None
@@ -253,7 +300,7 @@ def test_context_reason_enum_is_strict(tmp_path):
         profile="small",
     )
 
-    for node in context.context_nodes:
+    for node in context.nodes:
         assert node.reason
         assert set(node.reason).issubset(VALID_REASONS)
         assert all("expanded-from-" not in reason for reason in node.reason)
@@ -276,8 +323,8 @@ def test_context_service_config_path_overrides_thresholds(tmp_path):
         target="symbol::main.py::function::build_report",
         config_path=str(config_file),
     )
-    assert context.thresholds["dependency_completeness"] == 0.65
-    assert "semantic_overlap_relaxed" in context.thresholds
+    assert context.sufficiency.thresholds["dependency_completeness"] == 0.65
+    assert "semantic_overlap_relaxed" in context.sufficiency.thresholds
 
 
 def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
@@ -302,157 +349,10 @@ def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
     with sqlite3.connect(db_path) as conn:
         relations = {row[0] for row in conn.execute("SELECT DISTINCT relation FROM edges")}
         types = {row[0] for row in conn.execute("SELECT DISTINCT type FROM nodes")}
+        edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
     assert {"inherits", "decorates", "tested_by"}.issubset(relations)
     assert {"repo", "folder", "file", "class", "function", "method"}.issubset(types)
-
-
-def test_v12_migrates_v1_database_in_place(tmp_path):
-    db_path = tmp_path / "v1.db"
-    with sqlite3.connect(db_path) as conn:
-        conn.executescript(
-            """
-            CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            INSERT INTO schema_meta(key, value) VALUES('schema_version', 'csegraph-sqlite-v1');
-            CREATE TABLE projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, root_dir TEXT NOT NULL UNIQUE,
-                active_profile TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL
-            );
-            INSERT INTO projects(root_dir, active_profile, created_at, updated_at)
-                VALUES('/tmp/legacy', 'small', 0, 0);
-            CREATE TABLE files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
-                path TEXT NOT NULL, language TEXT NOT NULL, sha256 TEXT NOT NULL,
-                mtime REAL NOT NULL, size INTEGER NOT NULL,
-                parse_status TEXT NOT NULL, parse_error TEXT, updated_at REAL NOT NULL,
-                UNIQUE(project_id, path)
-            );
-            INSERT INTO files(project_id, path, language, sha256, mtime, size, parse_status, parse_error, updated_at)
-                VALUES(1, 'pkg/util.py', 'python', 'h1', 0, 1, 'ok', NULL, 0);
-            CREATE TABLE symbols (
-                id TEXT PRIMARY KEY, project_id INTEGER NOT NULL, file_id INTEGER NOT NULL,
-                kind TEXT NOT NULL, name TEXT NOT NULL, parent_symbol_id TEXT,
-                signature TEXT, docstring TEXT, start_line INTEGER, end_line INTEGER,
-                source_hash TEXT NOT NULL
-            );
-            INSERT INTO symbols VALUES('symbol::pkg/util.py::function::foo', 1, 1, 'function', 'foo', NULL,
-                'def foo()', '', 1, 2, 'h2');
-            CREATE TABLE edges (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
-                source_id TEXT NOT NULL, target_id TEXT NOT NULL,
-                relation TEXT NOT NULL, metadata TEXT,
-                UNIQUE(project_id, source_id, target_id, relation, metadata)
-            );
-            INSERT INTO edges(project_id, source_id, target_id, relation, metadata)
-                VALUES(1, 'file::pkg/util.py', 'symbol::pkg/util.py::function::foo', 'contains', NULL);
-            """
-        )
-
-    idx = ProjectIndex(db_path)
-    idx.initialize_schema()
-    try:
-        version = idx.conn.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
-        ).fetchone()[0]
-        user_version = idx.conn.execute("PRAGMA user_version").fetchone()[0]
-        types = dict(idx.conn.execute("SELECT type, COUNT(*) FROM nodes GROUP BY type").fetchall())
-        edge_cols = {row[1] for row in idx.conn.execute("PRAGMA table_info(edges)")}
-        legacy_tables = [
-            row[0] for row in idx.conn.execute(
-                "SELECT name FROM sqlite_master WHERE name IN ('files','symbols')"
-            )
-        ]
-    finally:
-        idx.close()
-    assert version == "csegraph-sqlite-v4"
-    assert user_version == 4
-    assert types == {"repo": 1, "folder": 1, "file": 1, "function": 1}
-    assert {"source_node_id", "target_node_id"}.issubset(edge_cols)
-    assert legacy_tables == []
-
-
-def test_v121_migrates_v2_to_v3_in_place(tmp_path):
-    """Build a v2-shaped DB by hand, open with v3 code, verify the v2→v3 migration."""
-    db_path = tmp_path / "v2.db"
-    with sqlite3.connect(db_path) as conn:
-        conn.executescript(
-            """
-            CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            INSERT INTO schema_meta(key, value) VALUES('schema_version', 'csegraph-sqlite-v2');
-            CREATE TABLE projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, root_dir TEXT NOT NULL UNIQUE,
-                active_profile TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL
-            );
-            INSERT INTO projects(root_dir, active_profile, created_at, updated_at)
-                VALUES('/tmp/v2_legacy', 'small', 0, 0);
-            CREATE TABLE nodes (
-                id TEXT PRIMARY KEY, project_id INTEGER NOT NULL, parent_id TEXT,
-                type TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
-                language TEXT, sha256 TEXT, signature TEXT, docstring TEXT,
-                start_line INTEGER, end_line INTEGER, source_hash TEXT NOT NULL,
-                parse_status TEXT, parse_error TEXT, metadata TEXT,
-                updated_at REAL NOT NULL
-            );
-            -- one regular function and one test function (encoded via metadata.is_test in v2)
-            INSERT INTO nodes(id, project_id, parent_id, type, name, path,
-                              source_hash, metadata, updated_at)
-                VALUES('symbol::pkg/util.py::function::foo', 1, NULL, 'function', 'foo', 'pkg/util.py',
-                       'h1', '{"is_test": false}', 0);
-            INSERT INTO nodes(id, project_id, parent_id, type, name, path,
-                              source_hash, metadata, updated_at)
-                VALUES('symbol::tests/test_foo.py::function::test_foo', 1, NULL, 'function', 'test_foo',
-                       'tests/test_foo.py', 'h2', '{"is_test": true}', 0);
-            CREATE TABLE edges (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
-                source_node_id TEXT NOT NULL, target_node_id TEXT NOT NULL,
-                relation TEXT NOT NULL, metadata TEXT,
-                UNIQUE(project_id, source_node_id, target_node_id, relation, metadata)
-            );
-            CREATE TABLE summaries (
-                node_id TEXT PRIMARY KEY, project_id INTEGER NOT NULL,
-                source_hash TEXT NOT NULL, summary TEXT NOT NULL, kind TEXT NOT NULL,
-                updated_at REAL NOT NULL
-            );
-            CREATE VIRTUAL TABLE lexical_index USING fts5(node_id UNINDEXED, content);
-            CREATE TABLE embedding_cache (
-                node_id TEXT PRIMARY KEY, project_id INTEGER NOT NULL,
-                model TEXT NOT NULL, source_hash TEXT NOT NULL, vector BLOB NOT NULL,
-                updated_at REAL NOT NULL
-            );
-            CREATE TABLE retrieval_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
-                query_text TEXT NOT NULL, target_node_id TEXT, profile TEXT NOT NULL,
-                dependency_completeness REAL NOT NULL, entity_coverage REAL NOT NULL,
-                semantic_overlap REAL NOT NULL, model_confidence REAL NOT NULL,
-                is_sufficient INTEGER NOT NULL, created_at REAL NOT NULL
-            );
-            CREATE TABLE retrieval_context (
-                run_id INTEGER NOT NULL, node_id TEXT NOT NULL, rank INTEGER NOT NULL,
-                score REAL NOT NULL, raw_code INTEGER NOT NULL, evidence TEXT NOT NULL,
-                PRIMARY KEY(run_id, node_id)
-            );
-            """
-        )
-
-    idx = ProjectIndex(db_path)
-    idx.initialize_schema()
-    try:
-        version = idx.conn.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
-        ).fetchone()[0]
-        user_version = idx.conn.execute("PRAGMA user_version").fetchone()[0]
-        node_cols = {row[1] for row in idx.conn.execute("PRAGMA table_info(nodes)")}
-        is_test_count = idx.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE is_test = 1"
-        ).fetchone()[0]
-        fts_cols = [row[1] for row in idx.conn.execute("PRAGMA table_info(lexical_index)")]
-    finally:
-        idx.close()
-
-    assert version == "csegraph-sqlite-v4"
-    assert user_version == 4
-    assert "is_test" in node_cols
-    assert is_test_count == 1  # backfill from metadata JSON
-    assert {"name", "path", "signature", "docstring", "summary", "source"}.issubset(set(fts_cols))
+    assert {"source", "target", "confidence", "confidence_tier"}.issubset(edge_columns)
 
 
 def test_unsupported_schema_version_raises_structured_error(tmp_path):
@@ -473,7 +373,7 @@ def test_unsupported_schema_version_raises_structured_error(tmp_path):
         idx.close()
 
     assert exc_info.value.error_code == "unsupported_schema"
-    assert exc_info.value.hint == "Rebuild the index or install a compatible csegraph-core version."
+    assert exc_info.value.hint == "Rebuild the index with the current csegraph-core version."
 
 
 def test_malformed_schema_metadata_raises_structured_error(tmp_path):
@@ -494,4 +394,3 @@ def test_malformed_schema_metadata_raises_structured_error(tmp_path):
         idx.close()
 
     assert exc_info.value.error_code == "unsupported_schema"
-

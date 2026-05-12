@@ -12,7 +12,7 @@ _CORPUS = [
     "Write tests for extract_query_entities in text.entities",
     "Update the import resolution logic in PythonParser",
     "Optimize FTS5 BM25 scoring weights",
-    "Remove deprecated parse_python_file standalone function",
+    "Remove old parse_python_file standalone function",
     "Add NOT NULL constraint on language column in nodes table",
 ]
 

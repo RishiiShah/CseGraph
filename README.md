@@ -14,9 +14,9 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 
 | Package | Location | Purpose |
 |---|---|---|
-| `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, CSE metrics, and migrations. Imported as `csegraph_core`. |
+| `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
-| `csegraph-cli` | `packages/csegraph-cli/` | CLI with `index`, `refresh`, `context`, `inspect`, `graph`, and `report`. |
+| `csegraph-cli` | `packages/csegraph-cli/` | CLI with `index`, `refresh`, `context`, `inspect`, `graph`, `report`, and `benchmark`. |
 
 Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 
@@ -53,6 +53,9 @@ csegraph graph --repo .
 
 # Generate a project report from the index.
 csegraph report . --json
+
+# Time the core workflow before/after optimization work.
+csegraph benchmark . --target refresh_token
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
@@ -66,7 +69,7 @@ Place a `.csegraphignore` file in the repository root to exclude files and direc
 ## SDK
 
 ```python
-from csegraph import ContextService, GraphQueryService, IndexService, RefreshService
+from csegraph import BenchmarkService, ContextService, GraphQueryService, IndexService, RefreshService
 
 IndexService(".csegraph/index.db").index(".", profile="medium")
 RefreshService(".csegraph/index.db").refresh(profile="medium")
@@ -78,6 +81,7 @@ context = ContextService(".csegraph/index.db").build_context(
 )
 
 graph = GraphQueryService(".csegraph/index.db").neighborhood("refresh_token", depth=1)
+benchmark = BenchmarkService(".csegraph/index.db").run(".", target="refresh_token")
 ```
 
 ## Context Output
@@ -87,7 +91,6 @@ Context JSON includes:
 - `schema_version = "csegraph-context-v1"`
 - ranked `nodes` with paths, line ranges, reason tags, optional source text, and token estimates
 - sufficiency metrics and thresholds
-- legacy-compatible fields such as `task`, `target_node_id`, `metrics`, and `context_nodes`
 
 Minor `v1.x` releases may add fields, but they must not remove or rename existing context fields.
 

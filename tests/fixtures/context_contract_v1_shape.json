@@ -1,17 +1,16 @@
 {
   "schema_version": "csegraph-context-v1",
-  "legacy_fields": [
-    "task",
-    "target_node_id",
-    "estimated_tokens",
-    "metrics",
-    "context_nodes"
-  ],
   "canonical_fields": [
+    "command",
+    "db_path",
+    "repo_root",
+    "profile",
     "query",
     "target",
     "total_estimated_tokens",
     "sufficiency",
+    "raw_code_nodes",
+    "run_id",
     "nodes"
   ],
   "canonical_node_fields": [

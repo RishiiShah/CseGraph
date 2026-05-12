@@ -22,6 +22,7 @@ class RecordingTokenizer:
 class FakeParser:
     language = "fakelang"
     extensions = (".fake",)
+    excluded_dirs = frozenset()
 
     def parse(self, path: Path, root: Path) -> ParsedFile:
         raise NotImplementedError
@@ -78,7 +79,7 @@ def test_compute_metrics_uses_registry_tokenizer_for_source(patched_registry):
     target_id = list(symbols.keys())[0]
     compute_metrics(
         task="do work",
-        target_node_id=target_id,
+        target_id=target_id,
         context_ids=[target_id],
         symbols=symbols,
         summaries={},
@@ -123,7 +124,7 @@ def test_unknown_language_raises_in_compute_metrics():
     with pytest.raises(UnsupportedLanguageError):
         compute_metrics(
             task="foo task",
-            target_node_id=target_id,
+            target_id=target_id,
             context_ids=[target_id],
             symbols=symbols,
             summaries={},

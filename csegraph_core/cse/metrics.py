@@ -25,7 +25,7 @@ class SufficiencyMetrics:
 
 def compute_metrics(
     task: str,
-    target_node_id: str,
+    target_id: str,
     context_ids: Sequence[str],
     symbols: Dict[str, Dict[str, Any]],
     summaries: Dict[str, str],
@@ -34,7 +34,7 @@ def compute_metrics(
     context_set = set(context_ids)
     direct_calls = {
         edge["target_id"]
-        for edge in outgoing.get(target_node_id, [])
+        for edge in outgoing.get(target_id, [])
         if edge["relation"] == "calls" and edge["target_id"] in symbols
     }
     dep = 1.0 if not direct_calls else len(direct_calls & context_set) / len(direct_calls)
@@ -101,7 +101,7 @@ def all_pass(
 
 
 def raw_code_nodes(
-    target_node_id: str,
+    target_id: str,
     context_ids: Sequence[str],
     outgoing: Dict[str, List[Dict[str, Any]]],
     metrics: SufficiencyMetrics,
@@ -112,7 +112,7 @@ def raw_code_nodes(
     if metrics.model_confidence >= confidence_threshold:
         return set()
     raw: List[str] = []
-    for edge in outgoing.get(target_node_id, []):
+    for edge in outgoing.get(target_id, []):
         if edge["relation"] == "calls" and edge["target_id"] in context_ids:
             raw.append(edge["target_id"])
     return set(raw[:budget])

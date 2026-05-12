@@ -24,7 +24,6 @@ _BM25_WEIGHTS = (8.0, 4.0, 2.0, 1.0, 2.0, 1.0)
 
 def fts_lexical_scores(
     conn: sqlite3.Connection,
-    project_id: int,
     task: str,
     limit: int = 200,
 ) -> Dict[str, float]:
@@ -45,11 +44,10 @@ def fts_lexical_scores(
             FROM lexical_index
             JOIN nodes ON nodes.id = lexical_index.node_id
             WHERE lexical_index MATCH ?
-              AND nodes.project_id = ?
             ORDER BY score
             LIMIT ?
             """,
-            (*_BM25_WEIGHTS, match_expr, project_id, limit),
+            (*_BM25_WEIGHTS, match_expr, limit),
         ).fetchall()
     except sqlite3.OperationalError:
         return {}
@@ -107,16 +105,15 @@ WITH RECURSIVE bfs(node_id, depth, relation, source) AS (
     SELECT ?, 0, NULL, NULL
   UNION
     SELECT
-        CASE WHEN e.source_node_id = bfs.node_id THEN e.target_node_id
-             ELSE e.source_node_id END,
+        CASE WHEN e.source = bfs.node_id THEN e.target
+             ELSE e.source END,
         bfs.depth + 1,
         e.relation,
         bfs.node_id
     FROM bfs
     JOIN edges e
-      ON (e.source_node_id = bfs.node_id OR e.target_node_id = bfs.node_id)
-    WHERE e.project_id = ?
-      AND bfs.depth < ?
+      ON (e.source = bfs.node_id OR e.target = bfs.node_id)
+    WHERE bfs.depth < ?
 )
 SELECT node_id, depth, relation, source FROM bfs WHERE depth > 0
 """
@@ -128,7 +125,6 @@ def apply_graph_expansion(
     scores: Dict[str, float],
     evidence: Dict[str, List[str]],
     conn: sqlite3.Connection,
-    project_id: int,
     symbols: Dict[str, Dict[str, Any]],
 ) -> None:
     """Run a SQLite recursive-CTE BFS from anchor up to `radius` hops.
@@ -137,7 +133,7 @@ def apply_graph_expansion(
     edge graph itself and returns only the reachable subgraph.
     """
     seen: set[str] = set()
-    for row in conn.execute(_BFS_CTE, (anchor, project_id, radius)):
+    for row in conn.execute(_BFS_CTE, (anchor, radius)):
         neighbor = row["node_id"]
         if neighbor in seen:
             continue

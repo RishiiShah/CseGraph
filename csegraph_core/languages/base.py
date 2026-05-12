@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Protocol, runtime_checkable
+from typing import Dict, FrozenSet, Iterable, List, Optional, Protocol, runtime_checkable
 
 from csegraph_core.languages.types import ParsedFile
 
@@ -12,6 +12,8 @@ class Parser(Protocol):
     language: str
     extensions: tuple
 
+    @property
+    def excluded_dirs(self) -> FrozenSet[str]: ...
     def parse(self, path: Path, root: Path) -> ParsedFile: ...
     def iter_files(self, root: Path) -> Iterable[Path]: ...
     def module_name_from_relpath(self, rel_path: str) -> Optional[str]: ...

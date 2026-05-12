@@ -69,6 +69,26 @@ def test_report_json_god_nodes_are_sorted_by_degree(tmp_path):
     assert degrees == sorted(degrees, reverse=True)
 
 
+def test_report_god_nodes_exclude_noisy_init_files(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    imports = []
+    for i in range(8):
+        (repo / f"mod{i}.py").write_text(
+            f"def func{i}():\n    return {i}\n",
+            encoding="utf-8",
+        )
+        imports.append(f"from mod{i} import func{i}")
+    (repo / "__init__.py").write_text("\n".join(imports), encoding="utf-8")
+
+    _run_cli("index", str(repo), "--json")
+    result = _run_cli("report", str(repo), "--json")
+
+    god_names = [n["name"] for n in result["god_nodes"]]
+    assert "__init__.py" not in god_names
+    assert any(n["kind"] == "function" for n in result["god_nodes"])
+
+
 def test_report_json_is_deterministic(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
@@ -112,6 +132,41 @@ def test_report_knowledge_gaps_contain_low_degree_symbols(tmp_path):
 
     gap_names = [n["name"] for n in result["knowledge_gaps"]]
     assert "isolated_function" in gap_names
+
+
+def test_report_knowledge_gaps_have_reasons_and_groups(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    (repo / "orphan.py").write_text(
+        "def isolated_function():\n    return 42\n",
+        encoding="utf-8",
+    )
+
+    _run_cli("index", str(repo), "--json")
+    result = _run_cli("report", str(repo), "--json")
+
+    gap = next(n for n in result["knowledge_gaps"] if n["name"] == "isolated_function")
+    assert gap["reason"] == "only_contained"
+    assert gap["reason_label"] == "Only contained"
+    groups = result["knowledge_gap_groups"]
+    only_contained = next(g for g in groups if g["reason"] == "only_contained")
+    assert only_contained["count"] >= 1
+    assert "isolated_function" in only_contained["examples"]
+
+
+def test_report_markdown_groups_knowledge_gaps_by_reason(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    (repo / "orphan.py").write_text(
+        "def isolated_function():\n    return 42\n",
+        encoding="utf-8",
+    )
+
+    _run_cli("index", str(repo), "--json")
+    output = _run_cli_text("report", str(repo))
+
+    assert "### Only contained" in output
+    assert "`isolated_function`" in output
 
 
 def test_report_knowledge_gaps_exclude_noise(tmp_path):
@@ -244,6 +299,49 @@ def test_report_surprising_connections_deduped(tmp_path):
         for c in result["surprising_connections"]
     ]
     assert len(triples) == len(set(triples)), "surprising_connections has duplicates"
+
+
+def test_report_suggested_questions_are_specific_not_generic(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    (repo / "orphan.py").write_text(
+        "def isolated_function():\n    return 42\n",
+        encoding="utf-8",
+    )
+
+    _run_cli("index", str(repo), "--json")
+    result = _run_cli("report", str(repo), "--json")
+
+    questions = result["suggested_questions"]
+    assert questions
+    assert not any("Could it be decomposed?" in q for q in questions)
+    assert not any("under-tested or under-used" in q for q in questions)
+    assert any("callers" in q or "inspect" in q for q in questions)
+
+
+def test_report_suggested_questions_are_unique(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    alpha = repo / "alpha"
+    alpha.mkdir()
+    (alpha / "__init__.py").write_text("", encoding="utf-8")
+    (alpha / "caller.py").write_text(
+        "from beta.one import first\n"
+        "from beta.two import second\n\n"
+        "def run():\n    first()\n    second()\n",
+        encoding="utf-8",
+    )
+    beta = repo / "beta"
+    beta.mkdir()
+    (beta / "__init__.py").write_text("", encoding="utf-8")
+    (beta / "one.py").write_text("def first():\n    return 1\n", encoding="utf-8")
+    (beta / "two.py").write_text("def second():\n    return 2\n", encoding="utf-8")
+
+    _run_cli("index", str(repo), "--json")
+    result = _run_cli("report", str(repo), "--json")
+
+    questions = result["suggested_questions"]
+    assert len(questions) == len(set(questions))
 
 
 def test_report_with_custom_db(tmp_path):
