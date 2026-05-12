@@ -51,14 +51,14 @@ class ContextService:
             if not symbols:
                 raise ValueError("No symbols are indexed in this database.")
 
-            target_node_id = _resolve_target(target, task, symbols, summaries, index, project_id)
+            target_id = _resolve_target(target, task, symbols, summaries, index, project_id)
             fts_seed = fts_lexical_scores(index.conn, project_id, task)
             scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
-            if target_node_id:
-                scores[target_node_id] += 4.0
-                evidence[target_node_id].append("target")
+            if target_id:
+                scores[target_id] += 4.0
+                evidence[target_id].append("target")
 
-            anchors = [target_node_id] if target_node_id else [
+            anchors = [target_id] if target_id else [
                 node_id for node_id, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)[: config.top_k]
             ]
             for anchor in anchors:
@@ -73,12 +73,12 @@ class ContextService:
                 )
 
             context_ids = _select_context_ids(
-                target_node_id,
+                target_id,
                 scores,
                 outgoing,
                 config.context_budget,
             )
-            metrics = compute_metrics(task, target_node_id, context_ids, symbols, summaries, outgoing)
+            metrics = compute_metrics(task, target_id, context_ids, symbols, summaries, outgoing)
             is_sufficient = all_pass(
                 metrics,
                 dep_threshold=config.dep_threshold,
@@ -88,7 +88,7 @@ class ContextService:
                 confidence_threshold=config.confidence_threshold,
             )
             raw_nodes = raw_code_nodes(
-                target_node_id,
+                target_id,
                 context_ids,
                 outgoing,
                 metrics,
@@ -97,15 +97,15 @@ class ContextService:
             )
             source_ids = _source_candidate_ids(
                 include_source,
-                target_node_id,
+                target_id,
                 context_ids,
                 outgoing,
                 symbols,
                 raw_nodes,
             )
 
-            context_nodes: List[ContextNode] = []
-            target_row = symbols.get(target_node_id, {})
+            nodes: List[ContextNode] = []
+            target_row = symbols.get(target_id, {})
             for node_id in context_ids:
                 row = symbols[node_id]
                 raw_evidence = evidence.get(node_id, [])
@@ -118,7 +118,7 @@ class ContextService:
                 estimated_tokens = _estimate_node_tokens(row, summary, source_text)
                 reason = normalize_reasons(
                     node_id=node_id,
-                    target_node_id=target_node_id,
+                    target_id=target_id,
                     row=row,
                     target_row=target_row,
                     evidence=clean_evidence,
@@ -128,7 +128,7 @@ class ContextService:
                     symbols=symbols,
                     raw_nodes=raw_nodes,
                 )
-                context_nodes.append(
+                nodes.append(
                     ContextNode(
                         node_id=node_id,
                         kind=row["kind"],
@@ -149,9 +149,9 @@ class ContextService:
                     )
                 )
 
-            context_nodes = _apply_token_budget(context_nodes, max_tokens)
-            context_ids = [node.node_id for node in context_nodes]
-            metrics = compute_metrics(task, target_node_id, context_ids, symbols, summaries, outgoing)
+            nodes = _apply_token_budget(nodes, max_tokens)
+            context_ids = [node.node_id for node in nodes]
+            metrics = compute_metrics(task, target_id, context_ids, symbols, summaries, outgoing)
             is_sufficient = all_pass(
                 metrics,
                 dep_threshold=config.dep_threshold,
@@ -160,13 +160,13 @@ class ContextService:
                 semantic_threshold_relaxed=config.semantic_threshold_relaxed,
                 confidence_threshold=config.confidence_threshold,
             )
-            raw_nodes = {node.node_id for node in context_nodes if node.raw_code}
-            estimated_tokens = sum(node.estimated_tokens for node in context_nodes)
+            raw_nodes = {node.node_id for node in nodes if node.raw_code}
+            estimated_tokens = sum(node.estimated_tokens for node in nodes)
 
             run_id = index.insert_retrieval_run(
                 project_id=project_id,
                 query_text=task,
-                target_node_id=target_node_id,
+                target_node_id=target_id,
                 profile=config.name,
                 metrics={
                     "dependency_completeness": metrics.dependency_completeness,
@@ -186,7 +186,7 @@ class ContextService:
                         "raw_code": node.raw_code,
                         "evidence": list(node.evidence) + list(node.lineage),
                     }
-                    for rank, node in enumerate(context_nodes, start=1)
+                    for rank, node in enumerate(nodes, start=1)
                 ],
             )
 
@@ -196,10 +196,10 @@ class ContextService:
                 repo_root=repo_root,
                 profile=config.name,
                 task=task,
-                target_node_id=target_node_id,
+                target=target_id,
                 is_sufficient=is_sufficient,
                 metrics=metrics,
-                context_nodes=context_nodes,
+                nodes=nodes,
                 raw_code_nodes=sorted(raw_nodes),
                 thresholds={
                     "dependency_completeness": config.dep_threshold,
@@ -260,13 +260,13 @@ def _resolve_target(
 
 
 def _select_context_ids(
-    target_node_id: str,
+    target_id: str,
     scores: Dict[str, float],
     outgoing: Dict[str, List[Dict[str, Any]]],
     budget: int,
 ) -> List[str]:
-    required = [target_node_id]
-    for edge in outgoing.get(target_node_id, []):
+    required = [target_id]
+    for edge in outgoing.get(target_id, []):
         if edge["relation"] == "calls":
             required.append(edge["target_id"])
     selected: List[str] = []
@@ -291,7 +291,7 @@ def _validate_include_source(value: str) -> str:
 
 def _source_candidate_ids(
     include_source: str,
-    target_node_id: str,
+    target_id: str,
     context_ids: Sequence[str],
     outgoing: Dict[str, List[Dict[str, Any]]],
     symbols: Dict[str, Dict[str, Any]],
@@ -305,7 +305,7 @@ def _source_candidate_ids(
 
     direct_calls = {
         edge["target_id"]
-        for edge in outgoing.get(target_node_id, [])
+        for edge in outgoing.get(target_id, [])
         if edge["relation"] == "calls" and edge["target_id"] in context_set
     }
     small_helpers = {
@@ -314,7 +314,7 @@ def _source_candidate_ids(
         if _line_count(symbols.get(node_id, {})) <= 12
         and symbols.get(node_id, {}).get("kind") in {"function", "method"}
     }
-    return ({target_node_id} | set(raw_nodes) | direct_calls | small_helpers) & context_set
+    return ({target_id} | set(raw_nodes) | direct_calls | small_helpers) & context_set
 
 
 def _line_count(row: Dict[str, Any]) -> int:

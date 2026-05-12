@@ -90,10 +90,10 @@ class ContextResult:
     repo_root: str
     profile: str
     task: str
-    target_node_id: str
+    target: str
     is_sufficient: bool
     metrics: SufficiencyMetrics
-    context_nodes: List[ContextNode]
+    nodes: List[ContextNode]
     raw_code_nodes: List[str] = field(default_factory=list)
     thresholds: Dict[str, float] = field(default_factory=dict)
     run_id: Optional[int] = None

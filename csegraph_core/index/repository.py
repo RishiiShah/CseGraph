@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from csegraph_core.core.errors import UnsupportedSchemaError
 from csegraph_core.core.ids import file_node_id
-from csegraph_core.index.migrations import apply_pending
 from csegraph_core.index.schema import (
     SCHEMA_DDL,
     SCHEMA_META_UPSERT,
@@ -42,10 +41,7 @@ class ProjectIndex:
         if existing_version is None and self._has_csegraph_objects():
             raise UnsupportedSchemaError()
         if existing_version is not None and existing_version != SCHEMA_VERSION:
-            try:
-                apply_pending(self.conn, existing_version, SCHEMA_VERSION)
-            except RuntimeError as exc:
-                raise UnsupportedSchemaError() from exc
+            raise UnsupportedSchemaError()
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
         cur.execute(SCHEMA_META_UPSERT, (SCHEMA_VERSION,))
@@ -288,4 +284,3 @@ def json_loads(value: Optional[str]) -> Dict[str, Any]:
     if not value:
         return {}
     return json.loads(value)
-

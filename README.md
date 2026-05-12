@@ -14,7 +14,7 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 
 | Package | Location | Purpose |
 |---|---|---|
-| `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, CSE metrics, and migrations. Imported as `csegraph_core`. |
+| `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
 | `csegraph-cli` | `packages/csegraph-cli/` | CLI with `index`, `refresh`, `context`, `inspect`, `graph`, and `report`. |
 
@@ -87,7 +87,6 @@ Context JSON includes:
 - `schema_version = "csegraph-context-v1"`
 - ranked `nodes` with paths, line ranges, reason tags, optional source text, and token estimates
 - sufficiency metrics and thresholds
-- legacy-compatible fields such as `task`, `target_node_id`, `metrics`, and `context_nodes`
 
 Minor `v1.x` releases may add fields, but they must not remove or rename existing context fields.
 
