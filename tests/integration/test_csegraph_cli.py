@@ -112,8 +112,8 @@ def test_cli_json_contracts(tmp_path):
     assert "def clean_name(value: str) -> str:" in nodes_by_id["symbol::helpers.py::function::clean_name"]["source_text"]
     assert nodes_by_id["symbol::service.py::function::create_user"]["estimated_tokens"] >= 1
 
-    graph = _run_cli(
-        "graph",
+    neighborhood = _run_cli(
+        "inspect",
         "symbol::service.py::function::create_user",
         "--repo",
         str(repo),
@@ -121,9 +121,18 @@ def test_cli_json_contracts(tmp_path):
         "1",
         "--json",
     )
+    assert neighborhood["command"] == "inspect"
+    assert neighborhood["node_id"] == "symbol::service.py::function::create_user"
+    assert any(edge["relation"] == "calls" for edge in neighborhood["edges"])
+
+    graph = _run_cli(
+        "graph",
+        "--repo",
+        str(repo),
+        "--json",
+    )
     assert graph["command"] == "graph"
-    assert graph["node_id"] == "symbol::service.py::function::create_user"
-    assert any(edge["relation"] == "calls" for edge in graph["edges"])
+    assert graph["output_path"] == str(repo / ".csegraph" / "csegraph-graph.html")
 
     refreshed = _run_cli(
         "refresh",
@@ -457,7 +466,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         if line.startswith("csegraph ") or line.split()[0:1] == ["csegraph"]
     ]
     assert sdk_lines == [], f"SDK should not be installed: {sdk_lines}"
-    # index/refresh/context/graph must work.
+    # index/refresh/context/inspect/graph must work.
     sample = tmp_path / "repo"
     _write_repo(sample)
     proc = subprocess.run(
@@ -484,8 +493,21 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     proc = subprocess.run(
         [
             str(csegraph_bin),
-            "graph",
+            "inspect",
             "symbol::service.py::function::create_user",
+            "--repo",
+            str(sample),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(proc.stdout)["command"] == "inspect"
+    proc = subprocess.run(
+        [
+            str(csegraph_bin),
+            "graph",
             "--repo",
             str(sample),
             "--json",

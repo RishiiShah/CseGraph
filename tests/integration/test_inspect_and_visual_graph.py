@@ -110,7 +110,7 @@ def test_inspect_default_output_is_pretty_json(tmp_path):
     assert "\n" in proc.stdout
 
 
-def test_graph_node_backward_compat_returns_neighborhood(tmp_path):
+def test_graph_rejects_legacy_node_argument(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
     _run_cli("index", str(repo), "--json")
@@ -124,21 +124,16 @@ def test_graph_node_backward_compat_returns_neighborhood(tmp_path):
             "symbol::service.py::function::create_user",
             "--repo",
             str(repo),
-            "--depth",
-            "1",
-            "--json",
         ],
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0
-    result = json.loads(proc.stdout)
-    assert result["command"] == "graph"
-    assert result["node_id"] == "symbol::service.py::function::create_user"
-    assert any(edge["relation"] == "calls" for edge in result["edges"])
+    assert proc.returncode == 2
+    assert "unrecognized arguments" in proc.stderr
+    assert "symbol::service.py::function::create_user" in proc.stderr
 
 
-def test_graph_node_backward_compat_emits_deprecation_warning(tmp_path):
+def test_graph_rejects_legacy_node_flag_and_depth(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
     _run_cli("index", str(repo), "--json")
@@ -149,17 +144,20 @@ def test_graph_node_backward_compat_emits_deprecation_warning(tmp_path):
             "-m",
             "csegraph_cli",
             "graph",
-            "create_user",
             "--repo",
             str(repo),
-            "--json",
+            "--node",
+            "create_user",
+            "--depth",
+            "1",
         ],
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0
-    assert "deprecated" in proc.stderr.lower()
-    assert "csegraph inspect" in proc.stderr
+    assert proc.returncode == 2
+    assert "unrecognized arguments" in proc.stderr
+    assert "--node" in proc.stderr
+    assert "--depth" in proc.stderr
 
 
 def test_graph_visual_export_creates_html(tmp_path):
@@ -343,7 +341,7 @@ def test_graph_visual_export_default_output_follows_custom_db_path(tmp_path):
     assert expected_path.exists()
 
 
-def test_graph_visual_export_no_deprecation_warning(tmp_path):
+def test_graph_visual_export_has_clean_stderr(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
     _run_cli("index", str(repo), "--json")
@@ -364,7 +362,7 @@ def test_graph_visual_export_no_deprecation_warning(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert "deprecated" not in proc.stderr.lower()
+    assert proc.stderr == ""
 
 
 def test_inspect_resolves_folder_node(tmp_path):
