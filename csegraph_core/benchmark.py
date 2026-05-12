@@ -6,11 +6,6 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from csegraph_core.core.models import BenchmarkResult, BenchmarkStep
-from csegraph_core.graph.report import ReportService
-from csegraph_core.graph.visual import VisualExportService
-from csegraph_core.index.services import IndexService
-from csegraph_core.languages.registry import registry
-from csegraph_core.retrieval.context import ContextService
 
 
 _DEFAULT_QUERY = "Benchmark context retrieval"
@@ -39,6 +34,11 @@ class BenchmarkService:
 
         total_start = time.perf_counter()
         steps: list[BenchmarkStep] = []
+
+        from csegraph_core.graph.report import ReportService
+        from csegraph_core.graph.visual import VisualExportService
+        from csegraph_core.index.services import IndexService
+        from csegraph_core.retrieval.context import ContextService
 
         index_result, elapsed = _time_call(
             lambda: IndexService(self.db_path).index(repo_root, profile=profile)
@@ -173,6 +173,7 @@ def _file_size(path: str | Path) -> int:
 
 def _count_raw_tokens(repo_root: Path) -> int:
     total = 0
+    from csegraph_core.languages.registry import registry
     for _parser, file_path in registry.iter_files(repo_root):
         try:
             text = file_path.read_text(encoding="utf-8", errors="replace")

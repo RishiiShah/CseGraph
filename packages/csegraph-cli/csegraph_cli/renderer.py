@@ -104,6 +104,47 @@ def render_benchmark_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_communities_summary(payload: Dict[str, Any]) -> str:
+    lines = [
+        f"Communities: {payload.get('num_communities', 0)} detected  "
+        f"(modularity {payload.get('modularity', 0):.4f})",
+        "",
+    ]
+    for comm in payload.get("communities", []):
+        lines.append(f"  [{comm['id']}] {comm['size']:,} nodes — {comm.get('label', '')}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_hooks_summary(payload: Dict[str, Any]) -> str:
+    installed = payload.get("installed") or []
+    skipped = payload.get("skipped") or []
+    cmd = payload.get("command", "hooks")
+    lines = [f"Hooks {cmd.split()[-1] if ' ' in cmd else cmd}:"]
+    if installed:
+        verb = "Installed" if "install" in cmd else "Removed"
+        lines.append(f"  {verb}: {', '.join(installed)}")
+    if skipped:
+        lines.append(f"  Skipped:   {', '.join(skipped)}")
+    lines.append(f"  Hooks dir: {payload.get('hooks_dir', '')}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_path_summary(payload: Dict[str, Any]) -> str:
+    if not payload.get("found"):
+        return f"No path found between {payload.get('source', '?')} and {payload.get('target', '?')}.\n"
+    nodes = payload.get("nodes") or []
+    edges = payload.get("edges") or []
+    lines = [f"Path ({payload.get('length', len(edges))} hops):", ""]
+    for i, node in enumerate(nodes):
+        lines.append(f"  {node.get('name', node.get('node_id', ''))} ({node.get('kind', '')})")
+        if i < len(edges):
+            lines.append(f"    --[{edges[i].get('relation', '?')}]-->")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_context_markdown(payload: Dict[str, Any]) -> str:
     lines: List[str] = [
         "# csegraph context",

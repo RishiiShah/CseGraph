@@ -17,7 +17,7 @@ _TOOLS: list[Tool] = [
     Tool(
         name="csegraph_index",
         description=(
-            "Index a Python repository into a csegraph SQLite graph. "
+            "Index a repository into a csegraph SQLite graph. "
             "Parses source files and builds nodes, edges, summaries, and FTS5 lexical rows."
         ),
         inputSchema={

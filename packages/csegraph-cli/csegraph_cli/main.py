@@ -15,10 +15,13 @@ from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
+    render_communities_summary,
     render_context_markdown,
     render_benchmark_summary,
+    render_hooks_summary,
     render_index_summary,
     render_json,
+    render_path_summary,
     render_refresh_summary,
     render_report_markdown,
     render_visual_export_summary,
@@ -49,6 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         print(render_visual_export_summary(payload), end="")
     elif args.command == "benchmark" and not args.json:
         print(render_benchmark_summary(payload), end="")
+    elif args.command == "communities" and not args.json:
+        print(render_communities_summary(payload), end="")
+    elif args.command == "hooks" and not args.json:
+        print(render_hooks_summary(payload), end="")
+    elif args.command == "path" and not args.json:
+        print(render_path_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
     elif args.command == "index":
@@ -63,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="csegraph",
-        description="SQLite-backed Python code graph indexing and context retrieval.",
+        description="SQLite-backed code graph indexing and context retrieval.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
