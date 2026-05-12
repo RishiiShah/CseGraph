@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(error_payload(exc), indent=2, sort_keys=True), file=sys.stderr)
         return 1
 
+    if result is None:
+        return 0
     payload = to_dict(result)
     if args.command == "context" and args.output_format == "markdown":
         print(render_context_markdown(payload), end="")
@@ -136,6 +138,9 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     report.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
+    serve.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     benchmark.add_argument("repo_arg", nargs="?", help="Repository root to benchmark (default: current directory).")
     benchmark.add_argument("--repo", dest="repo_opt", help="Repository root to benchmark.")
@@ -191,6 +196,11 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)
         return ReportService(_db_arg(args, repo)).report()
+    if args.command == "serve":
+        import asyncio
+        from csegraph_core.server import run_stdio
+        asyncio.run(run_stdio())
+        return None
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)
