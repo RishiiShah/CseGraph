@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from csegraph import (
+    BenchmarkService,
     ContextService,
     GraphQueryService,
     IndexService,
@@ -160,6 +161,32 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
         profile="small",
     )
     assert refreshed_context.target == "symbol::utils.py::function::format_title"
+
+
+def test_benchmark_service_runs_core_pipeline(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "repo.csegraph.db"
+    _write_sample_repo(repo)
+
+    result = BenchmarkService(db_path).run(
+        repo,
+        profile="small",
+        query="Implement build_report using format_user",
+        target="build_report",
+        graph_output_path=tmp_path / "graph.html",
+    )
+
+    assert result.command == "benchmark"
+    assert result.profile == "small"
+    assert result.repo_root == str(repo)
+    assert result.db_path == str(db_path)
+    assert result.graph_output_path == str(tmp_path / "graph.html")
+    assert result.total_elapsed_ms >= 0
+    assert [step.name for step in result.steps] == ["index", "context", "graph", "report"]
+    assert result.steps[0].stats["files"] == 2
+    assert result.steps[1].stats["target"] == "symbol::main.py::function::build_report"
+    assert result.steps[2].stats["output_size_bytes"] > 0
+    assert result.steps[3].stats["symbols"] == 2
 
 
 def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_path):

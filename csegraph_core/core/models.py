@@ -145,6 +145,26 @@ class VisualExportResult:
 
 
 @dataclass
+class BenchmarkStep:
+    name: str
+    elapsed_ms: float
+    stats: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BenchmarkResult:
+    command: str
+    db_path: str
+    repo_root: str
+    profile: str
+    query: str
+    target: Optional[str]
+    graph_output_path: str
+    total_elapsed_ms: float
+    steps: List[BenchmarkStep] = field(default_factory=list)
+
+
+@dataclass
 class ReportResult:
     command: str
     db_path: str

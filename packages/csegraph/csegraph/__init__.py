@@ -7,6 +7,9 @@ from `csegraph-core` directly and does not depend on this package.
 from __future__ import annotations
 
 from csegraph_core import (
+    BenchmarkResult,
+    BenchmarkService,
+    BenchmarkStep,
     ContextNode,
     ContextResult,
     ContextService,
@@ -37,6 +40,9 @@ __version__ = "1.4.0"
 
 __all__ = [
     "__version__",
+    "BenchmarkResult",
+    "BenchmarkService",
+    "BenchmarkStep",
     "ContextNode",
     "ContextResult",
     "ContextService",

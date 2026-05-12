@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_core.graph.queries import GraphQueryService
@@ -21,6 +22,7 @@ from csegraph_core.retrieval.context import ContextService
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
     render_context_markdown,
+    render_benchmark_summary,
     render_index_summary,
     render_json,
     render_refresh_summary,
@@ -47,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_report_markdown(payload), end="")
     elif args.command == "graph" and not args.json:
         print(render_visual_export_summary(payload), end="")
+    elif args.command == "benchmark" and not args.json:
+        print(render_benchmark_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
     elif args.command == "index":
@@ -138,6 +142,15 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     report.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
+    benchmark.add_argument("repo_arg", nargs="?", help="Repository root to benchmark (default: current directory).")
+    benchmark.add_argument("--repo", dest="repo_opt", help="Repository root to benchmark.")
+    benchmark.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    benchmark.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
+    benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
+    benchmark.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     return parser
 
 
@@ -178,6 +191,16 @@ def _dispatch(args: argparse.Namespace) -> Any:
     if args.command == "report":
         repo = _repo_arg(args)
         return ReportService(_db_arg(args, repo)).report()
+    if args.command == "benchmark":
+        repo = _repo_arg(args)
+        db_path = _db_arg(args, repo)
+        return BenchmarkService(db_path).run(
+            repo,
+            profile=args.profile,
+            query=args.query,
+            target=args.target,
+            graph_output_path=_default_graph_output_path(db_path),
+        )
     raise ValueError(f"Unknown command: {args.command}")
 
 

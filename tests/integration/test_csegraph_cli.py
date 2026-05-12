@@ -205,6 +205,73 @@ def test_refresh_json_flag_returns_parseable_json(tmp_path):
     assert isinstance(result["unchanged_files"], list)
 
 
+def test_benchmark_json_profiles_core_commands(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    result = _run_cli(
+        "benchmark",
+        str(repo),
+        "--target",
+        "create_user",
+        "--query",
+        "Implement create_user with clean_name",
+        "--json",
+    )
+
+    assert result["command"] == "benchmark"
+    assert result["profile"] == "medium"
+    assert result["repo_root"] == str(repo)
+    assert result["db_path"] == str(repo / ".csegraph" / "index.db")
+    assert result["graph_output_path"] == str(repo / ".csegraph" / "csegraph-graph.html")
+    assert result["total_elapsed_ms"] >= 0
+
+    steps = result["steps"]
+    assert [step["name"] for step in steps] == ["index", "context", "graph", "report"]
+    assert all(step["elapsed_ms"] >= 0 for step in steps)
+
+    by_name = {step["name"]: step for step in steps}
+    assert by_name["index"]["stats"]["files"] == 2
+    assert by_name["index"]["stats"]["symbols"] == 2
+    assert by_name["index"]["stats"]["edges"] >= 1
+    assert by_name["context"]["stats"]["nodes"] >= 1
+    assert by_name["context"]["stats"]["target"] == "symbol::service.py::function::create_user"
+    assert by_name["graph"]["stats"]["nodes"] >= 1
+    assert by_name["graph"]["stats"]["edges"] >= 1
+    assert by_name["graph"]["stats"]["output_size_bytes"] > 0
+    assert by_name["report"]["stats"]["files"] == 2
+    assert by_name["report"]["stats"]["symbols"] == 2
+    assert (repo / ".csegraph" / "csegraph-graph.html").exists()
+
+
+def test_benchmark_default_output_is_human_summary(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "csegraph_cli",
+            "benchmark",
+            str(repo),
+            "--target",
+            "create_user",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Benchmark:" in proc.stdout
+    assert "index" in proc.stdout
+    assert "context" in proc.stdout
+    assert "graph" in proc.stdout
+    assert "report" in proc.stdout
+    assert "Total:" in proc.stdout
+    assert "DB:" in proc.stdout
+
+
 def test_custom_db_flags_work(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "custom.db"
@@ -430,6 +497,7 @@ def test_cli_help_lists_only_product_commands():
     assert "inspect" in proc.stdout
     assert "graph" in proc.stdout
     assert "report" in proc.stdout
+    assert "benchmark" in proc.stdout
     removed_command = "code" + "gen"
     assert removed_command not in proc.stdout
 

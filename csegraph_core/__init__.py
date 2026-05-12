@@ -11,8 +11,11 @@ and never on each other.
 
 __version__ = "1.4.0"
 
+from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph_core.core.models import (
+    BenchmarkResult,
+    BenchmarkStep,
     ContextNode,
     ContextResult,
     GraphEdgeView,
@@ -36,6 +39,9 @@ from csegraph_core.retrieval.context import ContextService
 
 __all__ = [
     "__version__",
+    "BenchmarkResult",
+    "BenchmarkService",
+    "BenchmarkStep",
     "ContextNode",
     "ContextResult",
     "ContextService",
