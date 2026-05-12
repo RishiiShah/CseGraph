@@ -79,7 +79,7 @@ def test_inspect_json_matches_neighborhood_contract(tmp_path):
         "--json",
     )
     assert result["command"] == "inspect"
-    assert result["node_id"] == "symbol::service.py::function::create_user"
+    assert result["target"] == "symbol::service.py::function::create_user"
     assert result["depth"] == 1
     assert isinstance(result["nodes"], list)
     assert isinstance(result["edges"], list)
@@ -380,7 +380,7 @@ def test_inspect_resolves_folder_node(tmp_path):
         "--json",
     )
     assert result["command"] == "inspect"
-    assert result["node_id"] == "folder::pkg"
+    assert result["target"] == "folder::pkg"
     assert any(n["kind"] == "folder" for n in result["nodes"])
     assert any(edge["relation"] == "contains" for edge in result["edges"])
 
@@ -397,7 +397,7 @@ def test_inspect_resolves_folder_by_name(tmp_path):
         str(repo),
         "--json",
     )
-    assert result["node_id"] == "folder::pkg"
+    assert result["target"] == "folder::pkg"
 
 
 def test_inspect_resolves_repo_node(tmp_path):
@@ -415,7 +415,7 @@ def test_inspect_resolves_repo_node(tmp_path):
         "--json",
     )
     assert result["command"] == "inspect"
-    assert result["node_id"] == "repo::repo"
+    assert result["target"] == "repo::repo"
     assert any(n["kind"] == "repo" for n in result["nodes"])
 
 
@@ -452,7 +452,7 @@ def test_inspect_dot_resolves_to_repo_node(tmp_path):
         str(repo),
         "--json",
     )
-    assert result["node_id"] == "repo::repo"
+    assert result["target"] == "repo::repo"
 
 
 def test_inspect_repo_absolute_path_resolves_to_repo_node(tmp_path):
@@ -467,7 +467,7 @@ def test_inspect_repo_absolute_path_resolves_to_repo_node(tmp_path):
         str(repo),
         "--json",
     )
-    assert result["node_id"] == "repo::repo"
+    assert result["target"] == "repo::repo"
 
 
 def test_inspect_repo_basename_resolves_to_repo_node(tmp_path):
@@ -482,4 +482,4 @@ def test_inspect_repo_basename_resolves_to_repo_node(tmp_path):
         str(repo),
         "--json",
     )
-    assert result["node_id"] == "repo::repo"
+    assert result["target"] == "repo::repo"

@@ -24,10 +24,12 @@ from csegraph_core import (
     ReportResult,
     ReportService,
     SufficiencyMetrics,
+    SufficiencyResult,
     VALID_REASONS,
     VisualExportResult,
     VisualExportService,
     get_profile,
+    load_profile,
     to_dict,
 )
 
@@ -52,9 +54,11 @@ __all__ = [
     "ReportResult",
     "ReportService",
     "SufficiencyMetrics",
+    "SufficiencyResult",
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",
     "get_profile",
+    "load_profile",
     "to_dict",
 ]

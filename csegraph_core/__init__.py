@@ -21,6 +21,7 @@ from csegraph_core.core.models import (
     IndexResult,
     RefreshResult,
     ReportResult,
+    SufficiencyResult,
     VisualExportResult,
     to_dict,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "ReportResult",
     "ReportService",
     "SufficiencyMetrics",
+    "SufficiencyResult",
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",

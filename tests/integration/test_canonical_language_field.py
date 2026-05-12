@@ -70,12 +70,11 @@ def test_markdown_output_uses_language_fence(tmp_path):
 def test_context_node_without_language_raises():
     with pytest.raises(TypeError):
         ContextNode(
-            node_id="symbol::main.py::function::run",
+            id="symbol::main.py::function::run",
             kind="function",
             name="run",
-            file_path="main.py",
-            start_line=3,
-            end_line=4,
+            path="main.py",
+            line_range=[3, 4],
             score=1.0,
             # language is intentionally omitted
         )
@@ -84,12 +83,11 @@ def test_context_node_without_language_raises():
 def test_context_node_with_none_language_raises():
     with pytest.raises(ValueError, match="non-empty"):
         ContextNode(
-            node_id="symbol::main.py::function::run",
+            id="symbol::main.py::function::run",
             kind="function",
             name="run",
-            file_path="main.py",
-            start_line=3,
-            end_line=4,
+            path="main.py",
+            line_range=[3, 4],
             score=1.0,
             language=None,
         )
@@ -98,23 +96,23 @@ def test_context_node_with_none_language_raises():
 def test_context_node_with_empty_language_raises():
     with pytest.raises(ValueError, match="non-empty"):
         ContextNode(
-            node_id="symbol::main.py::function::run",
+            id="symbol::main.py::function::run",
             kind="function",
             name="run",
-            file_path="main.py",
-            start_line=3,
-            end_line=4,
+            path="main.py",
+            line_range=[3, 4],
             score=1.0,
             language="",
         )
 
 
-def test_schema_v4_language_column_notnull(tmp_path):
+def test_schema_v5_language_column_notnull(tmp_path):
     import sqlite3
     from csegraph_core.index.repository import ProjectIndex
     db_path = tmp_path / "test.db"
     idx = ProjectIndex(db_path)
     idx.initialize_schema()
+    idx.set_metadata(str(tmp_path / "repo"), "small")
     idx.close()
     with sqlite3.connect(db_path) as conn:
         col_info = {row[1]: row for row in conn.execute("PRAGMA table_info(nodes)")}
@@ -161,7 +159,7 @@ def test_writer_guard_fires_before_file_insert(tmp_path):
     db_path = tmp_path / "guard.db"
     idx = ProjectIndex(db_path)
     idx.initialize_schema()
-    project_id = idx.upsert_project(str(tmp_path / "repo"), "small")
+    idx.set_metadata(str(tmp_path / "repo"), "small")
 
     bad = ParsedFile(
         rel_path="bad.py",
@@ -172,7 +170,7 @@ def test_writer_guard_fires_before_file_insert(tmp_path):
         language="",
     )
     with pytest.raises(ValueError, match="language is required"):
-        _write_parsed_files(idx, project_id, str(tmp_path / "repo"), [bad])
+        _write_parsed_files(idx, str(tmp_path / "repo"), [bad])
 
     with sqlite3.connect(db_path) as conn:
         count = conn.execute("SELECT COUNT(*) FROM nodes WHERE type = 'file'").fetchone()[0]

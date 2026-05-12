@@ -119,7 +119,7 @@ def test_cli_json_contracts(tmp_path):
         "--json",
     )
     assert neighborhood["command"] == "inspect"
-    assert neighborhood["node_id"] == "symbol::service.py::function::create_user"
+    assert neighborhood["target"] == "symbol::service.py::function::create_user"
     assert any(edge["relation"] == "calls" for edge in neighborhood["edges"])
 
     graph = _run_cli(
@@ -413,7 +413,7 @@ def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
     assert err == {
         "error": "Unsupported csegraph index schema",
         "error_code": "unsupported_schema",
-        "hint": "Rebuild the index or install a compatible csegraph-core version.",
+        "hint": "Rebuild the index with the current csegraph-core version.",
     }
 
 

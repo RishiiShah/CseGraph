@@ -9,15 +9,15 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from csegraph_core.core.errors import UnsupportedSchemaError
 from csegraph_core.core.ids import file_node_id
 from csegraph_core.index.schema import (
+    METADATA_UPSERT,
     SCHEMA_DDL,
-    SCHEMA_META_UPSERT,
     SCHEMA_USER_VERSION,
     SCHEMA_VERSION,
 )
 
 
 class ProjectIndex:
-    """Thin SQLite boundary for csegraph project indexes."""
+    """SQLite boundary for one csegraph repository index."""
 
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
@@ -42,22 +42,28 @@ class ProjectIndex:
             raise UnsupportedSchemaError()
         if existing_version is not None and existing_version != SCHEMA_VERSION:
             raise UnsupportedSchemaError()
+
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
-        cur.execute(SCHEMA_META_UPSERT, (SCHEMA_VERSION,))
+        cur.execute(METADATA_UPSERT, (SCHEMA_VERSION,))
         cur.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
         self.conn.commit()
 
     def _existing_schema_version(self) -> Optional[str]:
+        if self._table_exists("metadata"):
+            row = self.conn.execute(
+                "SELECT value FROM metadata WHERE key = 'schema_version'"
+            ).fetchone()
+            return row["value"] if row else None
+
+        return None
+
+    def _table_exists(self, name: str) -> bool:
         row = self.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+            (name,),
         ).fetchone()
-        if row is None:
-            return None
-        cur = self.conn.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
-        ).fetchone()
-        return cur["value"] if cur else None
+        return row is not None
 
     def _has_csegraph_objects(self) -> bool:
         row = self.conn.execute(
@@ -70,60 +76,55 @@ class ProjectIndex:
         ).fetchone()
         return row is not None
 
-    def upsert_project(self, root_dir: str, profile: str) -> int:
+    def set_metadata(self, root_dir: str, profile: str) -> None:
         now = time.time()
-        self.conn.execute(
+        existing = self.metadata(raise_if_empty=False)
+        created_at = existing.get("created_at", str(now))
+        rows = {
+            "schema_version": SCHEMA_VERSION,
+            "root_dir": root_dir,
+            "active_profile": profile,
+            "created_at": created_at,
+            "updated_at": str(now),
+        }
+        self.conn.executemany(
             """
-            INSERT INTO projects(root_dir, active_profile, created_at, updated_at)
-            VALUES(?, ?, ?, ?)
-            ON CONFLICT(root_dir) DO UPDATE SET
-                active_profile = excluded.active_profile,
-                updated_at = excluded.updated_at
+            INSERT INTO metadata(key, value)
+            VALUES(?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
             """,
-            (root_dir, profile, now, now),
+            sorted(rows.items()),
         )
         self.conn.commit()
-        row = self.conn.execute(
-            "SELECT id FROM projects WHERE root_dir = ?", (root_dir,)
-        ).fetchone()
-        return int(row["id"])
 
-    def get_project(self) -> sqlite3.Row:
-        row = self.conn.execute(
-            "SELECT * FROM projects ORDER BY id LIMIT 1"
-        ).fetchone()
-        if row is None:
+    def metadata(self, *, raise_if_empty: bool = True) -> Dict[str, str]:
+        if not self._table_exists("metadata"):
+            if raise_if_empty:
+                raise ValueError("No project is indexed in this database. Run csegraph index first.")
+            return {}
+        values = {
+            row["key"]: row["value"]
+            for row in self.conn.execute("SELECT key, value FROM metadata")
+        }
+        if raise_if_empty and "root_dir" not in values:
             raise ValueError("No project is indexed in this database. Run csegraph index first.")
-        return row
+        return values
 
-    def clear_project_graph(self, project_id: int) -> None:
-        self.conn.execute(
-            "DELETE FROM retrieval_context WHERE run_id IN (SELECT id FROM retrieval_runs WHERE project_id = ?)",
-            (project_id,),
-        )
-        self.conn.execute("DELETE FROM retrieval_runs WHERE project_id = ?", (project_id,))
-        node_ids = [row["id"] for row in self.conn.execute(
-            "SELECT id FROM nodes WHERE project_id = ?", (project_id,)
-        )]
-        if node_ids:
-            placeholders = ",".join("?" for _ in node_ids)
-            self.conn.execute(
-                f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
-                node_ids,
-            )
-            self.conn.execute(
-                f"DELETE FROM summaries WHERE node_id IN ({placeholders})",
-                node_ids,
-            )
-        self.conn.execute("DELETE FROM edges WHERE project_id = ?", (project_id,))
-        self.conn.execute("DELETE FROM nodes WHERE project_id = ?", (project_id,))
+    def clear_graph(self) -> None:
+        self.conn.execute("DELETE FROM retrieval_context")
+        self.conn.execute("DELETE FROM retrieval_runs")
+        self.conn.execute("DELETE FROM lexical_index")
+        self.conn.execute("DELETE FROM summaries")
+        self.conn.execute("DELETE FROM embedding_cache")
+        self.conn.execute("DELETE FROM edges")
+        self.conn.execute("DELETE FROM nodes")
         self.conn.commit()
 
-    def delete_file_payload(self, project_id: int, rel_path: str, remove_incoming: bool) -> List[str]:
+    def delete_file_payload(self, rel_path: str, remove_incoming: bool) -> List[str]:
         file_id = file_node_id(rel_path)
         file_row = self.conn.execute(
-            "SELECT id FROM nodes WHERE project_id = ? AND id = ?",
-            (project_id, file_id),
+            "SELECT id FROM nodes WHERE id = ?",
+            (file_id,),
         ).fetchone()
         if file_row is None:
             return []
@@ -133,112 +134,85 @@ class ProjectIndex:
             for row in self.conn.execute(
                 """
                 SELECT id FROM nodes
-                WHERE project_id = ? AND path = ?
+                WHERE path = ?
                   AND type IN ('class','function','method','test')
                 """,
-                (project_id, rel_path),
+                (rel_path,),
             )
         ]
         node_ids = [file_id, *symbol_ids]
         placeholders = ",".join("?" for _ in node_ids)
-        params: Sequence[Any] = (project_id, *node_ids)
 
         self.conn.execute(
-            f"DELETE FROM edges WHERE project_id = ? AND source_node_id IN ({placeholders})",
-            params,
+            f"DELETE FROM edges WHERE source IN ({placeholders})",
+            node_ids,
         )
         if remove_incoming:
             self.conn.execute(
-                f"DELETE FROM edges WHERE project_id = ? AND target_node_id IN ({placeholders})",
-                params,
+                f"DELETE FROM edges WHERE target IN ({placeholders})",
+                node_ids,
             )
         for node_id in node_ids:
             self.conn.execute("DELETE FROM lexical_index WHERE node_id = ?", (node_id,))
             self.conn.execute("DELETE FROM summaries WHERE node_id = ?", (node_id,))
+            self.conn.execute("DELETE FROM embedding_cache WHERE node_id = ?", (node_id,))
         self.conn.execute(
-            f"DELETE FROM nodes WHERE project_id = ? AND id IN ({placeholders})",
-            params,
+            f"DELETE FROM nodes WHERE id IN ({placeholders})",
+            node_ids,
         )
         self.conn.commit()
         return symbol_ids
 
-    def cleanup_orphan_edges(self, project_id: int) -> None:
+    def cleanup_orphan_edges(self) -> None:
         self.conn.execute(
             """
             DELETE FROM edges
-             WHERE project_id = ?
-               AND (source_node_id NOT IN (SELECT id FROM nodes WHERE project_id = ?)
-                 OR target_node_id NOT IN (SELECT id FROM nodes WHERE project_id = ?))
-            """,
-            (project_id, project_id, project_id),
+             WHERE source NOT IN (SELECT id FROM nodes)
+                OR target NOT IN (SELECT id FROM nodes)
+            """
         )
         self.conn.commit()
 
-    def cleanup_orphan_folders(self, project_id: int) -> None:
-        """Drop folder nodes that no longer have descendants among files/symbols."""
+    def cleanup_orphan_folders(self) -> None:
+        """Drop folder nodes that no longer have descendants."""
         while True:
             removed = self.conn.execute(
                 """
                 DELETE FROM nodes
-                WHERE project_id = ?
-                  AND type = 'folder'
-                  AND id NOT IN (SELECT parent_id FROM nodes WHERE project_id = ? AND parent_id IS NOT NULL)
-                """,
-                (project_id, project_id),
+                WHERE type = 'folder'
+                  AND id NOT IN (SELECT parent_id FROM nodes WHERE parent_id IS NOT NULL)
+                """
             )
             if removed.rowcount == 0:
                 break
         self.conn.commit()
 
-    def file_node_ids(self, project_id: int) -> List[str]:
-        return [
-            row["id"]
-            for row in self.conn.execute(
-                "SELECT id FROM nodes WHERE project_id = ? AND type = 'file'",
-                (project_id,),
-            )
-        ]
-
-    def symbol_ids(self, project_id: int) -> List[str]:
-        return [
-            row["id"]
-            for row in self.conn.execute(
-                """
-                SELECT id FROM nodes
-                WHERE project_id = ? AND type IN ('class','function','method','test')
-                """,
-                (project_id,),
-            )
-        ]
-
     def insert_retrieval_run(
         self,
-        project_id: int,
-        query_text: str,
-        target_node_id: str,
+        query: str,
+        target: str,
         profile: str,
         metrics: Dict[str, float],
-        is_sufficient: bool,
+        sufficient: bool,
     ) -> int:
         cur = self.conn.execute(
             """
             INSERT INTO retrieval_runs(
-                project_id, query_text, target_node_id, profile,
+                query, target, profile,
                 dependency_completeness, entity_coverage, semantic_overlap,
-                model_confidence, is_sufficient, created_at
+                model_confidence, sufficient, created_at
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                project_id,
-                query_text,
-                target_node_id,
+                query,
+                target,
                 profile,
                 metrics["dependency_completeness"],
                 metrics["entity_coverage"],
                 metrics["semantic_overlap"],
                 metrics["model_confidence"],
-                1 if is_sufficient else 0,
+                1 if sufficient else 0,
                 time.time(),
             ),
         )

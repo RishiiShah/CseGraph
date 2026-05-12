@@ -17,13 +17,12 @@ class ReportService:
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
-            project = index.get_project()
-            project_id = int(project["id"])
-            repo_root = project["root_dir"]
+            metadata = index.metadata()
+            repo_root = metadata["root_dir"]
 
-            node_counts = _node_counts(index, project_id)
-            edge_counts = _edge_counts(index, project_id)
-            parse_error_count = _parse_error_count(index, project_id)
+            node_counts = _node_counts(index)
+            edge_counts = _edge_counts(index)
+            parse_error_count = _parse_error_count(index)
 
             total_files = node_counts.get("file", 0)
             total_symbols = sum(
@@ -31,13 +30,13 @@ class ReportService:
             )
             total_edges = sum(edge_counts.values())
 
-            degree = _node_degrees(index, project_id)
-            node_info = _node_info(index, project_id)
+            degree = _node_degrees(index)
+            node_info = _node_info(index)
             god_nodes = _god_nodes(degree, node_info)
             knowledge_gaps = _knowledge_gaps(degree, node_info)
             knowledge_gap_groups = _knowledge_gap_groups(knowledge_gaps)
-            surprising = _surprising_connections(index, project_id, node_info)
-            sections = _sections(index, project_id, node_info, degree)
+            surprising = _surprising_connections(index, node_info)
+            sections = _sections(index, node_info)
             questions = _suggested_questions(god_nodes, knowledge_gaps, surprising)
 
             return ReportResult(
@@ -61,52 +60,45 @@ class ReportService:
             index.close()
 
 
-def _node_counts(index: ProjectIndex, project_id: int) -> Dict[str, int]:
+def _node_counts(index: ProjectIndex) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for row in index.conn.execute(
-        "SELECT type, COUNT(*) AS c FROM nodes WHERE project_id = ? GROUP BY type",
-        (project_id,),
+        "SELECT type, COUNT(*) AS c FROM nodes GROUP BY type",
     ):
         counts[row["type"]] = row["c"]
     return counts
 
 
-def _edge_counts(index: ProjectIndex, project_id: int) -> Dict[str, int]:
+def _edge_counts(index: ProjectIndex) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for row in index.conn.execute(
-        "SELECT relation, COUNT(*) AS c FROM edges WHERE project_id = ? GROUP BY relation",
-        (project_id,),
+        "SELECT relation, COUNT(*) AS c FROM edges GROUP BY relation",
     ):
         counts[row["relation"]] = row["c"]
     return counts
 
 
-def _parse_error_count(index: ProjectIndex, project_id: int) -> int:
+def _parse_error_count(index: ProjectIndex) -> int:
     row = index.conn.execute(
-        "SELECT COUNT(*) AS c FROM nodes WHERE project_id = ? AND parse_status = 'error'",
-        (project_id,),
+        "SELECT COUNT(*) AS c FROM nodes WHERE parse_status = 'error'",
     ).fetchone()
     return int(row["c"])
 
 
-def _node_degrees(index: ProjectIndex, project_id: int) -> Dict[str, int]:
+def _node_degrees(index: ProjectIndex) -> Dict[str, int]:
     degree: Dict[str, int] = Counter()
     for row in index.conn.execute(
-        "SELECT source_node_id, target_node_id FROM edges WHERE project_id = ?",
-        (project_id,),
+        "SELECT source, target FROM edges",
     ):
-        degree[row["source_node_id"]] += 1
-        degree[row["target_node_id"]] += 1
+        degree[row["source"]] += 1
+        degree[row["target"]] += 1
     return dict(degree)
 
 
-def _node_info(
-    index: ProjectIndex, project_id: int
-) -> Dict[str, Dict[str, Any]]:
+def _node_info(index: ProjectIndex) -> Dict[str, Dict[str, Any]]:
     info: Dict[str, Dict[str, Any]] = {}
     for row in index.conn.execute(
-        "SELECT id, type, name, path FROM nodes WHERE project_id = ?",
-        (project_id,),
+        "SELECT id, type, name, path FROM nodes",
     ):
         info[row["id"]] = {
             "type": row["type"],
@@ -240,18 +232,16 @@ def _knowledge_gap_groups(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _surprising_connections(
     index: ProjectIndex,
-    project_id: int,
     node_info: Dict[str, Dict[str, Any]],
     limit: int = 10,
 ) -> List[Dict[str, Any]]:
     seen: Set[Tuple[str, str, str]] = set()
     result: List[Dict[str, Any]] = []
     for row in index.conn.execute(
-        "SELECT source_node_id, target_node_id, relation FROM edges WHERE project_id = ?",
-        (project_id,),
+        "SELECT source, target, relation FROM edges",
     ):
-        src = row["source_node_id"]
-        tgt = row["target_node_id"]
+        src = row["source"]
+        tgt = row["target"]
         key = (src, row["relation"], tgt)
         if key in seen:
             continue
@@ -278,9 +268,7 @@ def _surprising_connections(
 
 def _sections(
     index: ProjectIndex,
-    project_id: int,
     node_info: Dict[str, Dict[str, Any]],
-    degree: Dict[str, int],
 ) -> List[Dict[str, Any]]:
     section_files: Dict[str, int] = Counter()
     section_symbols: Dict[str, int] = Counter()
@@ -301,11 +289,10 @@ def _sections(
     section_internal: Dict[str, int] = Counter()
     section_cross: Dict[str, Set[str]] = defaultdict(set)
     for row in index.conn.execute(
-        "SELECT source_node_id, target_node_id FROM edges WHERE project_id = ?",
-        (project_id,),
+        "SELECT source, target FROM edges",
     ):
-        src_sec = node_section.get(row["source_node_id"])
-        tgt_sec = node_section.get(row["target_node_id"])
+        src_sec = node_section.get(row["source"])
+        tgt_sec = node_section.get(row["target"])
         if src_sec is None or tgt_sec is None:
             continue
         if src_sec == tgt_sec:

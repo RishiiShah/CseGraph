@@ -79,7 +79,7 @@ def test_inspect_typescript_class(tmp_path):
     )
 
     assert result["command"] == "inspect"
-    assert "UserService" in result["node_id"]
+    assert "UserService" in result["target"]
     assert any(e["relation"] == "contains" for e in result["edges"])
 
 

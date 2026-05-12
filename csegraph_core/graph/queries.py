@@ -8,9 +8,6 @@ from csegraph_core.core.models import GraphEdgeView, GraphNodeView, GraphResult
 from csegraph_core.index.loaders import edge_maps, load_edges, load_files, load_nodes, load_symbols
 from csegraph_core.index.repository import ProjectIndex, json_loads
 
-_CONTAINS_META = ""
-
-
 class GraphQueryService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
@@ -19,15 +16,12 @@ class GraphQueryService:
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
-            project = index.get_project()
-            project_id = int(project["id"])
-            repo_root = project["root_dir"]
-            symbols = load_symbols(index, project_id)
-            files = load_files(index, project_id)
-            structural = load_nodes(index, project_id, types=("repo", "folder"))
-            all_nodes = load_nodes(index, project_id)
-            edges = load_edges(index, project_id)
-            _add_contains_edges(edges, all_nodes)
+            metadata = index.metadata()
+            repo_root = metadata["root_dir"]
+            symbols = load_symbols(index)
+            files = load_files(index)
+            structural = load_nodes(index, types=("repo", "folder"))
+            edges = load_edges(index)
             outgoing, incoming = edge_maps(edges)
 
             resolved = _resolve_graph_node(node_id, symbols, files, structural, repo_root)
@@ -59,6 +53,8 @@ class GraphQueryService:
                     target=edge["target_id"],
                     relation=edge["relation"],
                     metadata=json_loads(edge.get("metadata")),
+                    confidence=float(edge.get("confidence", 1.0)),
+                    confidence_tier=edge.get("confidence_tier") or "EXTRACTED",
                 )
                 for edge in sorted(
                     selected_edges.values(),
@@ -69,39 +65,13 @@ class GraphQueryService:
                 command="graph",
                 db_path=self.db_path,
                 repo_root=repo_root,
-                node_id=resolved,
+                target=resolved,
                 depth=depth,
                 nodes=nodes,
                 edges=graph_edges,
             )
         finally:
             index.close()
-
-
-def _add_contains_edges(
-    edges: list,
-    all_nodes: Dict[str, Dict[str, Any]],
-) -> None:
-    existing = {
-        (e["source_id"], "contains", e["target_id"])
-        for e in edges
-        if e["relation"] == "contains"
-    }
-    for node_id, row in all_nodes.items():
-        parent_id = row.get("parent_id")
-        if not parent_id or parent_id not in all_nodes or parent_id == node_id:
-            continue
-        if (parent_id, "contains", node_id) in existing:
-            continue
-        edges.append({
-            "source_id": parent_id,
-            "source_node_id": parent_id,
-            "target_id": node_id,
-            "target_node_id": node_id,
-            "relation": "contains",
-            "metadata": None,
-        })
-
 
 def _resolve_graph_node(
     node: str,
@@ -149,32 +119,37 @@ def _node_view(
     if node_id in symbols:
         row = symbols[node_id]
         return GraphNodeView(
-            node_id=node_id,
+            id=node_id,
             kind=row["kind"],
             name=row["name"],
-            file_path=row["file_path"],
-            start_line=row["start_line"],
-            end_line=row["end_line"],
+            path=row["file_path"],
+            line_range=_line_range(row["start_line"], row["end_line"]),
         )
     if node_id in files:
         row = files[node_id]
         return GraphNodeView(
-            node_id=node_id,
+            id=node_id,
             kind="file",
             name=Path(row["path"]).name,
-            file_path=row["path"],
+            path=row["path"],
         )
     if node_id in structural:
         row = structural[node_id]
         return GraphNodeView(
-            node_id=node_id,
+            id=node_id,
             kind=row.get("type", "folder"),
             name=row.get("name", ""),
-            file_path=row.get("path", ""),
+            path=row.get("path", ""),
         )
     return GraphNodeView(
-        node_id=node_id,
+        id=node_id,
         kind="external",
         name=node_id.split("::")[-1],
-        file_path="",
+        path="",
     )
+
+
+def _line_range(start_line: Any, end_line: Any) -> list[int] | None:
+    if start_line is None or end_line is None:
+        return None
+    return [int(start_line), int(end_line)]

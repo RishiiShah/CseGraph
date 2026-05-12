@@ -1,27 +1,18 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "csegraph-sqlite-v4"
-SCHEMA_USER_VERSION = 4
+SCHEMA_VERSION = "csegraph-sqlite-v5"
+SCHEMA_USER_VERSION = 5
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS schema_meta (
+CREATE TABLE IF NOT EXISTS metadata (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    root_dir TEXT NOT NULL UNIQUE,
-    active_profile TEXT NOT NULL,
-    created_at REAL NOT NULL,
-    updated_at REAL NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS nodes (
     id TEXT PRIMARY KEY,
-    project_id INTEGER NOT NULL,
     parent_id TEXT,
     type TEXT NOT NULL,
     name TEXT NOT NULL,
@@ -37,22 +28,23 @@ CREATE TABLE IF NOT EXISTS nodes (
     parse_error TEXT,
     metadata TEXT,
     is_test INTEGER NOT NULL DEFAULT 0,
+    community_id INTEGER,
     updated_at REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL,
-    source_node_id TEXT NOT NULL,
-    target_node_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    target TEXT NOT NULL,
     relation TEXT NOT NULL,
     metadata TEXT,
-    UNIQUE(project_id, source_node_id, target_node_id, relation, metadata)
+    confidence REAL NOT NULL DEFAULT 1.0,
+    confidence_tier TEXT NOT NULL DEFAULT 'EXTRACTED',
+    UNIQUE(source, target, relation, metadata)
 );
 
 CREATE TABLE IF NOT EXISTS summaries (
     node_id TEXT PRIMARY KEY,
-    project_id INTEGER NOT NULL,
     source_hash TEXT NOT NULL,
     summary TEXT NOT NULL,
     kind TEXT NOT NULL,
@@ -71,7 +63,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS lexical_index USING fts5(
 
 CREATE TABLE IF NOT EXISTS embedding_cache (
     node_id TEXT PRIMARY KEY,
-    project_id INTEGER NOT NULL,
     model TEXT NOT NULL,
     source_hash TEXT NOT NULL,
     vector BLOB NOT NULL,
@@ -80,15 +71,14 @@ CREATE TABLE IF NOT EXISTS embedding_cache (
 
 CREATE TABLE IF NOT EXISTS retrieval_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL,
-    query_text TEXT NOT NULL,
-    target_node_id TEXT,
+    query TEXT NOT NULL,
+    target TEXT,
     profile TEXT NOT NULL,
     dependency_completeness REAL NOT NULL,
     entity_coverage REAL NOT NULL,
     semantic_overlap REAL NOT NULL,
     model_confidence REAL NOT NULL,
-    is_sufficient INTEGER NOT NULL,
+    sufficient INTEGER NOT NULL,
     created_at REAL NOT NULL
 );
 
@@ -102,18 +92,18 @@ CREATE TABLE IF NOT EXISTS retrieval_context (
     PRIMARY KEY(run_id, node_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_nodes_project_type_name ON nodes(project_id, type, name);
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(project_id, path);
-CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(project_id, name);
-CREATE INDEX IF NOT EXISTS idx_nodes_is_test ON nodes(project_id, is_test) WHERE is_test = 1;
-CREATE INDEX IF NOT EXISTS idx_edges_source_relation ON edges(source_node_id, relation);
-CREATE INDEX IF NOT EXISTS idx_edges_target_relation ON edges(target_node_id, relation);
-CREATE INDEX IF NOT EXISTS idx_edges_project_relation ON edges(project_id, relation);
+CREATE INDEX IF NOT EXISTS idx_nodes_type_name ON nodes(type, name);
+CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path);
+CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
+CREATE INDEX IF NOT EXISTS idx_nodes_is_test ON nodes(is_test) WHERE is_test = 1;
+CREATE INDEX IF NOT EXISTS idx_edges_source_relation ON edges(source, relation);
+CREATE INDEX IF NOT EXISTS idx_edges_target_relation ON edges(target, relation);
+CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
 """
 
-SCHEMA_META_UPSERT = """
-INSERT INTO schema_meta(key, value)
+METADATA_UPSERT = """
+INSERT INTO metadata(key, value)
 VALUES('schema_version', ?)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value
 """

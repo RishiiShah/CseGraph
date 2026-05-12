@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 
 CONTEXT_OUTPUT_SCHEMA_VERSION = "csegraph-context-v1"
@@ -24,21 +24,16 @@ def to_dict(value: Any) -> Any:
 
 
 def _context_result_to_dict(result: Any) -> Dict[str, Any]:
-    metrics = to_dict(result.metrics)
     return {
         "command": result.command,
         "db_path": result.db_path,
         "repo_root": result.repo_root,
         "profile": result.profile,
         "schema_version": CONTEXT_OUTPUT_SCHEMA_VERSION,
-        "query": result.task,
+        "query": result.query,
         "target": result.target,
-        "total_estimated_tokens": result.estimated_tokens,
-        "sufficiency": {
-            "sufficient": result.is_sufficient,
-            "metrics": metrics,
-            "thresholds": to_dict(result.thresholds),
-        },
+        "total_estimated_tokens": result.total_estimated_tokens,
+        "sufficiency": to_dict(result.sufficiency),
         "raw_code_nodes": to_dict(result.raw_code_nodes),
         "run_id": result.run_id,
         "nodes": [_canonical_context_node_to_dict(node) for node in result.nodes],
@@ -47,11 +42,11 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
 
 def _canonical_context_node_to_dict(node: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
-        "id": node.node_id,
+        "id": node.id,
         "kind": node.kind,
         "language": node.language,
-        "path": node.file_path,
-        "line_range": _line_range(node.start_line, node.end_line),
+        "path": node.path,
+        "line_range": node.line_range,
         "reason": list(node.reason),
         "summary": node.summary,
         "source_text": node.source_text,
@@ -60,9 +55,3 @@ def _canonical_context_node_to_dict(node: Any) -> Dict[str, Any]:
     if node.explanation is not None:
         payload["explanation"] = node.explanation
     return payload
-
-
-def _line_range(start_line: Optional[int], end_line: Optional[int]) -> Optional[List[int]]:
-    if start_line is None or end_line is None:
-        return None
-    return [int(start_line), int(end_line)]

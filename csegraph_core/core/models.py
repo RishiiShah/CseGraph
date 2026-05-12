@@ -61,12 +61,11 @@ class RefreshResult:
 
 @dataclass
 class ContextNode:
-    node_id: str
+    id: str
     kind: str
     name: str
-    file_path: str
-    start_line: Optional[int]
-    end_line: Optional[int]
+    path: str
+    line_range: Optional[List[int]]
     score: float
     language: str
     raw_code: bool = False
@@ -84,30 +83,34 @@ class ContextNode:
 
 
 @dataclass
+class SufficiencyResult:
+    sufficient: bool
+    metrics: SufficiencyMetrics
+    thresholds: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class ContextResult:
     command: str
     db_path: str
     repo_root: str
     profile: str
-    task: str
+    query: str
     target: str
-    is_sufficient: bool
-    metrics: SufficiencyMetrics
+    sufficiency: SufficiencyResult
+    total_estimated_tokens: int
     nodes: List[ContextNode]
     raw_code_nodes: List[str] = field(default_factory=list)
-    thresholds: Dict[str, float] = field(default_factory=dict)
     run_id: Optional[int] = None
-    estimated_tokens: int = 0
 
 
 @dataclass
 class GraphNodeView:
-    node_id: str
+    id: str
     kind: str
     name: str
-    file_path: str
-    start_line: Optional[int] = None
-    end_line: Optional[int] = None
+    path: str
+    line_range: Optional[List[int]] = None
 
 
 @dataclass
@@ -116,6 +119,8 @@ class GraphEdgeView:
     target: str
     relation: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    confidence: float = 1.0
+    confidence_tier: str = "EXTRACTED"
 
 
 @dataclass
@@ -123,7 +128,7 @@ class GraphResult:
     command: str
     db_path: str
     repo_root: str
-    node_id: str
+    target: str
     depth: int
     nodes: List[GraphNodeView]
     edges: List[GraphEdgeView]

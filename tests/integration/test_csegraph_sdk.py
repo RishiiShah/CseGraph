@@ -58,8 +58,8 @@ def test_project_index_schema_is_idempotent(tmp_path):
             )
         }
 
-    assert "schema_meta" in tables
-    assert "projects" in tables
+    assert "metadata" in tables
+    assert "projects" not in tables
     assert "nodes" in tables
     assert "edges" in tables
     assert "summaries" in tables
@@ -72,11 +72,23 @@ def test_project_index_schema_is_idempotent(tmp_path):
 
     with sqlite3.connect(db_path) as conn:
         version = conn.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
+            "SELECT value FROM metadata WHERE key='schema_version'"
         ).fetchone()
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version[0] == "csegraph-sqlite-v4"
-    assert user_version == 4
+        node_columns = {row[1] for row in conn.execute("PRAGMA table_info(nodes)")}
+        edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
+        run_columns = {row[1] for row in conn.execute("PRAGMA table_info(retrieval_runs)")}
+
+    assert version[0] == "csegraph-sqlite-v5"
+    assert user_version == 5
+    assert "project_id" not in node_columns
+    assert {"source", "target", "relation", "metadata", "confidence", "confidence_tier"}.issubset(edge_columns)
+    assert "source_node_id" not in edge_columns
+    assert "target_node_id" not in edge_columns
+    assert {"query", "target", "sufficient"}.issubset(run_columns)
+    assert "query_text" not in run_columns
+    assert "target_node_id" not in run_columns
+    assert "is_sufficient" not in run_columns
 
 
 def test_index_context_graph_and_incremental_refresh(tmp_path):
@@ -97,13 +109,14 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
         profile="small",
     )
 
-    context_ids = {node.node_id for node in context.nodes}
+    context_ids = {node.id for node in context.nodes}
+    assert context.query == "Implement build_report using format_user"
     assert context.target == "symbol::main.py::function::build_report"
     assert "symbol::main.py::function::build_report" in context_ids
     assert "symbol::utils.py::function::format_user" in context_ids
-    assert context.metrics.dependency_completeness == 1.0
-    assert context.metrics.entity_coverage == 1.0
-    assert context.is_sufficient is True
+    assert context.sufficiency.metrics.dependency_completeness == 1.0
+    assert context.sufficiency.metrics.entity_coverage == 1.0
+    assert context.sufficiency.sufficient is True
 
     graph = GraphQueryService(db_path).neighborhood(
         "symbol::main.py::function::build_report",
@@ -161,7 +174,7 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
         profile="small",
     )
 
-    by_id = {node.node_id: node for node in context.nodes}
+    by_id = {node.id: node for node in context.nodes}
     target = by_id["symbol::main.py::function::build_report"]
     helper = by_id["symbol::utils.py::function::format_user"]
 
@@ -171,7 +184,7 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
     assert "return name.strip().title()" in helper.source_text
     assert target.estimated_tokens >= 1
     assert helper.estimated_tokens >= 1
-    assert context.estimated_tokens >= target.estimated_tokens + helper.estimated_tokens
+    assert context.total_estimated_tokens >= target.estimated_tokens + helper.estimated_tokens
     assert "target" in target.reason
     assert "direct_call" in helper.reason
     assert set(target.reason).issubset(VALID_REASONS)
@@ -193,7 +206,7 @@ def test_context_explain_populates_human_explanations(tmp_path):
         explain=True,
     )
 
-    by_id = {node.node_id: node for node in context.nodes}
+    by_id = {node.id: node for node in context.nodes}
     assert by_id["symbol::main.py::function::build_report"].explanation
     assert "target" in by_id["symbol::main.py::function::build_report"].reason
     helper = by_id["symbol::utils.py::function::format_user"]
@@ -217,7 +230,7 @@ def test_context_include_source_never_stays_compact(tmp_path):
     assert context.nodes
     assert all(node.source_text is None for node in context.nodes)
     assert all(node.estimated_tokens >= 1 for node in context.nodes)
-    assert context.estimated_tokens == sum(node.estimated_tokens for node in context.nodes)
+    assert context.total_estimated_tokens == sum(node.estimated_tokens for node in context.nodes)
 
 
 def test_context_max_tokens_limits_source_materialization(tmp_path):
@@ -234,8 +247,8 @@ def test_context_max_tokens_limits_source_materialization(tmp_path):
         max_tokens=30,
     )
 
-    by_id = {node.node_id: node for node in context.nodes}
-    assert context.estimated_tokens <= 30
+    by_id = {node.id: node for node in context.nodes}
+    assert context.total_estimated_tokens <= 30
     assert "symbol::main.py::function::build_report" in by_id
     helper = by_id.get("symbol::utils.py::function::format_user")
     assert helper is None or helper.source_text is None
@@ -276,8 +289,8 @@ def test_context_service_config_path_overrides_thresholds(tmp_path):
         target="symbol::main.py::function::build_report",
         config_path=str(config_file),
     )
-    assert context.thresholds["dependency_completeness"] == 0.65
-    assert "semantic_overlap_relaxed" in context.thresholds
+    assert context.sufficiency.thresholds["dependency_completeness"] == 0.65
+    assert "semantic_overlap_relaxed" in context.sufficiency.thresholds
 
 
 def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
@@ -302,8 +315,10 @@ def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
     with sqlite3.connect(db_path) as conn:
         relations = {row[0] for row in conn.execute("SELECT DISTINCT relation FROM edges")}
         types = {row[0] for row in conn.execute("SELECT DISTINCT type FROM nodes")}
+        edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
     assert {"inherits", "decorates", "tested_by"}.issubset(relations)
     assert {"repo", "folder", "file", "class", "function", "method"}.issubset(types)
+    assert {"source", "target", "confidence", "confidence_tier"}.issubset(edge_columns)
 
 
 def test_unsupported_schema_version_raises_structured_error(tmp_path):
@@ -324,7 +339,7 @@ def test_unsupported_schema_version_raises_structured_error(tmp_path):
         idx.close()
 
     assert exc_info.value.error_code == "unsupported_schema"
-    assert exc_info.value.hint == "Rebuild the index or install a compatible csegraph-core version."
+    assert exc_info.value.hint == "Rebuild the index with the current csegraph-core version."
 
 
 def test_malformed_schema_metadata_raises_structured_error(tmp_path):

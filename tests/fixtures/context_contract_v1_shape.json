@@ -9,6 +9,8 @@
     "target",
     "total_estimated_tokens",
     "sufficiency",
+    "raw_code_nodes",
+    "run_id",
     "nodes"
   ],
   "canonical_node_fields": [

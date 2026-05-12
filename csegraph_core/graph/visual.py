@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from csegraph_core.core.models import VisualExportResult
-from csegraph_core.index.loaders import load_edges, load_files, load_nodes
-from csegraph_core.index.repository import ProjectIndex
+from csegraph_core.index.loaders import load_edges, load_nodes
+from csegraph_core.index.repository import ProjectIndex, json_loads
 
 
 class VisualExportService:
@@ -20,14 +20,11 @@ class VisualExportService:
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
-            project = index.get_project()
-            project_id = int(project["id"])
-            repo_root = project["root_dir"]
+            metadata = index.metadata()
+            repo_root = metadata["root_dir"]
 
-            all_nodes = load_nodes(index, project_id)
-            files = load_files(index, project_id)
-            all_nodes.update(files)
-            edges = load_edges(index, project_id)
+            all_nodes = load_nodes(index)
+            edges = load_edges(index)
 
             graph_nodes = _build_graph_nodes(all_nodes)
             graph_edges = _build_graph_edges(all_nodes, edges)
@@ -64,10 +61,15 @@ def _build_graph_nodes(all_nodes: Dict[str, Dict[str, Any]]) -> List[Dict[str, A
             "path": row.get("path") or row.get("file_path", ""),
             "parent_id": row.get("parent_id"),
             "child_count": child_counts.get(node_id, 0),
-            "start_line": row.get("start_line"),
-            "end_line": row.get("end_line"),
+            "line_range": _line_range(row.get("start_line"), row.get("end_line")),
         })
     return result
+
+
+def _line_range(start_line: Any, end_line: Any) -> List[int] | None:
+    if start_line is None or end_line is None:
+        return None
+    return [int(start_line), int(end_line)]
 
 
 def _build_graph_edges(
@@ -75,21 +77,15 @@ def _build_graph_edges(
     edges: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     deduped: Dict[tuple[str, str, str], Dict[str, Any]] = {}
-    for node_id, row in all_nodes.items():
-        parent_id = row.get("parent_id")
-        if parent_id and parent_id in all_nodes and parent_id != node_id:
-            deduped[(parent_id, "contains", node_id)] = {
-                "source": parent_id,
-                "target": node_id,
-                "relation": "contains",
-            }
-
     for edge in edges:
         key = (edge["source_id"], edge["relation"], edge["target_id"])
         deduped[key] = {
             "source": edge["source_id"],
             "target": edge["target_id"],
             "relation": edge["relation"],
+            "metadata": json_loads(edge.get("metadata")),
+            "confidence": float(edge.get("confidence", 1.0)),
+            "confidence_tier": edge.get("confidence_tier") or "EXTRACTED",
         }
 
     result: List[Dict[str, Any]] = []
@@ -104,7 +100,16 @@ def _render_html(
     edges: List[Dict[str, Any]],
 ) -> str:
     repo_name = html.escape(Path(repo_root).name)
-    data_json = json.dumps({"nodes": nodes, "edges": edges}, separators=(",", ":"))
+    data_json = json.dumps(
+        {
+            "schema_version": "csegraph-graph-v1",
+            "root_dir": repo_root,
+            "summary": {"node_count": len(nodes), "edge_count": len(edges)},
+            "nodes": nodes,
+            "edges": edges,
+        },
+        separators=(",", ":"),
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -324,9 +329,9 @@ canvas {{ display: block; width: 100%; height: 100%; }}
     document.getElementById("d-kind").textContent = n.kind;
     document.getElementById("d-path").textContent = n.path;
     var lw = document.getElementById("d-lines-wrap");
-    if (n.start_line != null) {{
+    if (n.line_range != null) {{
       lw.style.display = "";
-      document.getElementById("d-lines").textContent = n.start_line + "–" + (n.end_line || n.start_line);
+      document.getElementById("d-lines").textContent = n.line_range[0] + "–" + n.line_range[1];
     }} else {{ lw.style.display = "none"; }}
     var cw = document.getElementById("d-children-wrap");
     if (n.child_count) {{
