@@ -22,6 +22,7 @@ class RecordingTokenizer:
 class FakeParser:
     language = "fakelang"
     extensions = (".fake",)
+    excluded_dirs = frozenset()
 
     def parse(self, path: Path, root: Path) -> ParsedFile:
         raise NotImplementedError

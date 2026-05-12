@@ -4,8 +4,9 @@ import ast
 import hashlib
 import os
 import textwrap
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Dict, FrozenSet, List, Optional, Sequence, Set
 
 from csegraph_core.core.ids import symbol_node_id
 from csegraph_core.languages.types import ParsedFile, ParsedSymbol
@@ -52,24 +53,20 @@ def to_repo_relative(path: Path, root_dir: Path) -> str:
 
 
 def extract_called_symbols(source: str) -> Set[str]:
-    calls: Set[str] = set()
     try:
         tree = ast.parse(textwrap.dedent(source))
     except SyntaxError:
-        return calls
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Name):
-            calls.add(node.func.id)
-        elif isinstance(node.func, ast.Attribute):
-            calls.add(node.func.attr)
-    return calls
+        return set()
+    return _extract_called_symbols_from_ast(tree)
 
 
 class PythonParser:
     language = "python"
     extensions = (".py",)
+
+    @property
+    def excluded_dirs(self) -> FrozenSet[str]:
+        return frozenset(EXCLUDED_DIRS)
 
     def iter_files(self, root_dir: Path) -> List[Path]:
         from csegraph_core.ignore import load_ignore_filter
@@ -116,29 +113,33 @@ class PythonParser:
             return parsed
 
         lines = source.splitlines()
-        imports: List[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports.extend(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                prefix = "." * node.level
-                module = f"{prefix}{node.module or ''}"
-                for alias in node.names:
-                    if module:
-                        separator = "" if module.endswith(".") else "."
-                        imports.append(f"{module}{separator}{alias.name}")
-                    else:
-                        imports.append(alias.name)
-        parsed.imports = sorted(set(imports))
+        visitor = _FileVisitor(_emitted_scope_ids(tree))
+        visitor.visit(tree)
+        parsed.imports = sorted(set(visitor.imports))
+        calls_by_node = visitor.calls_by_node
 
         file_is_test = _file_is_test(rel_path)
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 parsed.symbols.append(
-                    _parse_symbol(node, rel_path, lines, "function", file_is_test=file_is_test)
+                    _parse_symbol(
+                        node,
+                        rel_path,
+                        lines,
+                        "function",
+                        file_is_test=file_is_test,
+                        calls=calls_by_node.get(id(node), set()),
+                    )
                 )
             elif isinstance(node, ast.ClassDef):
-                class_symbol = _parse_symbol(node, rel_path, lines, "class", file_is_test=file_is_test)
+                class_symbol = _parse_symbol(
+                    node,
+                    rel_path,
+                    lines,
+                    "class",
+                    file_is_test=file_is_test,
+                    calls=calls_by_node.get(id(node), set()),
+                )
                 parsed.symbols.append(class_symbol)
                 for child in node.body:
                     if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -152,6 +153,7 @@ class PythonParser:
                                 display_name=method_name,
                                 parent_symbol_id=class_symbol.node_id,
                                 file_is_test=file_is_test,
+                                calls=calls_by_node.get(id(child), set()),
                             )
                         )
         return parsed
@@ -208,6 +210,7 @@ def _parse_symbol(
     display_name: Optional[str] = None,
     parent_symbol_id: Optional[str] = None,
     file_is_test: bool = False,
+    calls: Optional[Set[str]] = None,
 ) -> ParsedSymbol:
     name = display_name or getattr(node, "name")
     start_line = getattr(node, "lineno")
@@ -238,7 +241,7 @@ def _parse_symbol(
         source=source,
         source_hash=sha256_text(source),
         parent_symbol_id=parent_symbol_id,
-        calls=sorted(extract_called_symbols(source)),
+        calls=sorted(calls if calls is not None else _extract_called_symbols_from_ast(node)),
         bases=bases,
         decorators=decorators,
         is_test=is_test,
@@ -253,6 +256,77 @@ def _attr_or_name(node: ast.AST) -> str:
     if isinstance(node, ast.Call):
         return _attr_or_name(node.func)
     return ""
+
+
+def _extract_called_symbols_from_ast(node: ast.AST) -> Set[str]:
+    calls: Set[str] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        if isinstance(child.func, ast.Name):
+            calls.add(child.func.id)
+        elif isinstance(child.func, ast.Attribute):
+            calls.add(child.func.attr)
+    return calls
+
+
+def _emitted_scope_ids(tree: ast.Module) -> Set[int]:
+    ids: Set[int] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            ids.add(id(node))
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    ids.add(id(child))
+    return ids
+
+
+class _FileVisitor(ast.NodeVisitor):
+    """Single-pass visitor: collects file-level imports and per-scope calls together."""
+
+    def __init__(self, emitted_scope_ids: Set[int]) -> None:
+        self._emitted_scope_ids = emitted_scope_ids
+        self._scope_stack: List[ast.AST] = []
+        self.calls_by_node: Dict[int, Set[str]] = defaultdict(set)
+        self.imports: List[str] = []
+
+    def visit_Import(self, node: ast.Import) -> None:
+        self.imports.extend(alias.name for alias in node.names)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        prefix = "." * node.level
+        module = f"{prefix}{node.module or ''}"
+        for alias in node.names:
+            if module:
+                separator = "" if module.endswith(".") else "."
+                self.imports.append(f"{module}{separator}{alias.name}")
+            else:
+                self.imports.append(alias.name)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._visit_scope(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_scope(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_scope(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if self._scope_stack:
+            name = _attr_or_name(node.func)
+            if name:
+                self.calls_by_node[id(self._scope_stack[-1])].add(name)
+        self.generic_visit(node)
+
+    def _visit_scope(self, node: ast.AST) -> None:
+        if id(node) not in self._emitted_scope_ids:
+            self.generic_visit(node)
+            return
+        self._scope_stack.append(node)
+        self.generic_visit(node)
+        self._scope_stack.pop()
 
 
 def _signature_from_source(source: str) -> str:

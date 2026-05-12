@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, FrozenSet, List, Optional, Set
 
 from tree_sitter import Node, Parser
 
@@ -128,6 +128,10 @@ class TreeSitterParser:
     @property
     def config(self) -> LanguageConfig:
         return self._config
+
+    @property
+    def excluded_dirs(self) -> FrozenSet[str]:
+        return EXCLUDED_DIRS | self._config.extra_excluded_dirs
 
     def iter_files(self, root_dir: Path) -> List[Path]:
         from csegraph_core.ignore import load_ignore_filter

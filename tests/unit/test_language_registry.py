@@ -18,6 +18,7 @@ class FakeTokenizer:
 class FakeParser:
     language = "fake"
     extensions = (".fake",)
+    excluded_dirs = frozenset()
 
     def parse(self, path: Path, root: Path) -> object:
         raise NotImplementedError
