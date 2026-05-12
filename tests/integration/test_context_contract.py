@@ -21,7 +21,7 @@ def _write_repo(root: Path) -> None:
     )
 
 
-def test_context_json_contract_has_versioned_legacy_and_canonical_shapes(tmp_path):
+def test_context_json_contract_is_canonical_only(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "index.db"
     _write_repo(repo)
@@ -36,24 +36,28 @@ def test_context_json_contract_has_versioned_legacy_and_canonical_shapes(tmp_pat
     expected = json.loads(_FIXTURE.read_text(encoding="utf-8"))
 
     assert payload["schema_version"] == expected["schema_version"]
-    for key in expected["legacy_fields"]:
-        assert key in payload
     for key in expected["canonical_fields"]:
         assert key in payload
     for key in expected["sufficiency_fields"]:
         assert key in payload["sufficiency"]
 
-    assert payload["query"] == payload["task"]
-    assert payload["target"] == payload["target_node_id"]
-    assert payload["total_estimated_tokens"] == payload["estimated_tokens"]
-    assert payload["sufficiency"]["sufficient"] is payload["is_sufficient"]
-    assert payload["sufficiency"]["metrics"] == payload["metrics"]
-    assert payload["sufficiency"]["thresholds"] == payload["thresholds"]
-    assert "semantic_overlap_relaxed" in payload["thresholds"]
+    removed_fields = {
+        "task",
+        "target_node_id",
+        "estimated_tokens",
+        "metrics",
+        "thresholds",
+        "is_sufficient",
+        "context_nodes",
+    }
+    assert removed_fields.isdisjoint(payload)
 
-    assert [node["id"] for node in payload["nodes"]] == [
-        node["node_id"] for node in payload["context_nodes"]
-    ]
+    assert payload["query"] == "Implement create_user with clean_name"
+    assert payload["target"] == "symbol::service.py::function::create_user"
+    assert payload["total_estimated_tokens"] >= 1
+    assert payload["sufficiency"]["sufficient"] is True
+    assert "semantic_overlap_relaxed" in payload["sufficiency"]["thresholds"]
+
     assert payload["nodes"][0]["id"] == "symbol::service.py::function::create_user"
 
     for node in payload["nodes"]:
@@ -80,4 +84,4 @@ def test_context_json_contract_explanation_is_explain_only(tmp_path):
 
     assert payload["schema_version"] == "csegraph-context-v1"
     assert any("explanation" in node for node in payload["nodes"])
-    assert any("explanation" in node for node in payload["context_nodes"])
+    assert "context_nodes" not in payload

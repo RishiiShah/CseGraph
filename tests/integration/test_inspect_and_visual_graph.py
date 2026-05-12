@@ -110,7 +110,7 @@ def test_inspect_default_output_is_pretty_json(tmp_path):
     assert "\n" in proc.stdout
 
 
-def test_graph_rejects_legacy_node_argument(tmp_path):
+def test_graph_rejects_node_argument(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
     _run_cli("index", str(repo), "--json")
@@ -133,7 +133,7 @@ def test_graph_rejects_legacy_node_argument(tmp_path):
     assert "symbol::service.py::function::create_user" in proc.stderr
 
 
-def test_graph_rejects_legacy_node_flag_and_depth(tmp_path):
+def test_graph_rejects_node_flag_and_depth(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
     _run_cli("index", str(repo), "--json")
@@ -283,7 +283,7 @@ def test_graph_visual_export_default_output_path(tmp_path):
     assert result["output_path"] == str(expected_path)
     assert expected_path.exists()
     assert not (tmp_path / "csegraph-graph.html").exists()
-    assert "deprecated" not in proc.stderr.lower()
+    assert proc.stderr == ""
 
 
 def test_graph_visual_export_default_output_is_concise_message(tmp_path):
