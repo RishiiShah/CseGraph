@@ -90,6 +90,9 @@ def render_benchmark_summary(payload: Dict[str, Any]) -> str:
         lines.append(
             f"{step['name']:<8}  {step['elapsed_ms']:>9.3f}  {_benchmark_stats(step.get('stats') or {})}"
         )
+        phases = (step.get("stats") or {}).get("phases") or {}
+        for phase, elapsed_ms in phases.items():
+            lines.append(f"  {phase:<18} {elapsed_ms:>9.3f}")
     lines.extend(
         [
             "",

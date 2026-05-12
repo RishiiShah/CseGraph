@@ -50,6 +50,7 @@ class BenchmarkService:
                     "symbols": index_result.symbols_indexed,
                     "edges": index_result.edges_indexed,
                     "parse_errors": len(index_result.parse_errors),
+                    "phases": index_result.timings_ms,
                 },
             )
         )

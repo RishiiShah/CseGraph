@@ -22,24 +22,38 @@ class IndexService:
         self.db_path = str(Path(db_path))
 
     def index(self, repo: str | Path, profile: str = "small") -> IndexResult:
+        timings_ms: Dict[str, float] = {}
         config = get_profile(profile)
         repo_root = str(Path(repo).resolve())
+        start = time.perf_counter()
         parsed_files = [
             parser.parse(path, Path(repo_root))
             for parser, path in registry.iter_files(Path(repo_root))
         ]
+        timings_ms["discover_parse"] = _elapsed_ms(start)
 
         index = ProjectIndex(self.db_path)
         try:
+            start = time.perf_counter()
             index.initialize_schema()
             index.set_metadata(repo_root, config.name)
+            timings_ms["initialize_schema"] = _elapsed_ms(start)
+
+            start = time.perf_counter()
             index.clear_graph()
+            timings_ms["clear_graph"] = _elapsed_ms(start)
+
+            start = time.perf_counter()
             stats = _write_parsed_files(index, repo_root, parsed_files)
+            timings_ms["write_graph"] = _elapsed_ms(start)
+
+            start = time.perf_counter()
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
                 for parsed in parsed_files
                 if parsed.parse_status != "ok"
             }
+            timings_ms["parse_errors"] = _elapsed_ms(start)
             return IndexResult(
                 command="index",
                 db_path=self.db_path,
@@ -50,6 +64,7 @@ class IndexService:
                 edges_indexed=stats["edges"],
                 changed_files=[parsed.rel_path for parsed in parsed_files],
                 parse_errors=parse_errors,
+                timings_ms=timings_ms,
             )
         finally:
             index.close()
@@ -109,7 +124,6 @@ class RefreshService:
             stats = _write_parsed_files(index, str(repo_root), parsed_changed)
             index.cleanup_orphan_edges()
             index.cleanup_orphan_folders()
-            index.cleanup_orphan_edges()
             changed_symbols.extend(symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols)
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
@@ -332,7 +346,6 @@ def _write_parsed_files(
                     if target and target != symbol.node_id:
                         edge_rows.append(_edge(target, symbol.node_id, "tested_by", {"via": call}))
 
-    edges_before = int(index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"])
     if edge_rows:
         index.conn.executemany(
             """
@@ -346,8 +359,12 @@ def _write_parsed_files(
     total_edges = int(index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"])
     return {
         "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
-        "edges": total_edges if len(parsed_files) > 1 else (total_edges - edges_before),
+        "edges": total_edges,
     }
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 3)
 
 
 def _write_repo_and_folders(

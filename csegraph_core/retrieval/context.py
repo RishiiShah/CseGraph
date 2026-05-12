@@ -11,7 +11,7 @@ from csegraph_core.cse.metrics import (
     compute_metrics,
     raw_code_nodes,
 )
-from csegraph_core.index.loaders import edge_maps, load_edges, load_summaries, load_symbols
+from csegraph_core.index.loaders import load_edge_maps, load_summaries, load_symbols
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.explain import build_explanation, normalize_reasons
 from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
@@ -44,8 +44,7 @@ class ContextService:
 
             symbols = load_symbols(index)
             summaries = load_summaries(index)
-            edges = load_edges(index)
-            outgoing, incoming = edge_maps(edges)
+            outgoing, incoming = load_edge_maps(index)
 
             if not symbols:
                 raise ValueError("No symbols are indexed in this database.")

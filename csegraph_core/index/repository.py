@@ -152,10 +152,18 @@ class ProjectIndex:
                 f"DELETE FROM edges WHERE target IN ({placeholders})",
                 node_ids,
             )
-        for node_id in node_ids:
-            self.conn.execute("DELETE FROM lexical_index WHERE node_id = ?", (node_id,))
-            self.conn.execute("DELETE FROM summaries WHERE node_id = ?", (node_id,))
-            self.conn.execute("DELETE FROM embedding_cache WHERE node_id = ?", (node_id,))
+        self.conn.execute(
+            f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
+            node_ids,
+        )
+        self.conn.execute(
+            f"DELETE FROM summaries WHERE node_id IN ({placeholders})",
+            node_ids,
+        )
+        self.conn.execute(
+            f"DELETE FROM embedding_cache WHERE node_id IN ({placeholders})",
+            node_ids,
+        )
         self.conn.execute(
             f"DELETE FROM nodes WHERE id IN ({placeholders})",
             node_ids,

@@ -11,14 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
-from csegraph_core.graph.queries import GraphQueryService
-from csegraph_core.graph.report import ReportService
-from csegraph_core.graph.visual import VisualExportService
-from csegraph_core.index.services import IndexService, RefreshService
-from csegraph_core.retrieval.context import ContextService
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
     render_context_markdown,
@@ -156,12 +150,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _dispatch(args: argparse.Namespace) -> Any:
     if args.command == "index":
+        from csegraph_core.index.services import IndexService
         repo = _repo_arg(args)
         return IndexService(_db_arg(args, repo)).index(repo, profile=args.profile)
     if args.command == "refresh":
+        from csegraph_core.index.services import RefreshService
         repo = _repo_arg(args)
         return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)
     if args.command == "context":
+        from csegraph_core.retrieval.context import ContextService
         repo = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg
         if not task:
@@ -176,6 +173,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             config_path=args.config,
         )
     if args.command == "inspect":
+        from csegraph_core.graph.queries import GraphQueryService
         repo = Path(args.repo or ".").resolve()
         node = args.node or args.node_arg
         if not node:
@@ -184,14 +182,17 @@ def _dispatch(args: argparse.Namespace) -> Any:
         result.command = "inspect"
         return result
     if args.command == "graph":
+        from csegraph_core.graph.visual import VisualExportService
         repo = Path(args.repo or ".").resolve()
         db_path = _db_arg(args, str(repo))
         output = args.output or _default_graph_output_path(db_path)
         return VisualExportService(db_path).export(output)
     if args.command == "report":
+        from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)
         return ReportService(_db_arg(args, repo)).report()
     if args.command == "benchmark":
+        from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)
         db_path = _db_arg(args, repo)
         return BenchmarkService(db_path).run(

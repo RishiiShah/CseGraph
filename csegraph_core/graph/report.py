@@ -30,13 +30,11 @@ class ReportService:
             )
             total_edges = sum(edge_counts.values())
 
-            degree = _node_degrees(index)
             node_info = _node_info(index)
+            degree, surprising, sections = _edge_analysis(index, node_info)
             god_nodes = _god_nodes(degree, node_info)
             knowledge_gaps = _knowledge_gaps(degree, node_info)
             knowledge_gap_groups = _knowledge_gap_groups(knowledge_gaps)
-            surprising = _surprising_connections(index, node_info)
-            sections = _sections(index, node_info)
             questions = _suggested_questions(god_nodes, knowledge_gaps, surprising)
 
             return ReportResult(
@@ -85,14 +83,85 @@ def _parse_error_count(index: ProjectIndex) -> int:
     return int(row["c"])
 
 
-def _node_degrees(index: ProjectIndex) -> Dict[str, int]:
+def _edge_analysis(
+    index: ProjectIndex,
+    node_info: Dict[str, Dict[str, Any]],
+    surprising_limit: int = 10,
+) -> Tuple[
+    Dict[str, int],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+]:
     degree: Dict[str, int] = Counter()
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges",
-    ):
-        degree[row["source"]] += 1
-        degree[row["target"]] += 1
-    return dict(degree)
+
+    node_section: Dict[str, str] = {}
+    section_files: Dict[str, int] = Counter()
+    section_symbols: Dict[str, int] = Counter()
+    symbol_types = {"class", "function", "method", "test"}
+    for node_id, info in node_info.items():
+        path = info.get("path", "")
+        if not path:
+            continue
+        section = path.split("/")[0] if "/" in path else "(root)"
+        node_section[node_id] = section
+        if info["type"] == "file":
+            section_files[section] += 1
+        elif info["type"] in symbol_types:
+            section_symbols[section] += 1
+
+    surprising_raw: List[Dict[str, Any]] = []
+    seen_surprising: Set[Tuple[str, str, str]] = set()
+    section_internal: Dict[str, int] = Counter()
+    section_cross: Dict[str, Set[str]] = defaultdict(set)
+
+    for row in index.conn.execute("SELECT source, target, relation FROM edges"):
+        src, tgt, relation = row["source"], row["target"], row["relation"]
+        degree[src] += 1
+        degree[tgt] += 1
+
+        src_info = node_info.get(src, {})
+        tgt_info = node_info.get(tgt, {})
+        src_path = src_info.get("path", "")
+        tgt_path = tgt_info.get("path", "")
+        if src_path and tgt_path and src_path != tgt_path:
+            key = (src, relation, tgt)
+            if key not in seen_surprising:
+                seen_surprising.add(key)
+                src_pkg = src_path.split("/")[0] if "/" in src_path else ""
+                tgt_pkg = tgt_path.split("/")[0] if "/" in tgt_path else ""
+                if src_pkg and tgt_pkg and src_pkg != tgt_pkg:
+                    surprising_raw.append({
+                        "source": src,
+                        "target": tgt,
+                        "relation": relation,
+                        "source_path": src_path,
+                        "target_path": tgt_path,
+                    })
+
+        src_sec = node_section.get(src)
+        tgt_sec = node_section.get(tgt)
+        if src_sec is not None and tgt_sec is not None:
+            if src_sec == tgt_sec:
+                section_internal[src_sec] += 1
+            else:
+                section_cross[src_sec].add(tgt_sec)
+                section_cross[tgt_sec].add(src_sec)
+
+    surprising_raw.sort(key=lambda e: (e["source"], e["relation"], e["target"]))
+    surprising = surprising_raw[:surprising_limit]
+
+    all_sections = sorted(set(section_files) | set(section_symbols))
+    sections: List[Dict[str, Any]] = []
+    for section in all_sections:
+        sections.append({
+            "name": section,
+            "files": section_files.get(section, 0),
+            "symbols": section_symbols.get(section, 0),
+            "internal_edges": section_internal.get(section, 0),
+            "cross_section_deps": sorted(section_cross.get(section, set())),
+        })
+
+    return dict(degree), surprising, sections
 
 
 def _node_info(index: ProjectIndex) -> Dict[str, Dict[str, Any]]:
@@ -226,90 +295,6 @@ def _knowledge_gap_groups(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "description": _GAP_REASON_DESCRIPTIONS[reason],
             "count": len(nodes),
             "examples": [node["name"] for node in nodes[:5]],
-        })
-    return result
-
-
-def _surprising_connections(
-    index: ProjectIndex,
-    node_info: Dict[str, Dict[str, Any]],
-    limit: int = 10,
-) -> List[Dict[str, Any]]:
-    seen: Set[Tuple[str, str, str]] = set()
-    result: List[Dict[str, Any]] = []
-    for row in index.conn.execute(
-        "SELECT source, target, relation FROM edges",
-    ):
-        src = row["source"]
-        tgt = row["target"]
-        key = (src, row["relation"], tgt)
-        if key in seen:
-            continue
-        seen.add(key)
-        src_info = node_info.get(src, {})
-        tgt_info = node_info.get(tgt, {})
-        src_path = src_info.get("path", "")
-        tgt_path = tgt_info.get("path", "")
-        if not src_path or not tgt_path or src_path == tgt_path:
-            continue
-        src_pkg = src_path.split("/")[0] if "/" in src_path else ""
-        tgt_pkg = tgt_path.split("/")[0] if "/" in tgt_path else ""
-        if src_pkg and tgt_pkg and src_pkg != tgt_pkg:
-            result.append({
-                "source": src,
-                "target": tgt,
-                "relation": row["relation"],
-                "source_path": src_path,
-                "target_path": tgt_path,
-            })
-    result.sort(key=lambda e: (e["source"], e["relation"], e["target"]))
-    return result[:limit]
-
-
-def _sections(
-    index: ProjectIndex,
-    node_info: Dict[str, Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    section_files: Dict[str, int] = Counter()
-    section_symbols: Dict[str, int] = Counter()
-    node_section: Dict[str, str] = {}
-    symbol_types = {"class", "function", "method", "test"}
-
-    for node_id, info in node_info.items():
-        path = info.get("path", "")
-        if not path:
-            continue
-        section = path.split("/")[0] if "/" in path else "(root)"
-        node_section[node_id] = section
-        if info["type"] == "file":
-            section_files[section] += 1
-        elif info["type"] in symbol_types:
-            section_symbols[section] += 1
-
-    section_internal: Dict[str, int] = Counter()
-    section_cross: Dict[str, Set[str]] = defaultdict(set)
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges",
-    ):
-        src_sec = node_section.get(row["source"])
-        tgt_sec = node_section.get(row["target"])
-        if src_sec is None or tgt_sec is None:
-            continue
-        if src_sec == tgt_sec:
-            section_internal[src_sec] += 1
-        else:
-            section_cross[src_sec].add(tgt_sec)
-            section_cross[tgt_sec].add(src_sec)
-
-    all_sections = sorted(set(section_files) | set(section_symbols))
-    result: List[Dict[str, Any]] = []
-    for section in all_sections:
-        result.append({
-            "name": section,
-            "files": section_files.get(section, 0),
-            "symbols": section_symbols.get(section, 0),
-            "internal_edges": section_internal.get(section, 0),
-            "cross_section_deps": sorted(section_cross.get(section, set())),
         })
     return result
 

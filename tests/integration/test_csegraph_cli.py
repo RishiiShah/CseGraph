@@ -234,6 +234,17 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     assert by_name["index"]["stats"]["files"] == 2
     assert by_name["index"]["stats"]["symbols"] == 2
     assert by_name["index"]["stats"]["edges"] >= 1
+    assert set(by_name["index"]["stats"]["phases"]) == {
+        "discover_parse",
+        "initialize_schema",
+        "clear_graph",
+        "write_graph",
+        "parse_errors",
+    }
+    assert all(
+        elapsed_ms >= 0
+        for elapsed_ms in by_name["index"]["stats"]["phases"].values()
+    )
     assert by_name["context"]["stats"]["nodes"] >= 1
     assert by_name["context"]["stats"]["target"] == "symbol::service.py::function::create_user"
     assert by_name["graph"]["stats"]["nodes"] >= 1

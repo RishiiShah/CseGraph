@@ -41,6 +41,7 @@ class IndexResult:
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

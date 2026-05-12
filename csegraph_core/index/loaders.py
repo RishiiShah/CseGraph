@@ -75,3 +75,17 @@ def edge_maps(
         outgoing[edge["source_id"]].append(edge)
         incoming[edge["target_id"]].append(edge)
     return outgoing, incoming
+
+
+def load_edge_maps(
+    index: ProjectIndex,
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:
+    outgoing: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    incoming: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in index.conn.execute("SELECT * FROM edges"):
+        edge = dict(row)
+        edge["source_id"] = edge["source"]
+        edge["target_id"] = edge["target"]
+        outgoing[edge["source"]].append(edge)
+        incoming[edge["target"]].append(edge)
+    return outgoing, incoming
