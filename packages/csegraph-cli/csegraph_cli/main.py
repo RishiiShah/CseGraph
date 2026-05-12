@@ -35,7 +35,6 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         _validate_cli_options(args)
-        _emit_deprecation_warnings(args)
         result = _dispatch(args)
     except Exception as exc:
         print(json.dumps(error_payload(exc), indent=2, sort_keys=True), file=sys.stderr)
@@ -46,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         print(render_context_markdown(payload), end="")
     elif args.command == "report" and not args.json:
         print(render_report_markdown(payload), end="")
-    elif _is_visual_graph_export(args) and not args.json:
+    elif args.command == "graph" and not args.json:
         print(render_visual_export_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
@@ -123,11 +122,8 @@ def _build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
-    graph.add_argument("node_arg", nargs="?", help="(Deprecated) Node ID for neighborhood inspection.")
     graph.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
     graph.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    graph.add_argument("--node", default=None, help="(Deprecated) Node ID for neighborhood inspection.")
-    graph.add_argument("--depth", type=int, default=1, help="Neighborhood depth (deprecated, use inspect).")
     graph.add_argument(
         "--output",
         "-o",
@@ -176,10 +172,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
         return result
     if args.command == "graph":
         repo = Path(args.repo or ".").resolve()
-        node = args.node or args.node_arg
         db_path = _db_arg(args, str(repo))
-        if node:
-            return GraphQueryService(db_path).neighborhood(node, depth=args.depth)
         output = args.output or _default_graph_output_path(db_path)
         return VisualExportService(db_path).export(output)
     if args.command == "report":
@@ -198,19 +191,6 @@ def _validate_cli_options(args: argparse.Namespace) -> None:
             "--json cannot be combined with --format markdown",
             error_code="invalid_cli_options",
         )
-
-
-def _emit_deprecation_warnings(args: argparse.Namespace) -> None:
-    if args.command == "graph" and (args.node or args.node_arg):
-        print(
-            "Warning: csegraph graph <node> is deprecated; "
-            "use csegraph inspect <node> instead.",
-            file=sys.stderr,
-        )
-
-
-def _is_visual_graph_export(args: argparse.Namespace) -> bool:
-    return args.command == "graph" and not (args.node or args.node_arg)
 
 
 def _repo_arg(args: argparse.Namespace) -> str:

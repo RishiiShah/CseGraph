@@ -4,7 +4,7 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from csegraph_core.config.profiles import get_profile
 from csegraph_core.core.ids import file_node_id, folder_node_id, repo_node_id

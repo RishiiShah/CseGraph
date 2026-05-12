@@ -7,7 +7,7 @@ import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
 
-from csegraph_core.core.ids import file_node_id, symbol_node_id
+from csegraph_core.core.ids import symbol_node_id
 from csegraph_core.languages.types import ParsedFile, ParsedSymbol
 
 __all__ = [
