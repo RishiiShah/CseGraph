@@ -38,6 +38,7 @@ class TestToolListing:
             "csegraph_graph",
             "csegraph_path",
             "csegraph_tree",
+            "csegraph_communities",
             "csegraph_report",
         }
 

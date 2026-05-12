@@ -203,6 +203,27 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_communities",
+        description=(
+            "Detect communities in the csegraph dependency graph using modularity optimization. "
+            "Returns clusters of related files and symbols."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
         name="csegraph_report",
         description=(
             "Generate a structural report from a csegraph index. "
@@ -287,6 +308,13 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         output = arguments.get("output") or str(Path(db).with_name("csegraph-tree.html"))
         return to_dict(TreeExportService(db).export(output))
+
+    if name == "csegraph_communities":
+        from csegraph_core.graph.communities import detect_communities
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(detect_communities(db))
 
     if name == "csegraph_report":
         from csegraph_core.graph.report import ReportService

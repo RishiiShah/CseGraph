@@ -152,6 +152,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     tree.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    communities = subparsers.add_parser("communities", help="Detect communities in the dependency graph.")
+    communities.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
+    communities.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    communities.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    communities.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
+    hooks = subparsers.add_parser("hooks", help="Manage csegraph git hooks.")
+    hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
+    hooks_install = hooks_sub.add_parser("install", help="Install post-commit/merge/checkout hooks.")
+    hooks_install.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    hooks_install.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    hooks_install.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    hooks_uninstall = hooks_sub.add_parser("uninstall", help="Remove csegraph git hooks.")
+    hooks_uninstall.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    hooks_uninstall.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    hooks_uninstall.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
     report.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
     report.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
@@ -234,6 +251,18 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db_path = _db_arg(args, str(repo))
         output = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
         return TreeExportService(db_path).export(output)
+    if args.command == "communities":
+        from csegraph_core.graph.communities import detect_communities
+        repo = _repo_arg(args)
+        return detect_communities(_db_arg(args, repo))
+    if args.command == "hooks":
+        from csegraph_core.hooks import install_hooks, uninstall_hooks
+        repo = _repo_arg(args)
+        if args.hooks_command == "install":
+            return install_hooks(repo)
+        if args.hooks_command == "uninstall":
+            return uninstall_hooks(repo)
+        raise ValueError(f"Unknown hooks subcommand: {args.hooks_command}")
     if args.command == "report":
         from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)

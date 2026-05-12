@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Sequence
 from csegraph_core.config.profiles import get_profile
 from csegraph_core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph_core.core.models import IndexResult, RefreshResult
+from csegraph_core.index.cache import ExtractionCache
 from csegraph_core.index.repository import ProjectIndex, json_dumps
 from csegraph_core.languages.registry import UnsupportedLanguageError, registry
 from csegraph_core.languages.types import ParsedFile, ParsedSymbol
@@ -25,11 +26,12 @@ class IndexService:
         timings_ms: Dict[str, float] = {}
         config = get_profile(profile)
         repo_root = str(Path(repo).resolve())
+        cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
+        cache = ExtractionCache(cache_path)
         start = time.perf_counter()
-        parsed_files = [
-            parser.parse(path, Path(repo_root))
-            for parser, path in registry.iter_files(Path(repo_root))
-        ]
+        parsed_files = _parse_with_cache(
+            registry.iter_files(Path(repo_root)), Path(repo_root), cache,
+        )
         timings_ms["discover_parse"] = _elapsed_ms(start)
 
         index = ProjectIndex(self.db_path)
@@ -68,6 +70,7 @@ class IndexService:
             )
         finally:
             index.close()
+            cache.close()
 
 
 class RefreshService:
@@ -76,6 +79,8 @@ class RefreshService:
 
     def refresh(self, profile: str = "small") -> RefreshResult:
         config = get_profile(profile)
+        cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
+        cache = ExtractionCache(cache_path)
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -98,7 +103,7 @@ class RefreshService:
             changed: List[str] = []
             parsed_changed: List[ParsedFile] = []
             for rel_path, (parser, path) in sorted(current_files.items()):
-                parsed = parser.parse(path, repo_root)
+                parsed = _parse_one_cached(parser, path, repo_root, cache)
                 if stored.get(rel_path) != parsed.sha256:
                     changed.append(rel_path)
                     parsed_changed.append(parsed)
@@ -146,6 +151,7 @@ class RefreshService:
             )
         finally:
             index.close()
+            cache.close()
 
 
 def _write_parsed_files(
@@ -361,6 +367,28 @@ def _write_parsed_files(
         "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
         "edges": total_edges,
     }
+
+
+def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> List[ParsedFile]:
+    results: List[ParsedFile] = []
+    for parser, path in file_iter:
+        results.append(_parse_one_cached(parser, path, repo_root, cache))
+    return results
+
+
+def _parse_one_cached(parser, path: Path, repo_root: Path, cache: ExtractionCache) -> ParsedFile:
+    from csegraph_core.languages.python.parser import sha256_text
+    source = path.read_text(encoding="utf-8")
+    sha = sha256_text(source)
+    rel = path.resolve().relative_to(Path(repo_root).resolve()).as_posix()
+
+    cached = cache.get(rel, sha)
+    if cached is not None:
+        return cached
+
+    parsed = parser.parse(path, repo_root)
+    cache.put(parsed)
+    return parsed
 
 
 def _elapsed_ms(start: float) -> float:
