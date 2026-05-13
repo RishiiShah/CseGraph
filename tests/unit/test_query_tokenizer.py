@@ -10,7 +10,7 @@ _CORPUS = [
     "Add logging to buildReport function",
     "Refactor DataProcessor class to use registry pattern",
     "Write tests for extract_query_entities in text.entities",
-    "Update the import resolution logic in PythonParser",
+    "Update the import resolution logic in TreeSitterParser",
     "Optimize FTS5 BM25 scoring weights",
     "Remove old parse_python_file standalone function",
     "Add NOT NULL constraint on language column in nodes table",
