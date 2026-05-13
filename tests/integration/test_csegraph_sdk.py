@@ -182,7 +182,7 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
     assert result.db_path == str(db_path)
     assert result.graph_output_path == str(tmp_path / "graph.html")
     assert result.total_elapsed_ms >= 0
-    assert [step.name for step in result.steps] == ["index", "context", "graph", "report"]
+    assert [step.name for step in result.steps] == ["index", "context", "graph", "report", "token_reduction"]
     assert result.steps[0].stats["files"] == 2
     assert list(result.steps[0].stats["phases"]) == [
         "discover_parse",

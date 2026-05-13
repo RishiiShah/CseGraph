@@ -1,14 +1,11 @@
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 from typing import Callable, TypeVar
 
 from csegraph_core.core.models import BenchmarkResult, BenchmarkStep
-from csegraph_core.graph.report import ReportService
-from csegraph_core.graph.visual import VisualExportService
-from csegraph_core.index.services import IndexService
-from csegraph_core.retrieval.context import ContextService
 
 
 _DEFAULT_QUERY = "Benchmark context retrieval"
@@ -37,6 +34,11 @@ class BenchmarkService:
 
         total_start = time.perf_counter()
         steps: list[BenchmarkStep] = []
+
+        from csegraph_core.graph.report import ReportService
+        from csegraph_core.graph.visual import VisualExportService
+        from csegraph_core.index.services import IndexService
+        from csegraph_core.retrieval.context import ContextService
 
         index_result, elapsed = _time_call(
             lambda: IndexService(self.db_path).index(repo_root, profile=profile)
@@ -109,6 +111,38 @@ class BenchmarkService:
             )
         )
 
+        raw_tokens, raw_elapsed = _time_call(
+            lambda: _count_raw_tokens(Path(repo_root))
+        )
+
+        context_with_source, ctx_elapsed = _time_call(
+            lambda: ContextService(self.db_path).build_context(
+                task=query,
+                target=target,
+                profile=profile,
+                include_source="auto",
+            )
+        )
+        context_tokens = context_with_source.total_estimated_tokens
+
+        reduction_pct = (
+            round((1 - context_tokens / raw_tokens) * 100, 2)
+            if raw_tokens > 0
+            else 0.0
+        )
+        steps.append(
+            BenchmarkStep(
+                name="token_reduction",
+                elapsed_ms=round(raw_elapsed + ctx_elapsed, 3),
+                stats={
+                    "raw_tokens": raw_tokens,
+                    "context_tokens": context_tokens,
+                    "reduction_percent": reduction_pct,
+                    "ratio": f"{context_tokens}:{raw_tokens}",
+                },
+            )
+        )
+
         return BenchmarkResult(
             command="benchmark",
             db_path=self.db_path,
@@ -135,3 +169,15 @@ def _elapsed_ms(start: float) -> float:
 def _file_size(path: str | Path) -> int:
     output = Path(path)
     return output.stat().st_size if output.exists() else 0
+
+
+def _count_raw_tokens(repo_root: Path) -> int:
+    total = 0
+    from csegraph_core.languages.registry import registry
+    for _parser, file_path in registry.iter_files(repo_root):
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+            total += max(1, math.ceil(len(text) / 4))
+        except OSError:
+            continue
+    return total

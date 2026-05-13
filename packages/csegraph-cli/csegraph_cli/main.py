@@ -15,10 +15,13 @@ from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
+    render_communities_summary,
     render_context_markdown,
     render_benchmark_summary,
+    render_hooks_summary,
     render_index_summary,
     render_json,
+    render_path_summary,
     render_refresh_summary,
     render_report_markdown,
     render_visual_export_summary,
@@ -36,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(error_payload(exc), indent=2, sort_keys=True), file=sys.stderr)
         return 1
 
+    if result is None:
+        return 0
     payload = to_dict(result)
     if args.command == "context" and args.output_format == "markdown":
         print(render_context_markdown(payload), end="")
@@ -43,8 +48,16 @@ def main(argv: list[str] | None = None) -> int:
         print(render_report_markdown(payload), end="")
     elif args.command == "graph" and not args.json:
         print(render_visual_export_summary(payload), end="")
+    elif args.command == "tree" and not args.json:
+        print(render_visual_export_summary(payload), end="")
     elif args.command == "benchmark" and not args.json:
         print(render_benchmark_summary(payload), end="")
+    elif args.command == "communities" and not args.json:
+        print(render_communities_summary(payload), end="")
+    elif args.command == "hooks" and not args.json:
+        print(render_hooks_summary(payload), end="")
+    elif args.command == "path" and not args.json:
+        print(render_path_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
     elif args.command == "index":
@@ -59,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="csegraph",
-        description="SQLite-backed Python code graph indexing and context retrieval.",
+        description="SQLite-backed code graph indexing and context retrieval.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -111,6 +124,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     context.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    path = subparsers.add_parser("path", help="Find the shortest path between two nodes.")
+    path.add_argument("source_arg", nargs="?", help="Source node ID, symbol name, or file path.")
+    path.add_argument("target_arg", nargs="?", help="Target node ID, symbol name, or file path.")
+    path.add_argument("--source", default=None, help="Source node.")
+    path.add_argument("--target", default=None, help="Target node.")
+    path.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    path.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    path.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     inspect = subparsers.add_parser("inspect", help="Inspect a graph neighborhood.")
     inspect.add_argument("node_arg", nargs="?", help="Node ID, symbol name, or file path.")
     inspect.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
@@ -130,11 +152,48 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     graph.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    tree = subparsers.add_parser("tree", help="Export an interactive HTML file tree visualization.")
+    tree.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    tree.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    tree.add_argument(
+        "--output", "-o", default=None,
+        help="Output HTML file path (default: beside the SQLite index DB).",
+    )
+    tree.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
+    communities = subparsers.add_parser("communities", help="Detect communities in the dependency graph.")
+    communities.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
+    communities.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    communities.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    communities.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
+    hooks = subparsers.add_parser("hooks", help="Manage csegraph git hooks.")
+    hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
+    hooks_install = hooks_sub.add_parser("install", help="Install post-commit/merge/checkout hooks.")
+    hooks_install.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    hooks_install.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    hooks_install.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    hooks_uninstall = hooks_sub.add_parser("uninstall", help="Remove csegraph git hooks.")
+    hooks_uninstall.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    hooks_uninstall.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    hooks_uninstall.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
     report.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
     report.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
     report.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
     report.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
+    watch = subparsers.add_parser("watch", help="Watch for file changes and auto-refresh the index.")
+    watch.add_argument("repo_arg", nargs="?", help="Repository root to watch (default: current directory).")
+    watch.add_argument("--repo", dest="repo_opt", help="Repository root to watch.")
+    watch.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    watch.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    watch.add_argument("--debounce", type=int, default=500, help="Debounce interval in milliseconds (default: 500).")
+    watch.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+
+    serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
+    serve.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     benchmark.add_argument("repo_arg", nargs="?", help="Repository root to benchmark (default: current directory).")
@@ -172,6 +231,14 @@ def _dispatch(args: argparse.Namespace) -> Any:
             explain=args.explain,
             config_path=args.config,
         )
+    if args.command == "path":
+        from csegraph_core.graph.queries import GraphQueryService
+        repo = Path(args.repo or ".").resolve()
+        source = args.source or args.source_arg
+        target = args.target or args.target_arg
+        if not source or not target:
+            raise ValueError("path requires two nodes. Example: csegraph path greet main")
+        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(source, target)
     if args.command == "inspect":
         from csegraph_core.graph.queries import GraphQueryService
         repo = Path(args.repo or ".").resolve()
@@ -187,10 +254,38 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db_path = _db_arg(args, str(repo))
         output = args.output or _default_graph_output_path(db_path)
         return VisualExportService(db_path).export(output)
+    if args.command == "tree":
+        from csegraph_core.graph.tree import TreeExportService
+        repo = Path(args.repo or ".").resolve()
+        db_path = _db_arg(args, str(repo))
+        output = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
+        return TreeExportService(db_path).export(output)
+    if args.command == "communities":
+        from csegraph_core.graph.communities import detect_communities
+        repo = _repo_arg(args)
+        return detect_communities(_db_arg(args, repo))
+    if args.command == "hooks":
+        from csegraph_core.hooks import install_hooks, uninstall_hooks
+        repo = _repo_arg(args)
+        if args.hooks_command == "install":
+            return install_hooks(repo)
+        if args.hooks_command == "uninstall":
+            return uninstall_hooks(repo)
+        raise ValueError(f"Unknown hooks subcommand: {args.hooks_command}")
     if args.command == "report":
         from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)
         return ReportService(_db_arg(args, repo)).report()
+    if args.command == "watch":
+        from csegraph_core.watch import watch as run_watch
+        repo = _repo_arg(args)
+        run_watch(repo, _db_arg(args, repo), profile=args.profile, debounce_ms=args.debounce)
+        return None
+    if args.command == "serve":
+        import asyncio
+        from csegraph_core.server import run_stdio
+        asyncio.run(run_stdio())
+        return None
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)

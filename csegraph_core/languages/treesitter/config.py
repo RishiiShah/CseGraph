@@ -20,6 +20,7 @@ class LanguageConfig:
     class_name_field: str = "name"
 
     declaration_wrapper_types: FrozenSet[str] = frozenset()
+    decorator_wrapper_type: str = ""   # e.g. "decorated_definition" for Python
 
     impl_types: FrozenSet[str] = frozenset()
     impl_type_field: str = "type"

@@ -9,7 +9,7 @@ package (`csegraph`) and CLI package (`csegraph-cli`) depend on this package
 and never on each other.
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
@@ -22,6 +22,9 @@ from csegraph_core.core.models import (
     GraphNodeView,
     GraphResult,
     IndexResult,
+    PathEdge,
+    PathResult,
+    PathStep,
     RefreshResult,
     ReportResult,
     SufficiencyResult,
@@ -29,6 +32,8 @@ from csegraph_core.core.models import (
     to_dict,
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
+from csegraph_core.graph.communities import Community, CommunityResult
+from csegraph_core.hooks import HooksResult
 from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.graph.report import ReportService
 from csegraph_core.graph.visual import VisualExportService
@@ -43,14 +48,20 @@ __all__ = [
     "BenchmarkService",
     "BenchmarkStep",
     "ContextNode",
+    "Community",
+    "CommunityResult",
     "ContextResult",
     "ContextService",
     "GraphEdgeView",
     "GraphNodeView",
     "GraphQueryService",
     "GraphResult",
+    "HooksResult",
     "IndexResult",
     "IndexService",
+    "PathEdge",
+    "PathResult",
+    "PathStep",
     "PROFILES",
     "ProfileConfig",
     "ProjectIndex",

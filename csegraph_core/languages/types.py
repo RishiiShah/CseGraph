@@ -1,9 +1,8 @@
 """Language-neutral parsed output types.
 
 These dataclasses represent the output of any Parser implementation and are
-intentionally not tied to Python. ParsedFile and ParsedSymbol were previously
-co-located with PythonParser; they live here so Parser.parse() can reference
-them without importing from a language-specific module.
+intentionally not tied to any specific language. They live here so
+Parser.parse() can reference them without importing from a language-specific module.
 """
 from __future__ import annotations
 
