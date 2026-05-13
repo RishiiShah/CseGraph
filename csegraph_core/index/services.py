@@ -377,7 +377,7 @@ def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> Lis
 
 
 def _parse_one_cached(parser, path: Path, repo_root: Path, cache: ExtractionCache) -> ParsedFile:
-    from csegraph_core.languages.python.parser import sha256_text
+    from csegraph_core.languages.base import sha256_text
     source = path.read_text(encoding="utf-8")
     sha = sha256_text(source)
     rel = path.resolve().relative_to(Path(repo_root).resolve()).as_posix()

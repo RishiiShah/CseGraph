@@ -546,9 +546,10 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     # index/refresh/context/inspect/graph must work.
     sample = tmp_path / "repo"
     _write_repo(sample)
+    _env = _offline_pip_env()
     proc = subprocess.run(
         [str(csegraph_bin), "index", str(sample), "--json"],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, env=_env,
     )
     assert json.loads(proc.stdout)["files_indexed"] == 2
     proc = subprocess.run(
@@ -565,6 +566,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         check=True,
         capture_output=True,
         text=True,
+        env=_env,
     )
     assert json.loads(proc.stdout)["target"] == "symbol::service.py::function::create_user"
     proc = subprocess.run(
@@ -579,6 +581,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         check=True,
         capture_output=True,
         text=True,
+        env=_env,
     )
     assert json.loads(proc.stdout)["command"] == "inspect"
     proc = subprocess.run(
@@ -592,6 +595,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         check=True,
         capture_output=True,
         text=True,
+        env=_env,
     )
     assert json.loads(proc.stdout)["command"] == "graph"
     proc = subprocess.run(
@@ -599,5 +603,6 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         check=True,
         capture_output=True,
         text=True,
+        env=_env,
     )
     assert json.loads(proc.stdout)["command"] == "refresh"

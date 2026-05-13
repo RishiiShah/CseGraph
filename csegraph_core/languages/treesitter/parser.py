@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Set
 
 from tree_sitter import Node, Parser
 
 from csegraph_core.core.ids import symbol_node_id
-from csegraph_core.languages.python.parser import (
-    EXCLUDED_DIRS,
-    sha256_text,
-    to_repo_relative,
-)
+from csegraph_core.languages.base import BaseParser, sha256_text, to_repo_relative
 from csegraph_core.languages.treesitter.config import LanguageConfig
 from csegraph_core.languages.types import ParsedFile, ParsedSymbol
 
@@ -119,7 +114,7 @@ def _extract_go_doc(node: Node, lines: List[str]) -> str:
     return "\n".join(doc_lines).strip()
 
 
-class TreeSitterParser:
+class TreeSitterParser(BaseParser):
     def __init__(self, config: LanguageConfig) -> None:
         self._config = config
         self.language = config.name
@@ -130,37 +125,8 @@ class TreeSitterParser:
         return self._config
 
     @property
-    def excluded_dirs(self) -> FrozenSet[str]:
-        return EXCLUDED_DIRS | self._config.extra_excluded_dirs
-
-    def iter_files(self, root_dir: Path) -> List[Path]:
-        from csegraph_core.ignore import load_ignore_filter
-
-        ignore = load_ignore_filter(root_dir)
-        resolved_root = root_dir.resolve()
-        excluded = EXCLUDED_DIRS | self._config.extra_excluded_dirs
-        paths: List[Path] = []
-        for root, dirs, files in os.walk(root_dir):
-            rel_root = Path(root).resolve().relative_to(resolved_root).as_posix()
-            dirs[:] = sorted(
-                name for name in dirs
-                if name not in excluded
-                and not name.startswith(".")
-                and not ignore.is_ignored(
-                    f"{rel_root}/{name}" if rel_root != "." else name,
-                    is_dir=True,
-                )
-            )
-            for filename in sorted(files):
-                if filename.startswith("."):
-                    continue
-                suffix = Path(filename).suffix
-                if suffix not in self._config.extensions:
-                    continue
-                rel_path = f"{rel_root}/{filename}" if rel_root != "." else filename
-                if not ignore.is_ignored(rel_path):
-                    paths.append(Path(root) / filename)
-        return sorted(paths)
+    def extra_excluded_dirs(self) -> FrozenSet[str]:
+        return self._config.extra_excluded_dirs
 
     def parse(self, path: Path, root_dir: Path) -> ParsedFile:
         rel_path = to_repo_relative(path, root_dir)
@@ -280,6 +246,11 @@ class TreeSitterParser:
                 self._extract_impl_block(
                     child, rel_path, lines, symbols, file_is_test, class_map,
                 )
+            elif cfg.decorator_wrapper_type and child.type == cfg.decorator_wrapper_type:
+                self._extract_symbols(
+                    child, rel_path, lines, symbols, file_is_test,
+                    parent_class_id, class_name, class_map,
+                )
 
         if top_level and cfg.method_receiver_field:
             self._fixup_receiver_methods(symbols, class_map)
@@ -297,10 +268,15 @@ class TreeSitterParser:
         name = _name_of(node, cfg.class_name_field)
         if not name:
             return
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        source = _source_of(node, lines)
+        effective_node = node
+        if cfg.decorator_wrapper_type and node.parent and node.parent.type == cfg.decorator_wrapper_type:
+            effective_node = node.parent
+        start_line = effective_node.start_point[0] + 1
+        end_line = effective_node.end_point[0] + 1
+        source = _source_of(effective_node, lines)
         bases = self._extract_bases(node)
+        calls = self._extract_calls(node)
+        decorators = self._extract_decorators(effective_node, node)
         kind = "class"
 
         class_symbol = ParsedSymbol(
@@ -314,7 +290,9 @@ class TreeSitterParser:
             docstring=self._extract_doc(node, lines),
             source=source,
             source_hash=sha256_text(source),
+            calls=calls,
             bases=bases,
+            decorators=decorators,
         )
         symbols.append(class_symbol)
         class_map[name] = class_symbol.node_id
@@ -333,6 +311,14 @@ class TreeSitterParser:
                         parent_class_id=class_symbol.node_id,
                         class_name=name,
                     )
+                elif cfg.decorator_wrapper_type and child.type == cfg.decorator_wrapper_type:
+                    for inner in child.children:
+                        if inner.type in cfg.function_types:
+                            self._extract_function(
+                                inner, rel_path, lines, symbols, file_is_test,
+                                parent_class_id=class_symbol.node_id,
+                                class_name=name,
+                            )
 
     def _extract_function(
         self,
@@ -349,9 +335,12 @@ class TreeSitterParser:
         name = _name_of(node, cfg.class_name_field)
         if not name:
             return
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        source = _source_of(node, lines)
+        effective_node = node
+        if cfg.decorator_wrapper_type and node.parent and node.parent.type == cfg.decorator_wrapper_type:
+            effective_node = node.parent
+        start_line = effective_node.start_point[0] + 1
+        end_line = effective_node.end_point[0] + 1
+        source = _source_of(effective_node, lines)
 
         if cfg.method_receiver_field and not parent_class_id:
             receiver = node.child_by_field_name(cfg.method_receiver_field)
@@ -369,6 +358,7 @@ class TreeSitterParser:
             display_name = name
 
         calls = self._extract_calls(node)
+        decorators = self._extract_decorators(effective_node, node)
         is_test = (
             file_is_test
             and kind in {"function", "method"}
@@ -388,6 +378,7 @@ class TreeSitterParser:
             source_hash=sha256_text(source),
             parent_symbol_id=parent_class_id,
             calls=calls,
+            decorators=decorators,
             is_test=is_test,
         ))
 
@@ -530,6 +521,10 @@ class TreeSitterParser:
                     field = fn.child_by_field_name("field")
                     if field:
                         calls.add(_node_text(field))
+                elif fn.type == "attribute":
+                    attr = fn.child_by_field_name("attribute")
+                    if attr:
+                        calls.add(_node_text(attr))
             else:
                 type_node = node.child_by_field_name("type")
                 if type_node:
@@ -542,6 +537,18 @@ class TreeSitterParser:
         if self._config.extract_doc_fn:
             return self._config.extract_doc_fn(node, lines)
         return _extract_jsdoc(node, lines)
+
+    def _extract_decorators(self, effective_node: Node, node: Node) -> List[str]:
+        """Extract decorator names when the symbol is wrapped in a decorator_wrapper_type."""
+        if effective_node is node:
+            return []
+        decorators: List[str] = []
+        for child in effective_node.children:
+            if child.type == "decorator":
+                text = _node_text(child).lstrip("@").split("(")[0].strip()
+                if text:
+                    decorators.append(text)
+        return sorted(decorators)
 
     def _receiver_type_name(self, receiver: Node) -> str:
         for child in receiver.children:

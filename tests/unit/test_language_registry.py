@@ -6,8 +6,6 @@ from typing import Iterable, List
 import pytest
 
 from csegraph_core.languages.registry import LanguageRegistry, UnsupportedLanguageError
-from csegraph_core.languages.python.parser import PythonParser
-from csegraph_core.languages.python.tokenizer import PythonTokenizer
 
 
 class FakeTokenizer:
@@ -50,15 +48,17 @@ def test_tokenizer_for_unknown_raises():
 
 def test_python_parser_registered_on_import():
     from csegraph_core.languages import registry
+    from csegraph_core.languages.treesitter.parser import TreeSitterParser
     parser = registry.for_extension(".py")
-    assert isinstance(parser, PythonParser)
+    assert isinstance(parser, TreeSitterParser)
     assert parser.language == "python"
 
 
 def test_python_tokenizer_registered_on_import():
     from csegraph_core.languages import registry
+    from csegraph_core.languages.base import DefaultTokenizer
     tokenizer = registry.tokenizer_for("python")
-    assert isinstance(tokenizer, PythonTokenizer)
+    assert isinstance(tokenizer, DefaultTokenizer)
 
 
 def test_iter_files_yields_parser_path_pairs(tmp_path):
@@ -73,10 +73,8 @@ def test_iter_files_yields_parser_path_pairs(tmp_path):
 
 def test_python_parser_satisfies_widened_protocol():
     from csegraph_core.languages.base import Parser
-    from csegraph_core.languages.registry import LanguageRegistry
-    reg = LanguageRegistry()
-    reg.register(PythonParser(), PythonTokenizer())
-    parser = reg.for_extension(".py")
+    from csegraph_core.languages import registry
+    parser = registry.for_extension(".py")
     assert isinstance(parser, Parser)
     assert hasattr(parser, "module_name_from_relpath")
     assert hasattr(parser, "resolve_local_import")

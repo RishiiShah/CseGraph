@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from csegraph_core.languages.base import Tokenizer
-from csegraph_core.languages.python.tokenizer import code_tokenize
+from csegraph_core.text.tokens import code_tokenize
 from csegraph_core.text.query_tokenizer import QueryTokenizer, query_tokenizer
 
 _CORPUS = [

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from csegraph_core.languages.python.tokenizer import PythonTokenizer, code_tokenize
+from csegraph_core.languages.base import DefaultTokenizer
+from csegraph_core.text.tokens import code_tokenize
 from csegraph_core.languages.registry import UnsupportedLanguageError
 from csegraph_core.text.entities import extract_query_entities
 
@@ -26,8 +27,8 @@ def test_code_tokenize_drops_py_stop_word():
     assert "py" not in tokens
 
 
-def test_python_tokenizer_matches_code_tokenize():
-    tokenizer = PythonTokenizer()
+def test_default_tokenizer_matches_code_tokenize():
+    tokenizer = DefaultTokenizer()
     text = "BuildReportFromUser snake_case_name"
     assert tokenizer.tokenize(text) == code_tokenize(text)
 
@@ -42,10 +43,10 @@ def test_extract_query_entities_substring_match():
     assert "build_report" in entities
 
 
-def test_tokenizer_for_python_returns_python_tokenizer():
+def test_tokenizer_for_python_returns_default_tokenizer():
     from csegraph_core.languages import registry
     tokenizer = registry.tokenizer_for("python")
-    assert isinstance(tokenizer, PythonTokenizer)
+    assert isinstance(tokenizer, DefaultTokenizer)
 
 
 def test_tokenizer_for_unknown_raises():
