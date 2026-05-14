@@ -22,8 +22,10 @@ from csegraph_cli.renderer import (
     render_index_summary,
     render_json,
     render_path_summary,
+    render_postprocess_summary,
     render_refresh_summary,
     render_report_markdown,
+    render_status_summary,
     render_visual_export_summary,
 )
 
@@ -54,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
         print(render_benchmark_summary(payload), end="")
     elif args.command == "communities" and not args.json:
         print(render_communities_summary(payload), end="")
+    elif args.command == "status" and not args.json:
+        print(render_status_summary(payload), end="")
+    elif args.command == "postprocess" and not args.json:
+        print(render_postprocess_summary(payload), end="")
     elif args.command == "hooks" and not args.json:
         print(render_hooks_summary(payload), end="")
     elif args.command == "path" and not args.json:
@@ -195,6 +201,21 @@ def _build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
     serve.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
+    status = subparsers.add_parser("status", help="Show graph health and staleness info.")
+    status.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    status.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    status.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    status.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    status.add_argument("--verbose", action="store_true", help="Include extra detail (parse error paths).")
+
+    postprocess = subparsers.add_parser("postprocess", help="Rebuild FTS and communities without re-parsing.")
+    postprocess.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    postprocess.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    postprocess.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    postprocess.add_argument("--no-fts", action="store_true", help="Skip FTS rebuild.")
+    postprocess.add_argument("--no-communities", action="store_true", help="Skip community detection.")
+    postprocess.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     benchmark.add_argument("repo_arg", nargs="?", help="Repository root to benchmark (default: current directory).")
     benchmark.add_argument("--repo", dest="repo_opt", help="Repository root to benchmark.")
@@ -286,6 +307,17 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.server import run_stdio
         asyncio.run(run_stdio())
         return None
+    if args.command == "status":
+        from csegraph_core.status import StatusService
+        repo = _repo_arg(args)
+        return StatusService(_db_arg(args, repo)).status(verbose=args.verbose)
+    if args.command == "postprocess":
+        from csegraph_core.postprocess import PostprocessService
+        repo = _repo_arg(args)
+        return PostprocessService(_db_arg(args, repo)).postprocess(
+            no_fts=args.no_fts,
+            no_communities=args.no_communities,
+        )
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)

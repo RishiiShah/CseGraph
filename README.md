@@ -45,6 +45,12 @@ csegraph context "fix auth token refresh bug" --target refresh_token --repo . --
 # Render context for human inspection.
 csegraph context "fix auth token refresh bug" --target refresh_token --repo . --format markdown --explain
 
+# Check index health and staleness.
+csegraph status . --verbose
+
+# Rebuild FTS and communities without re-parsing.
+csegraph postprocess . --no-fts --no-communities --json
+
 # Inspect a graph neighborhood.
 csegraph inspect refresh_token --repo . --depth 1 --json
 

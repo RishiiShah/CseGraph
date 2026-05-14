@@ -131,6 +131,39 @@ def render_hooks_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_status_summary(payload: Dict[str, Any]) -> str:
+    lines = [
+        f"Nodes: {payload.get('total_nodes', 0):,}",
+        f"Edges: {payload.get('total_edges', 0):,}",
+        f"Files: {payload.get('total_files', 0):,}",
+        f"Languages: {', '.join(payload.get('languages', []))}",
+        f"Schema: {payload.get('schema_version', '')}",
+        f"Last updated: {payload.get('updated_at', 'unknown')}",
+    ]
+    if payload.get("built_branch"):
+        lines.append(f"Built on branch: {payload['built_branch']}")
+    if payload.get("built_commit"):
+        lines.append(f"Built at commit: {payload['built_commit']}")
+    parse_errors = payload.get("parse_errors") or {}
+    if parse_errors:
+        lines.append("Parse errors:")
+        for path, error in sorted(parse_errors.items()):
+            lines.append(f"  {path}: {error}")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_postprocess_summary(payload: Dict[str, Any]) -> str:
+    parts = []
+    if "fts" not in payload.get("skipped", []):
+        parts.append(f"{payload.get('fts_entries', 0):,} FTS entries")
+    if "communities" not in payload.get("skipped", []):
+        parts.append(f"{payload.get('communities_detected', 0)} communities")
+    return f"Post-processing: {', '.join(parts)}\n"
+
+
 def render_path_summary(payload: Dict[str, Any]) -> str:
     if not payload.get("found"):
         return f"No path found between {payload.get('source', '?')} and {payload.get('target', '?')}.\n"

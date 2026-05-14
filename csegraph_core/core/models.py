@@ -213,6 +213,39 @@ class ReportResult:
     sections: List[Dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class StatusResult:
+    command: str
+    db_path: str
+    repo_root: str
+    schema_version: str
+    active_profile: str
+    total_nodes: int
+    total_edges: int
+    total_files: int
+    languages: List[str]
+    parse_error_count: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    built_branch: Optional[str] = None
+    built_commit: Optional[str] = None
+    current_branch: Optional[str] = None
+    current_commit: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
+    parse_errors: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class PostprocessResult:
+    command: str
+    db_path: str
+    repo_root: str
+    fts_entries: int
+    communities_detected: int
+    modularity: float = 0.0
+    skipped: List[str] = field(default_factory=list)
+
+
 def to_dict(value: Any) -> Any:
     from csegraph_core.core.serializer import to_dict as serialize
 
