@@ -4,13 +4,13 @@ from csegraph_core.text.source_reader import read_source_lines
 
 
 def test_reads_correct_line_range(tmp_path):
-    (tmp_path / "test.py").write_text("line1\nline2\nline3\nline4\n", encoding="utf-8")
+    (tmp_path / "test.py").write_bytes(b"line1\nline2\nline3\nline4\n")
     result = read_source_lines(str(tmp_path), "test.py", 2, 3)
     assert result == "line2\nline3\n"
 
 
 def test_reads_single_line(tmp_path):
-    (tmp_path / "test.py").write_text("only_line\n", encoding="utf-8")
+    (tmp_path / "test.py").write_bytes(b"only_line\n")
     result = read_source_lines(str(tmp_path), "test.py", 1, 1)
     assert result == "only_line\n"
 
@@ -32,6 +32,6 @@ def test_preserves_crlf_line_endings(tmp_path):
 
 
 def test_preserves_trailing_whitespace(tmp_path):
-    (tmp_path / "ws.py").write_text("def foo():   \n    pass\n", encoding="utf-8")
+    (tmp_path / "ws.py").write_bytes(b"def foo():   \n    pass\n")
     result = read_source_lines(str(tmp_path), "ws.py", 1, 2)
     assert result == "def foo():   \n    pass\n"

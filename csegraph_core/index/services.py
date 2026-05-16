@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
@@ -16,6 +17,15 @@ from csegraph_core.languages.types import ParsedFile, ParsedSymbol
 
 _STRUCTURAL_LANGUAGE = "non_code"
 _EXTRACTED = "EXTRACTED"
+
+
+@dataclass
+class _WriteBatch:
+    summary_rows: List[tuple] = field(default_factory=list)
+    lexical_delete_ids: List[tuple] = field(default_factory=list)
+    lexical_rows: List[tuple] = field(default_factory=list)
+    symbol_by_name: Dict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
+    node_to_file_node: Dict[str, str] = field(default_factory=dict)
 
 
 class IndexService:
@@ -64,6 +74,8 @@ class IndexService:
                 files_indexed=len(parsed_files),
                 symbols_indexed=stats["symbols"],
                 edges_indexed=stats["edges"],
+                cache_hits=cache.hits,
+                cache_misses=cache.misses,
                 changed_files=[parsed.rel_path for parsed in parsed_files],
                 parse_errors=parse_errors,
                 timings_ms=timings_ms,
@@ -117,6 +129,8 @@ class RefreshService:
                     files_indexed=0,
                     symbols_indexed=0,
                     edges_indexed=0,
+                    cache_hits=cache.hits,
+                    cache_misses=cache.misses,
                     unchanged_files=sorted(current_files),
                 )
 
@@ -143,6 +157,8 @@ class RefreshService:
                 files_indexed=len(parsed_changed),
                 symbols_indexed=stats["symbols"],
                 edges_indexed=stats["edges"],
+                cache_hits=cache.hits,
+                cache_misses=cache.misses,
                 unchanged_files=sorted(set(current_files) - set(changed)),
                 changed_files=changed,
                 deleted_files=deleted,
@@ -159,17 +175,39 @@ def _write_parsed_files(
     repo_root: str,
     parsed_files: Sequence[ParsedFile],
 ) -> Dict[str, int]:
+    _validate_parsed_languages(parsed_files)
+    now = time.time()
+    structural_edges = _write_repo_and_folders(index, repo_root, parsed_files, now)
+    batch = _WriteBatch()
+
+    _insert_file_nodes(index, repo_root, parsed_files, now, batch)
+    _load_symbol_lookup(index, batch)
+    _insert_symbol_nodes(index, parsed_files, now, batch)
+    _flush_summary_and_lexical_rows(index, batch)
+    _insert_edges(index, parsed_files, structural_edges, batch)
+    index.conn.commit()
+
+    total_edges = int(index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"])
+    return {
+        "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
+        "edges": total_edges,
+    }
+
+
+def _validate_parsed_languages(parsed_files: Sequence[ParsedFile]) -> None:
     for parsed in parsed_files:
         if not isinstance(parsed.language, str) or not parsed.language:
             raise ValueError(f"language is required for file {parsed.rel_path!r}")
 
-    now = time.time()
-    structural_edges = _write_repo_and_folders(index, repo_root, parsed_files, now)
 
+def _insert_file_nodes(
+    index: ProjectIndex,
+    repo_root: str,
+    parsed_files: Sequence[ParsedFile],
+    now: float,
+    batch: _WriteBatch,
+) -> None:
     file_node_rows: List[tuple] = []
-    summary_rows: List[tuple] = []
-    lexical_delete_ids: List[tuple] = []
-    lexical_rows: List[tuple] = []
     for parsed in parsed_files:
         node_id = file_node_id(parsed.rel_path)
         parent_dir = "/".join(parsed.rel_path.split("/")[:-1])
@@ -183,9 +221,9 @@ def _write_parsed_files(
             )
         )
         file_summary = _file_summary(parsed)
-        summary_rows.append((node_id, parsed.sha256, file_summary, "file", now))
-        lexical_delete_ids.append((node_id,))
-        lexical_rows.append(
+        batch.summary_rows.append((node_id, parsed.sha256, file_summary, "file", now))
+        batch.lexical_delete_ids.append((node_id,))
+        batch.lexical_rows.append(
             (node_id, Path(parsed.rel_path).name, parsed.rel_path, "", "", file_summary, "")
         )
 
@@ -212,19 +250,26 @@ def _write_parsed_files(
             file_node_rows,
         )
 
-    symbol_by_name: Dict[str, List[str]] = defaultdict(list)
-    node_to_file_node: Dict[str, str] = {}
+
+def _load_symbol_lookup(index: ProjectIndex, batch: _WriteBatch) -> None:
     for row in index.conn.execute(
         """
         SELECT id, name, path FROM nodes
         WHERE type IN ('class','function','method')
         """,
     ):
-        symbol_by_name[row["name"]].append(row["id"])
+        batch.symbol_by_name[row["name"]].append(row["id"])
         if "." in row["name"]:
-            symbol_by_name[row["name"].split(".")[-1]].append(row["id"])
-        node_to_file_node[row["id"]] = file_node_id(row["path"])
+            batch.symbol_by_name[row["name"].split(".")[-1]].append(row["id"])
+        batch.node_to_file_node[row["id"]] = file_node_id(row["path"])
 
+
+def _insert_symbol_nodes(
+    index: ProjectIndex,
+    parsed_files: Sequence[ParsedFile],
+    now: float,
+    batch: _WriteBatch,
+) -> None:
     symbol_node_rows: List[tuple] = []
     for parsed in parsed_files:
         tokenizer = registry.tokenizer_for(parsed.language)
@@ -242,15 +287,15 @@ def _write_parsed_files(
                     symbol.source_hash, metadata, 1 if symbol.is_test else 0, now,
                 )
             )
-            symbol_by_name[symbol.name].append(symbol.node_id)
+            batch.symbol_by_name[symbol.name].append(symbol.node_id)
             if "." in symbol.name:
-                symbol_by_name[symbol.name.split(".")[-1]].append(symbol.node_id)
-            node_to_file_node[symbol.node_id] = file_node_id(parsed.rel_path)
+                batch.symbol_by_name[symbol.name.split(".")[-1]].append(symbol.node_id)
+            batch.node_to_file_node[symbol.node_id] = file_node_id(parsed.rel_path)
 
             summary = _symbol_summary(symbol)
-            summary_rows.append((symbol.node_id, symbol.source_hash, summary, symbol.kind, now))
-            lexical_delete_ids.append((symbol.node_id,))
-            lexical_rows.append(
+            batch.summary_rows.append((symbol.node_id, symbol.source_hash, summary, symbol.kind, now))
+            batch.lexical_delete_ids.append((symbol.node_id,))
+            batch.lexical_rows.append(
                 (
                     symbol.node_id,
                     symbol.name,
@@ -287,7 +332,9 @@ def _write_parsed_files(
             symbol_node_rows,
         )
 
-    if summary_rows:
+
+def _flush_summary_and_lexical_rows(index: ProjectIndex, batch: _WriteBatch) -> None:
+    if batch.summary_rows:
         index.conn.executemany(
             """
             INSERT INTO summaries(node_id, source_hash, summary, kind, updated_at)
@@ -298,23 +345,30 @@ def _write_parsed_files(
                 kind = excluded.kind,
                 updated_at = excluded.updated_at
             """,
-            summary_rows,
+            batch.summary_rows,
         )
 
-    if lexical_delete_ids:
+    if batch.lexical_delete_ids:
         index.conn.executemany(
             "DELETE FROM lexical_index WHERE node_id = ?",
-            lexical_delete_ids,
+            batch.lexical_delete_ids,
         )
-    if lexical_rows:
+    if batch.lexical_rows:
         index.conn.executemany(
             """
             INSERT INTO lexical_index(node_id, name, path, signature, docstring, summary, source)
             VALUES(?, ?, ?, ?, ?, ?, ?)
             """,
-            lexical_rows,
+            batch.lexical_rows,
         )
 
+
+def _insert_edges(
+    index: ProjectIndex,
+    parsed_files: Sequence[ParsedFile],
+    structural_edges: Sequence[tuple],
+    batch: _WriteBatch,
+) -> None:
     module_to_file_id = _module_to_file_id(index)
     edge_rows: List[tuple] = list(structural_edges)
     for parsed in parsed_files:
@@ -333,22 +387,21 @@ def _write_parsed_files(
             if target_file_id:
                 edge_rows.append(_edge(current_file_id, target_file_id, "imports", {"import": import_name}))
 
+        _SYMBOL_EDGE_SPECS = [
+            ("calls", "calls", "symbol", False),
+            ("bases", "inherits", "base", False),
+            ("decorators", "decorates", "decorator", True),
+        ]
         for symbol in parsed.symbols:
-            for call in symbol.calls:
-                target = _pick_call_target(call, current_file_id, symbol_by_name, node_to_file_node)
-                if target and target != symbol.node_id:
-                    edge_rows.append(_edge(symbol.node_id, target, "calls", {"symbol": call}))
-            for base in symbol.bases:
-                target = _pick_call_target(base, current_file_id, symbol_by_name, node_to_file_node)
-                if target and target != symbol.node_id:
-                    edge_rows.append(_edge(symbol.node_id, target, "inherits", {"base": base}))
-            for decorator in symbol.decorators:
-                target = _pick_call_target(decorator, current_file_id, symbol_by_name, node_to_file_node)
-                if target and target != symbol.node_id:
-                    edge_rows.append(_edge(target, symbol.node_id, "decorates", {"decorator": decorator}))
+            for attr, relation, meta_key, reverse in _SYMBOL_EDGE_SPECS:
+                for name in getattr(symbol, attr):
+                    target = _pick_call_target(name, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
+                    if target and target != symbol.node_id:
+                        src, tgt = (target, symbol.node_id) if reverse else (symbol.node_id, target)
+                        edge_rows.append(_edge(src, tgt, relation, {meta_key: name}))
             if symbol.is_test:
                 for call in symbol.calls:
-                    target = _pick_call_target(call, current_file_id, symbol_by_name, node_to_file_node)
+                    target = _pick_call_target(call, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
                     if target and target != symbol.node_id:
                         edge_rows.append(_edge(target, symbol.node_id, "tested_by", {"via": call}))
 
@@ -360,13 +413,6 @@ def _write_parsed_files(
             """,
             edge_rows,
         )
-    index.conn.commit()
-
-    total_edges = int(index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"])
-    return {
-        "symbols": sum(len(parsed.symbols) for parsed in parsed_files),
-        "edges": total_edges,
-    }
 
 
 def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> List[ParsedFile]:

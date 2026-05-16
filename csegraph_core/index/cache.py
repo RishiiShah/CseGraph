@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS parse_cache (
 class ExtractionCache:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
+        self.hits = 0
+        self.misses = 0
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
@@ -41,7 +43,9 @@ class ExtractionCache:
             (rel_path, sha256),
         ).fetchone()
         if row is None:
+            self.misses += 1
             return None
+        self.hits += 1
         return _deserialize(row["parsed_json"])
 
     def put(self, parsed: ParsedFile) -> None:
@@ -62,7 +66,7 @@ class ExtractionCache:
 
     def stats(self) -> dict:
         row = self.conn.execute("SELECT COUNT(*) AS c FROM parse_cache").fetchone()
-        return {"cached_files": row["c"]}
+        return {"cached_files": row["c"], "hits": self.hits, "misses": self.misses}
 
 
 def _serialize(parsed: ParsedFile) -> str:

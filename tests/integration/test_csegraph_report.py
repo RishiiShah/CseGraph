@@ -1,7 +1,6 @@
-import json
-import subprocess
-import sys
 from pathlib import Path
+
+from tests.conftest import run_cli, run_cli_text
 
 
 def _write_repo(root: Path) -> None:
@@ -17,32 +16,12 @@ def _write_repo(root: Path) -> None:
     )
 
 
-def _run_cli(*args: str) -> dict:
-    proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return json.loads(proc.stdout)
-
-
-def _run_cli_text(*args: str) -> str:
-    proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return proc.stdout
-
-
 def test_report_json_contract(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli("report", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     assert result["command"] == "report"
     assert result["total_files"] == 2
@@ -61,9 +40,9 @@ def test_report_json_contract(tmp_path):
 def test_report_json_god_nodes_are_sorted_by_degree(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli("report", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     degrees = [n["degree"] for n in result["god_nodes"]]
     assert degrees == sorted(degrees, reverse=True)
@@ -81,8 +60,8 @@ def test_report_god_nodes_exclude_noisy_init_files(tmp_path):
         imports.append(f"from mod{i} import func{i}")
     (repo / "__init__.py").write_text("\n".join(imports), encoding="utf-8")
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     god_names = [n["name"] for n in result["god_nodes"]]
     assert "__init__.py" not in god_names
@@ -92,10 +71,10 @@ def test_report_god_nodes_exclude_noisy_init_files(tmp_path):
 def test_report_json_is_deterministic(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    run1 = _run_cli("report", str(repo), "--json")
-    run2 = _run_cli("report", str(repo), "--json")
+    run1 = run_cli("report", str(repo), "--json")
+    run2 = run_cli("report", str(repo), "--json")
 
     del run1["db_path"], run1["repo_root"]
     del run2["db_path"], run2["repo_root"]
@@ -105,9 +84,9 @@ def test_report_json_is_deterministic(tmp_path):
 def test_report_default_output_is_markdown(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    output = _run_cli_text("report", str(repo))
+    output = run_cli_text("report", str(repo))
 
     assert "# csegraph report" in output
     assert "## Corpus Check" in output
@@ -127,8 +106,8 @@ def test_report_knowledge_gaps_contain_low_degree_symbols(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     gap_names = [n["name"] for n in result["knowledge_gaps"]]
     assert "isolated_function" in gap_names
@@ -142,8 +121,8 @@ def test_report_knowledge_gaps_have_reasons_and_groups(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     gap = next(n for n in result["knowledge_gaps"] if n["name"] == "isolated_function")
     assert gap["reason"] == "only_contained"
@@ -162,8 +141,8 @@ def test_report_markdown_groups_knowledge_gaps_by_reason(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    output = _run_cli_text("report", str(repo))
+    run_cli("index", str(repo), "--json")
+    output = run_cli_text("report", str(repo))
 
     assert "### Only contained" in output
     assert "`isolated_function`" in output
@@ -188,8 +167,8 @@ def test_report_knowledge_gaps_exclude_noise(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     gap_names = [n["name"] for n in result["knowledge_gaps"]]
     assert "real_gap" in gap_names
@@ -215,8 +194,8 @@ def test_report_sections_by_folder(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     assert isinstance(result["sections"], list)
     section_names = [s["name"] for s in result["sections"]]
@@ -237,8 +216,8 @@ def test_report_sections_in_markdown(tmp_path):
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "mod.py").write_text("def f():\n    pass\n", encoding="utf-8")
 
-    _run_cli("index", str(repo), "--json")
-    output = _run_cli_text("report", str(repo))
+    run_cli("index", str(repo), "--json")
+    output = run_cli_text("report", str(repo))
 
     assert "## Sections" in output
     assert "pkg" in output
@@ -260,8 +239,8 @@ def test_report_knowledge_gaps_exclude_class_qualified_dunders(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     gap_names = [n["name"] for n in result["knowledge_gaps"]]
     assert "real_gap" in gap_names
@@ -291,8 +270,8 @@ def test_report_surprising_connections_deduped(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     triples = [
         (c["source"], c["relation"], c["target"])
@@ -309,8 +288,8 @@ def test_report_suggested_questions_are_specific_not_generic(tmp_path):
         encoding="utf-8",
     )
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     questions = result["suggested_questions"]
     assert questions
@@ -337,8 +316,8 @@ def test_report_suggested_questions_are_unique(tmp_path):
     (beta / "one.py").write_text("def first():\n    return 1\n", encoding="utf-8")
     (beta / "two.py").write_text("def second():\n    return 2\n", encoding="utf-8")
 
-    _run_cli("index", str(repo), "--json")
-    result = _run_cli("report", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     questions = result["suggested_questions"]
     assert len(questions) == len(set(questions))
@@ -348,9 +327,9 @@ def test_report_with_custom_db(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "custom.db"
     _write_repo(repo)
-    _run_cli("index", "--repo", str(repo), "--db", str(db_path), "--json")
+    run_cli("index", "--repo", str(repo), "--db", str(db_path), "--json")
 
-    result = _run_cli("report", "--db", str(db_path), "--json")
+    result = run_cli("report", "--db", str(db_path), "--json")
 
     assert result["command"] == "report"
     assert result["total_files"] == 2

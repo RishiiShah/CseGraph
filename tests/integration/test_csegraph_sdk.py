@@ -102,6 +102,8 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     assert index_result.files_indexed == 2
     assert index_result.symbols_indexed == 2
     assert index_result.edges_indexed >= 3
+    assert index_result.cache_hits == 0
+    assert index_result.cache_misses == 2
     assert index_result.profile == "small"
 
     context = ContextService(db_path).build_context(
@@ -134,6 +136,8 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     assert no_change.changed_files == []
     assert no_change.deleted_files == []
     assert no_change.files_indexed == 0
+    assert no_change.cache_hits == 2
+    assert no_change.cache_misses == 0
 
     (repo / "utils.py").write_text(
         "\n".join(
@@ -153,6 +157,8 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     refreshed = RefreshService(db_path).refresh(profile="small")
     assert refreshed.changed_files == ["utils.py"]
     assert refreshed.files_indexed == 1
+    assert refreshed.cache_hits == 1
+    assert refreshed.cache_misses == 1
     assert "symbol::utils.py::function::format_title" in refreshed.changed_symbols
 
     refreshed_context = ContextService(db_path).build_context(

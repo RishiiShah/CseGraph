@@ -5,11 +5,82 @@ raise ImportError at registration time rather than module load time.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from importlib import import_module
 from typing import Dict, List, Optional, Set
 
 from tree_sitter import Language, Node
 
 from csegraph_core.languages.treesitter.config import LanguageConfig
+
+
+@dataclass(frozen=True)
+class LanguageLoader:
+    module: str
+    function: str = "language"
+
+
+@dataclass(frozen=True)
+class LanguageSpec:
+    name: str
+    extensions: tuple[str, ...]
+    loaders: Dict[str, LanguageLoader]
+
+
+def _loaders(module: str, extensions: tuple[str, ...], function: str = "language") -> Dict[str, LanguageLoader]:
+    return {ext: LanguageLoader(module, function) for ext in extensions}
+
+
+LANGUAGE_SPECS = [
+    LanguageSpec(
+        name="typescript",
+        extensions=(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"),
+        loaders={
+            ".ts": LanguageLoader("tree_sitter_typescript", "language_typescript"),
+            ".tsx": LanguageLoader("tree_sitter_typescript", "language_tsx"),
+            ".js": LanguageLoader("tree_sitter_javascript"),
+            ".jsx": LanguageLoader("tree_sitter_javascript"),
+            ".mjs": LanguageLoader("tree_sitter_javascript"),
+            ".cjs": LanguageLoader("tree_sitter_javascript"),
+        },
+    ),
+    LanguageSpec("go", (".go",), _loaders("tree_sitter_go", (".go",))),
+    LanguageSpec("rust", (".rs",), _loaders("tree_sitter_rust", (".rs",))),
+    LanguageSpec("java", (".java",), _loaders("tree_sitter_java", (".java",))),
+    LanguageSpec("c", (".c", ".h"), _loaders("tree_sitter_c", (".c", ".h"))),
+    LanguageSpec("cpp", (".cpp", ".cc", ".cxx", ".hpp", ".hxx"), _loaders("tree_sitter_cpp", (".cpp", ".cc", ".cxx", ".hpp", ".hxx"))),
+    LanguageSpec("ruby", (".rb",), _loaders("tree_sitter_ruby", (".rb",))),
+    LanguageSpec("csharp", (".cs",), _loaders("tree_sitter_c_sharp", (".cs",))),
+    LanguageSpec("kotlin", (".kt", ".kts"), _loaders("tree_sitter_kotlin", (".kt", ".kts"))),
+    LanguageSpec("groovy", (".groovy",), _loaders("tree_sitter_groovy", (".groovy",))),
+    LanguageSpec("scala", (".scala",), _loaders("tree_sitter_scala", (".scala",))),
+    LanguageSpec("php", (".php",), _loaders("tree_sitter_php", (".php",), "language_php")),
+    LanguageSpec("swift", (".swift",), _loaders("tree_sitter_swift", (".swift",))),
+    LanguageSpec("lua", (".lua",), _loaders("tree_sitter_lua", (".lua",))),
+    LanguageSpec("zig", (".zig",), _loaders("tree_sitter_zig", (".zig",))),
+    LanguageSpec("powershell", (".ps1", ".psm1", ".psd1"), _loaders("tree_sitter_powershell", (".ps1", ".psm1", ".psd1"))),
+    LanguageSpec("elixir", (".ex", ".exs"), _loaders("tree_sitter_elixir", (".ex", ".exs"))),
+    LanguageSpec("objc", (".m", ".mm"), _loaders("tree_sitter_objc", (".m", ".mm"))),
+    LanguageSpec("julia", (".jl",), _loaders("tree_sitter_julia", (".jl",))),
+    LanguageSpec("verilog", (".v", ".sv", ".vh", ".svh"), _loaders("tree_sitter_verilog", (".v", ".sv", ".vh", ".svh"))),
+    LanguageSpec("fortran", (".f90", ".f", ".f03", ".f08"), _loaders("tree_sitter_fortran", (".f90", ".f", ".f03", ".f08"))),
+    LanguageSpec("python", (".py",), _loaders("tree_sitter_python", (".py",))),
+]
+
+
+_LANGUAGE_SPECS_BY_NAME = {spec.name: spec for spec in LANGUAGE_SPECS}
+
+
+def _spec(name: str) -> LanguageSpec:
+    return _LANGUAGE_SPECS_BY_NAME[name]
+
+
+def _make_lang_map(spec: LanguageSpec) -> Dict[str, Language]:
+    lang_map: Dict[str, Language] = {}
+    for ext, loader in spec.loaders.items():
+        module = import_module(loader.module)
+        lang_map[ext] = Language(getattr(module, loader.function)())
+    return lang_map
 
 # ---------------------------------------------------------------------------
 # Shared import / doc helpers
@@ -131,20 +202,10 @@ def _ts_resolve_import(
 
 
 def make_typescript_config() -> LanguageConfig:
-    import tree_sitter_javascript as tsj
-    import tree_sitter_typescript as tst
-
     return LanguageConfig(
         name="typescript",
         extensions=(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"),
-        lang_map={
-            ".ts": Language(tst.language_typescript()),
-            ".tsx": Language(tst.language_tsx()),
-            ".js": Language(tsj.language()),
-            ".jsx": Language(tsj.language()),
-            ".mjs": Language(tsj.language()),
-            ".cjs": Language(tsj.language()),
-        },
+        lang_map=_make_lang_map(_spec("typescript")),
         class_types=frozenset({
             "class_declaration",
             "interface_declaration",
@@ -206,20 +267,13 @@ def _go_collect_import_spec(node: Node, imports: Set[str]) -> None:
                 imports.add(_strip_string_quotes(_node_text(child)))
 
 
-def _go_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".go"):
-        return rel_path[:-3].replace("/", ".")
-    return rel_path.replace("/", ".")
-
-
 def make_go_config() -> LanguageConfig:
-    import tree_sitter_go as tsg
     from csegraph_core.languages.treesitter.parser import _extract_go_doc
 
     return LanguageConfig(
         name="go",
         extensions=(".go",),
-        lang_map={".go": Language(tsg.language())},
+        lang_map=_make_lang_map(_spec("go")),
         class_types=frozenset({"type_spec"}),
         function_types=frozenset({
             "function_declaration", "method_declaration",
@@ -237,7 +291,7 @@ def make_go_config() -> LanguageConfig:
         test_name_prefixes=("Test", "Benchmark"),
         extract_imports_fn=_go_extract_imports,
         extract_doc_fn=_extract_go_doc,
-        module_name_fn=_go_module_name,
+        module_name_fn=None,
     )
 
 
@@ -275,13 +329,12 @@ def _rust_module_name(rel_path: str) -> Optional[str]:
 
 
 def make_rust_config() -> LanguageConfig:
-    import tree_sitter_rust as tsr
     from csegraph_core.languages.treesitter.parser import _extract_line_doc
 
     return LanguageConfig(
         name="rust",
         extensions=(".rs",),
-        lang_map={".rs": Language(tsr.language())},
+        lang_map=_make_lang_map(_spec("rust")),
         class_types=frozenset({
             "struct_item", "enum_item", "trait_item",
         }),
@@ -317,19 +370,11 @@ def _java_extract_imports(root: Node) -> List[str]:
     return sorted(imports)
 
 
-def _java_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".java"):
-        return rel_path[:-5].replace("/", ".")
-    return rel_path.replace("/", ".")
-
-
 def make_java_config() -> LanguageConfig:
-    import tree_sitter_java as tsj
-
     return LanguageConfig(
         name="java",
         extensions=(".java",),
-        lang_map={".java": Language(tsj.language())},
+        lang_map=_make_lang_map(_spec("java")),
         class_types=frozenset({
             "class_declaration",
             "interface_declaration",
@@ -355,7 +400,7 @@ def make_java_config() -> LanguageConfig:
         test_file_suffixes=("Test", "Tests", "Spec"),
         test_name_prefixes=("test",),
         extract_imports_fn=_java_extract_imports,
-        module_name_fn=_java_module_name,
+        module_name_fn=None,
     )
 
 
@@ -376,23 +421,11 @@ def _c_extract_imports(root: Node) -> List[str]:
     return sorted(imports)
 
 
-def _c_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hxx"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
-
 def make_c_config() -> LanguageConfig:
-    import tree_sitter_c as tsc
-
     return LanguageConfig(
         name="c",
         extensions=(".c", ".h"),
-        lang_map={
-            ".c": Language(tsc.language()),
-            ".h": Language(tsc.language()),
-        },
+        lang_map=_make_lang_map(_spec("c")),
         class_types=frozenset({
             "struct_specifier", "enum_specifier", "union_specifier",
         }),
@@ -405,24 +438,15 @@ def make_c_config() -> LanguageConfig:
         test_name_prefixes=("test_", "Test"),
         extract_imports_fn=_c_extract_imports,
         extract_doc_fn=lambda n, l: "",
-        module_name_fn=_c_module_name,
+        module_name_fn=None,
     )
 
 
 def make_cpp_config() -> LanguageConfig:
-    import tree_sitter_cpp as tscpp
-
-    lang = Language(tscpp.language())
     return LanguageConfig(
         name="cpp",
         extensions=(".cpp", ".cc", ".cxx", ".hpp", ".hxx"),
-        lang_map={
-            ".cpp": lang,
-            ".cc": lang,
-            ".cxx": lang,
-            ".hpp": lang,
-            ".hxx": lang,
-        },
+        lang_map=_make_lang_map(_spec("cpp")),
         class_types=frozenset({
             "class_specifier", "struct_specifier",
             "enum_specifier", "union_specifier",
@@ -443,7 +467,7 @@ def make_cpp_config() -> LanguageConfig:
         test_name_prefixes=("test_", "Test", "TEST"),
         extract_imports_fn=_c_extract_imports,
         extract_doc_fn=lambda n, l: "",
-        module_name_fn=_c_module_name,
+        module_name_fn=None,
     )
 
 
@@ -467,20 +491,13 @@ def _ruby_extract_imports(root: Node) -> List[str]:
     return sorted(imports)
 
 
-def _ruby_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".rb"):
-        return rel_path[:-3].replace("/", ".")
-    return rel_path.replace("/", ".")
-
-
 def make_ruby_config() -> LanguageConfig:
-    import tree_sitter_ruby as tsrb
     from csegraph_core.languages.treesitter.parser import _extract_go_doc
 
     return LanguageConfig(
         name="ruby",
         extensions=(".rb",),
-        lang_map={".rb": Language(tsrb.language())},
+        lang_map=_make_lang_map(_spec("ruby")),
         class_types=frozenset({"class", "module"}),
         function_types=frozenset({"method", "singleton_method"}),
         call_types=frozenset({"call", "command"}),
@@ -497,7 +514,7 @@ def make_ruby_config() -> LanguageConfig:
         test_name_prefixes=("test_",),
         extract_imports_fn=_ruby_extract_imports,
         extract_doc_fn=lambda n, l: _extract_go_doc(n, l),
-        module_name_fn=_ruby_module_name,
+        module_name_fn=None,
     )
 
 
@@ -519,20 +536,13 @@ def _csharp_extract_imports(root: Node) -> List[str]:
     return sorted(imports)
 
 
-def _csharp_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".cs"):
-        return rel_path[:-3].replace("/", ".")
-    return rel_path.replace("/", ".")
-
-
 def make_csharp_config() -> LanguageConfig:
-    import tree_sitter_c_sharp as tscs
     from csegraph_core.languages.treesitter.parser import _extract_line_doc
 
     return LanguageConfig(
         name="csharp",
         extensions=(".cs",),
-        lang_map={".cs": Language(tscs.language())},
+        lang_map=_make_lang_map(_spec("csharp")),
         class_types=frozenset({
             "class_declaration", "struct_declaration",
             "interface_declaration", "enum_declaration",
@@ -562,7 +572,7 @@ def make_csharp_config() -> LanguageConfig:
         test_name_prefixes=("Test",),
         extract_imports_fn=_csharp_extract_imports,
         extract_doc_fn=lambda n, l: _extract_line_doc(n, l, "///"),
-        module_name_fn=_csharp_module_name,
+        module_name_fn=None,
     )
 
 
@@ -586,23 +596,11 @@ def _kotlin_extract_imports(root: Node) -> List[str]:
     return sorted(imports)
 
 
-def _kotlin_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".kt", ".kts"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
-
 def make_kotlin_config() -> LanguageConfig:
-    import tree_sitter_kotlin as tsk
-
     return LanguageConfig(
         name="kotlin",
         extensions=(".kt", ".kts"),
-        lang_map={
-            ".kt": Language(tsk.language()),
-            ".kts": Language(tsk.language()),
-        },
+        lang_map=_make_lang_map(_spec("kotlin")),
         class_types=frozenset({
             "class_declaration", "object_declaration",
         }),
@@ -621,7 +619,7 @@ def make_kotlin_config() -> LanguageConfig:
         test_file_suffixes=("Test", "Tests", "Spec"),
         test_name_prefixes=("test",),
         extract_imports_fn=_kotlin_extract_imports,
-        module_name_fn=_kotlin_module_name,
+        module_name_fn=None,
     )
 
 
@@ -629,337 +627,204 @@ def make_kotlin_config() -> LanguageConfig:
 # Groovy
 # ---------------------------------------------------------------------------
 
-def _groovy_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _groovy_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".groovy"):
-        return rel_path[:-7].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_groovy_config() -> LanguageConfig:
-    import tree_sitter_groovy as tsg
     return LanguageConfig(
         name="groovy",
         extensions=(".groovy",),
-        lang_map={".groovy": Language(tsg.language())},
+        lang_map=_make_lang_map(_spec("groovy")),
         class_types=frozenset({"class_declaration"}),
         function_types=frozenset({"method_declaration"}),
         call_types=frozenset({"method_invocation"}),
         function_boundary_types=frozenset({"method_declaration"}),
-        extract_imports_fn=_groovy_extract_imports,
-        module_name_fn=_groovy_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Scala
 # ---------------------------------------------------------------------------
 
-def _scala_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _scala_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".scala"):
-        return rel_path[:-6].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_scala_config() -> LanguageConfig:
-    import tree_sitter_scala as tss
     return LanguageConfig(
         name="scala",
         extensions=(".scala",),
-        lang_map={".scala": Language(tss.language())},
+        lang_map=_make_lang_map(_spec("scala")),
         class_types=frozenset({"class_definition", "object_definition", "trait_definition"}),
         function_types=frozenset({"function_definition"}),
         call_types=frozenset({"call_expression"}),
         function_boundary_types=frozenset({"function_definition"}),
-        extract_imports_fn=_scala_extract_imports,
-        module_name_fn=_scala_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # PHP
 # ---------------------------------------------------------------------------
 
-def _php_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _php_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".php"):
-        return rel_path[:-4].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_php_config() -> LanguageConfig:
-    import tree_sitter_php as tsp
     return LanguageConfig(
         name="php",
         extensions=(".php",),
-        lang_map={".php": Language(tsp.language_php())},
+        lang_map=_make_lang_map(_spec("php")),
         class_types=frozenset({"class_declaration"}),
         function_types=frozenset({"method_declaration", "function_declaration"}),
         call_types=frozenset({"function_call_expression", "method_call_expression"}),
         function_boundary_types=frozenset({"method_declaration", "function_declaration"}),
-        extract_imports_fn=_php_extract_imports,
-        module_name_fn=_php_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Swift
 # ---------------------------------------------------------------------------
 
-def _swift_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _swift_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".swift"):
-        return rel_path[:-6].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_swift_config() -> LanguageConfig:
-    import tree_sitter_swift as tssw
     return LanguageConfig(
         name="swift",
         extensions=(".swift",),
-        lang_map={".swift": Language(tssw.language())},
+        lang_map=_make_lang_map(_spec("swift")),
         class_types=frozenset({"class_declaration", "struct_declaration", "protocol_declaration"}),
         function_types=frozenset({"function_declaration"}),
         call_types=frozenset({"call_expression"}),
         function_boundary_types=frozenset({"function_declaration"}),
-        extract_imports_fn=_swift_extract_imports,
-        module_name_fn=_swift_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Lua
 # ---------------------------------------------------------------------------
 
-def _lua_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _lua_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".lua"):
-        return rel_path[:-4].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_lua_config() -> LanguageConfig:
-    import tree_sitter_lua as tsl
     return LanguageConfig(
         name="lua",
         extensions=(".lua",),
-        lang_map={".lua": Language(tsl.language())},
+        lang_map=_make_lang_map(_spec("lua")),
         class_types=frozenset(),
         function_types=frozenset({"function_declaration"}),
         call_types=frozenset({"function_call"}),
         function_boundary_types=frozenset({"function_declaration"}),
-        extract_imports_fn=_lua_extract_imports,
-        module_name_fn=_lua_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Zig
 # ---------------------------------------------------------------------------
 
-def _zig_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _zig_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".zig"):
-        return rel_path[:-4].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_zig_config() -> LanguageConfig:
-    import tree_sitter_zig as tsz
     return LanguageConfig(
         name="zig",
         extensions=(".zig",),
-        lang_map={".zig": Language(tsz.language())},
+        lang_map=_make_lang_map(_spec("zig")),
         class_types=frozenset({"struct_declaration"}),
         function_types=frozenset({"function_declaration"}),
         call_types=frozenset({"call_expression"}),
         function_boundary_types=frozenset({"function_declaration"}),
-        extract_imports_fn=_zig_extract_imports,
-        module_name_fn=_zig_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # PowerShell
 # ---------------------------------------------------------------------------
 
-def _powershell_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _powershell_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".ps1", ".psm1", ".psd1"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_powershell_config() -> LanguageConfig:
-    import tree_sitter_powershell as tsps
     return LanguageConfig(
         name="powershell",
         extensions=(".ps1", ".psm1", ".psd1"),
-        lang_map={
-            ".ps1": Language(tsps.language()),
-            ".psm1": Language(tsps.language()),
-            ".psd1": Language(tsps.language()),
-        },
+        lang_map=_make_lang_map(_spec("powershell")),
         class_types=frozenset({"class_declaration"}),
         function_types=frozenset({"function_declaration"}),
         call_types=frozenset({"command"}),
         function_boundary_types=frozenset({"function_declaration"}),
-        extract_imports_fn=_powershell_extract_imports,
-        module_name_fn=_powershell_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Elixir
 # ---------------------------------------------------------------------------
 
-def _elixir_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _elixir_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".ex", ".exs"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_elixir_config() -> LanguageConfig:
-    import tree_sitter_elixir as tse
     return LanguageConfig(
         name="elixir",
         extensions=(".ex", ".exs"),
-        lang_map={
-            ".ex": Language(tse.language()),
-            ".exs": Language(tse.language()),
-        },
+        lang_map=_make_lang_map(_spec("elixir")),
         class_types=frozenset({"module"}),
         function_types=frozenset({"call"}),
         call_types=frozenset({"call"}),
         function_boundary_types=frozenset({"call"}),
-        extract_imports_fn=_elixir_extract_imports,
-        module_name_fn=_elixir_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Objective-C
 # ---------------------------------------------------------------------------
 
-def _objc_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _objc_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".m", ".mm"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_objc_config() -> LanguageConfig:
-    import tree_sitter_objc as tso
     return LanguageConfig(
         name="objc",
         extensions=(".m", ".mm"),
-        lang_map={
-            ".m": Language(tso.language()),
-            ".mm": Language(tso.language()),
-        },
+        lang_map=_make_lang_map(_spec("objc")),
         class_types=frozenset({"class_interface", "class_implementation"}),
         function_types=frozenset({"method_definition", "function_definition"}),
         call_types=frozenset({"message_expression", "call_expression"}),
         function_boundary_types=frozenset({"method_definition", "function_definition"}),
-        extract_imports_fn=_objc_extract_imports,
-        module_name_fn=_objc_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Julia
 # ---------------------------------------------------------------------------
 
-def _julia_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _julia_module_name(rel_path: str) -> Optional[str]:
-    if rel_path.endswith(".jl"):
-        return rel_path[:-3].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_julia_config() -> LanguageConfig:
-    import tree_sitter_julia as tsju
     return LanguageConfig(
         name="julia",
         extensions=(".jl",),
-        lang_map={".jl": Language(tsju.language())},
+        lang_map=_make_lang_map(_spec("julia")),
         class_types=frozenset({"struct_definition"}),
         function_types=frozenset({"function_definition"}),
         call_types=frozenset({"call_expression"}),
         function_boundary_types=frozenset({"function_definition"}),
-        extract_imports_fn=_julia_extract_imports,
-        module_name_fn=_julia_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Verilog
 # ---------------------------------------------------------------------------
 
-def _verilog_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _verilog_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".v", ".sv", ".vh", ".svh"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_verilog_config() -> LanguageConfig:
-    import tree_sitter_verilog as tsv
     return LanguageConfig(
         name="verilog",
         extensions=(".v", ".sv", ".vh", ".svh"),
-        lang_map={
-            ".v": Language(tsv.language()),
-            ".sv": Language(tsv.language()),
-            ".vh": Language(tsv.language()),
-            ".svh": Language(tsv.language()),
-        },
+        lang_map=_make_lang_map(_spec("verilog")),
         class_types=frozenset({"module_declaration"}),
         function_types=frozenset({"function_declaration", "task_declaration"}),
         call_types=frozenset({"tf_call"}),
         function_boundary_types=frozenset({"function_declaration", "task_declaration"}),
-        extract_imports_fn=_verilog_extract_imports,
-        module_name_fn=_verilog_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
 # Fortran
 # ---------------------------------------------------------------------------
 
-def _fortran_extract_imports(root: Node) -> List[str]:
-    return []
-
-def _fortran_module_name(rel_path: str) -> Optional[str]:
-    for ext in (".f90", ".f", ".f03", ".f08"):
-        if rel_path.endswith(ext):
-            return rel_path[: -len(ext)].replace("/", ".")
-    return rel_path.replace("/", ".")
-
 def make_fortran_config() -> LanguageConfig:
-    import tree_sitter_fortran as tsf
     return LanguageConfig(
         name="fortran",
         extensions=(".f90", ".f", ".f03", ".f08"),
-        lang_map={
-            ".f90": Language(tsf.language()),
-            ".f": Language(tsf.language()),
-            ".f03": Language(tsf.language()),
-            ".f08": Language(tsf.language()),
-        },
+        lang_map=_make_lang_map(_spec("fortran")),
         class_types=frozenset({"module", "program"}),
         function_types=frozenset({"function", "subroutine"}),
         call_types=frozenset({"call_statement"}),
         function_boundary_types=frozenset({"function", "subroutine"}),
-        extract_imports_fn=_fortran_extract_imports,
-        module_name_fn=_fortran_module_name,
+        extract_imports_fn=None,
+        module_name_fn=None,
     )
 
 # ---------------------------------------------------------------------------
@@ -1009,12 +874,10 @@ def _python_resolve_import(
 
 
 def make_python_config() -> LanguageConfig:
-    import tree_sitter_python as tsp
-
     return LanguageConfig(
         name="python",
         extensions=(".py",),
-        lang_map={".py": Language(tsp.language())},
+        lang_map=_make_lang_map(_spec("python")),
         class_types=frozenset({"class_definition"}),
         function_types=frozenset({"function_definition"}),
         call_types=frozenset({"call"}),

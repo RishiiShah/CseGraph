@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>csegraph tree - __CSEGRAPH_REPO_NAME__</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Consolas, monospace; background: #0d1117; color: #c9d1d9; font-size: 13px; line-height: 1.6; }
+#header { padding: 12px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+#header h1 { font-size: 15px; color: #58a6ff; }
+#controls { padding: 8px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+#search { padding: 5px 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; width: 300px; }
+#tree { padding: 12px 20px; }
+.node { white-space: nowrap; }
+.meta { color: #8b949e; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>csegraph tree - __CSEGRAPH_REPO_NAME__</h1>
+  <span id="stats"></span>
+</div>
+<div id="controls">
+  <input id="search" type="text" placeholder="Filter by name or path">
+</div>
+<div id="tree"></div>
+<script>
+(function() {
+  var DATA = __CSEGRAPH_DATA_JSON__;
+  var tree = document.getElementById("tree");
+  var search = document.getElementById("search");
+  document.getElementById("stats").textContent = DATA.length + " nodes";
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function(ch) {
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch];
+    });
+  }
+  function render() {
+    var query = search.value.toLowerCase();
+    tree.innerHTML = DATA.filter(function(n) {
+      if (!query) return true;
+      return n.name.toLowerCase().indexOf(query) >= 0 || n.path.toLowerCase().indexOf(query) >= 0 || n.id.toLowerCase().indexOf(query) >= 0;
+    }).map(function(n) {
+      var meta = [n.kind, n.language, n.path].filter(Boolean).join(" ");
+      return '<div class="node"><span>' + escapeHtml(n.name || n.id) + '</span><span class="meta">' + escapeHtml(meta) + '</span></div>';
+    }).join("");
+  }
+  search.addEventListener("input", render);
+  render();
+})();
+</script>
+</body>
+</html>

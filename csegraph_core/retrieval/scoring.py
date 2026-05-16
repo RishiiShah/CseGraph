@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 
 from csegraph_core.languages.registry import registry
 from csegraph_core.text.query_tokenizer import query_tokenizer
+from csegraph_core.text.tokens import tokenize_node_content
 
 
 RELATION_WEIGHTS: Dict[str, float] = {
@@ -74,18 +75,7 @@ def lexical_scores(
                 scores[node_id] += score
                 evidence[node_id].append("fts5-bm25")
     for node_id, row in symbols.items():
-        content = " ".join(
-            [
-                row["name"],
-                row["file_path"],
-                row.get("signature") or "",
-                row.get("docstring") or "",
-                summaries.get(node_id, ""),
-            ]
-        )
-        lang = row["language"]
-        source_tokenizer = registry.tokenizer_for(lang)
-        content_tokens = set(source_tokenizer.tokenize(content))
+        content_tokens = tokenize_node_content(node_id, row, summaries, registry)
         overlap = task_tokens & content_tokens
         if overlap:
             scores[node_id] += float(len(overlap))

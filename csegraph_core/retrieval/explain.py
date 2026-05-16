@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 from csegraph_core.core.ids import file_node_id
 from csegraph_core.retrieval.constants import REASON_ORDER
+from csegraph_core.retrieval.helpers import is_small_helper_row
 
 
 LEXICAL_EVIDENCE = {
@@ -132,13 +133,9 @@ def _is_parent_class(
 
 
 def _is_small_helper(node_id: str, target_id: str, row: Dict[str, Any]) -> bool:
-    if node_id == target_id or row.get("kind") not in {"function", "method"}:
+    if node_id == target_id:
         return False
-    start = row.get("start_line")
-    end = row.get("end_line")
-    if start is None or end is None:
-        return False
-    return max(0, int(end) - int(start) + 1) <= 12
+    return is_small_helper_row(row)
 
 
 def _is_test_related(row: Dict[str, Any]) -> bool:

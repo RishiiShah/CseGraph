@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from csegraph_core.index.repository import ProjectIndex
 
@@ -64,17 +64,6 @@ def load_edges(index: ProjectIndex) -> List[Dict[str, Any]]:
         edge["target_id"] = edge["target"]
         rows.append(edge)
     return rows
-
-
-def edge_maps(
-    edges: Sequence[Dict[str, Any]],
-) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:
-    outgoing: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    incoming: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for edge in edges:
-        outgoing[edge["source_id"]].append(edge)
-        incoming[edge["target_id"]].append(edge)
-    return outgoing, incoming
 
 
 def load_edge_maps(

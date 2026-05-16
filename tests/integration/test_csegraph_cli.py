@@ -8,41 +8,19 @@ from pathlib import Path
 
 from csegraph_core.retrieval.constants import VALID_REASONS
 
+from tests.conftest import run_cli
+
 
 def _write_repo(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "helpers.py").write_text(
-        "\n".join(
-            [
-                "def clean_name(value: str) -> str:",
-                "    return value.strip().lower()",
-                "",
-            ]
-        ),
+        "def clean_name(value: str) -> str:\n    return value.strip().lower()\n",
         encoding="utf-8",
     )
     (root / "service.py").write_text(
-        "\n".join(
-            [
-                "from helpers import clean_name",
-                "",
-                "def create_user(name: str) -> dict:",
-                "    return {'name': clean_name(name)}",
-                "",
-            ]
-        ),
+        "from helpers import clean_name\n\ndef create_user(name: str) -> dict:\n    return {'name': clean_name(name)}\n",
         encoding="utf-8",
     )
-
-
-def _run_cli(*args: str) -> dict:
-    proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return json.loads(proc.stdout)
 
 
 def _offline_pip_env() -> dict:
@@ -55,7 +33,7 @@ def test_cli_json_contracts(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
 
-    indexed = _run_cli(
+    indexed = run_cli(
         "index",
         str(repo),
         "--json",
@@ -66,7 +44,7 @@ def test_cli_json_contracts(tmp_path):
     assert indexed["symbols_indexed"] == 2
     assert indexed["db_path"] == str(repo / ".csegraph" / "index.db")
 
-    context = _run_cli(
+    context = run_cli(
         "context",
         "Implement create_user with clean_name",
         "--target",
@@ -109,7 +87,7 @@ def test_cli_json_contracts(tmp_path):
     assert "def clean_name(value: str) -> str:" in helper_node["source_text"]
     assert target_node["estimated_tokens"] >= 1
 
-    neighborhood = _run_cli(
+    neighborhood = run_cli(
         "inspect",
         "symbol::service.py::function::create_user",
         "--repo",
@@ -122,7 +100,7 @@ def test_cli_json_contracts(tmp_path):
     assert neighborhood["target"] == "symbol::service.py::function::create_user"
     assert any(edge["relation"] == "calls" for edge in neighborhood["edges"])
 
-    graph = _run_cli(
+    graph = run_cli(
         "graph",
         "--repo",
         str(repo),
@@ -131,7 +109,7 @@ def test_cli_json_contracts(tmp_path):
     assert graph["command"] == "graph"
     assert graph["output_path"] == str(repo / ".csegraph" / "csegraph-graph.html")
 
-    refreshed = _run_cli(
+    refreshed = run_cli(
         "refresh",
         str(repo),
         "--json",
@@ -160,6 +138,7 @@ def test_index_default_output_is_human_summary(tmp_path):
     assert "  Files:" in proc.stdout
     assert "  Symbols:" in proc.stdout
     assert "  Edges:" in proc.stdout
+    assert "  Cache:" in proc.stdout
     assert "  Profile:" in proc.stdout
     assert "  DB:" in proc.stdout
 
@@ -167,7 +146,7 @@ def test_index_default_output_is_human_summary(tmp_path):
 def test_refresh_default_output_is_human_summary(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [sys.executable, "-m", "csegraph_cli", "refresh", str(repo)],
@@ -179,6 +158,7 @@ def test_refresh_default_output_is_human_summary(tmp_path):
     assert "Scanning:" in proc.stdout
     assert "  Changed:" in proc.stdout
     assert "  Unchanged:" in proc.stdout
+    assert "  Cache:" in proc.stdout
     assert "  Profile:" in proc.stdout
     assert "  DB:" in proc.stdout
 
@@ -187,21 +167,25 @@ def test_index_json_flag_returns_parseable_json(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
 
     assert result["command"] == "index"
     assert result["files_indexed"] == 2
+    assert result["cache_hits"] == 0
+    assert result["cache_misses"] == 2
     assert isinstance(result["changed_files"], list)
 
 
 def test_refresh_json_flag_returns_parseable_json(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli("refresh", str(repo), "--json")
+    result = run_cli("refresh", str(repo), "--json")
 
     assert result["command"] == "refresh"
+    assert result["cache_hits"] == 2
+    assert result["cache_misses"] == 0
     assert isinstance(result["unchanged_files"], list)
 
 
@@ -209,7 +193,7 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
 
-    result = _run_cli(
+    result = run_cli(
         "benchmark",
         str(repo),
         "--target",
@@ -288,7 +272,7 @@ def test_custom_db_flags_work(tmp_path):
     db_path = tmp_path / "custom.db"
     _write_repo(repo)
 
-    indexed = _run_cli(
+    indexed = run_cli(
         "index",
         "--repo",
         str(repo),
@@ -301,7 +285,7 @@ def test_custom_db_flags_work(tmp_path):
     assert indexed["profile"] == "small"
     assert indexed["db_path"] == str(db_path)
 
-    context = _run_cli(
+    context = run_cli(
         "context",
         "--db",
         str(db_path),
@@ -317,9 +301,9 @@ def test_custom_db_flags_work(tmp_path):
 def test_context_cli_source_controls_and_token_budget(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    compact = _run_cli(
+    compact = run_cli(
         "context",
         "Implement create_user",
         "--target",
@@ -335,7 +319,7 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
     )
     assert all(node["source_text"] is None for node in compact["nodes"])
 
-    budgeted = _run_cli(
+    budgeted = run_cli(
         "context",
         "Implement create_user",
         "--target",
@@ -358,7 +342,7 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
 def test_context_config_overrides_thresholds(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     config_file = tmp_path / "csegraph.json"
     config_file.write_text(
@@ -366,7 +350,7 @@ def test_context_config_overrides_thresholds(tmp_path):
         encoding="utf-8",
     )
 
-    context = _run_cli(
+    context = run_cli(
         "context",
         "Implement create_user with clean_name",
         "--target",
@@ -386,9 +370,9 @@ def test_context_config_overrides_thresholds(tmp_path):
 def test_context_cli_explain_and_markdown_format(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    explained = _run_cli(
+    explained = run_cli(
         "context",
         "Implement create_user",
         "--target",
@@ -436,7 +420,7 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
 def test_context_cli_json_markdown_conflict_fails_clearly(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -527,7 +511,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
 
     subprocess.run(
-        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation",
+        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation", "--no-deps",
          "-e", str(repo_root),
          "-e", str(repo_root / "packages" / "csegraph-cli")],
         check=True,

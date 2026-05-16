@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from csegraph_core.core.models import ReportResult
 from csegraph_core.index.repository import ProjectIndex
@@ -83,21 +83,13 @@ def _parse_error_count(index: ProjectIndex) -> int:
     return int(row["c"])
 
 
-def _edge_analysis(
-    index: ProjectIndex,
+def _build_node_sections(
     node_info: Dict[str, Dict[str, Any]],
-    surprising_limit: int = 10,
-) -> Tuple[
-    Dict[str, int],
-    List[Dict[str, Any]],
-    List[Dict[str, Any]],
-]:
-    degree: Dict[str, int] = Counter()
-
-    node_section: Dict[str, str] = {}
-    section_files: Dict[str, int] = Counter()
-    section_symbols: Dict[str, int] = Counter()
+) -> Tuple[Dict[str, str], Counter, Counter]:
     symbol_types = {"class", "function", "method", "test"}
+    node_section: Dict[str, str] = {}
+    section_files: Counter = Counter()
+    section_symbols: Counter = Counter()
     for node_id, info in node_info.items():
         path = info.get("path", "")
         if not path:
@@ -108,6 +100,41 @@ def _edge_analysis(
             section_files[section] += 1
         elif info["type"] in symbol_types:
             section_symbols[section] += 1
+    return node_section, section_files, section_symbols
+
+
+def _detect_surprising(
+    src: str, tgt: str, relation: str,
+    node_info: Dict[str, Dict[str, Any]],
+    seen: Set[Tuple[str, str, str]],
+) -> Optional[Dict[str, Any]]:
+    key = (src, relation, tgt)
+    if key in seen:
+        return None
+    src_path = node_info.get(src, {}).get("path", "")
+    tgt_path = node_info.get(tgt, {}).get("path", "")
+    if not src_path or not tgt_path or src_path == tgt_path:
+        return None
+    seen.add(key)
+    src_pkg = src_path.split("/")[0] if "/" in src_path else ""
+    tgt_pkg = tgt_path.split("/")[0] if "/" in tgt_path else ""
+    if src_pkg and tgt_pkg and src_pkg != tgt_pkg:
+        return {"source": src, "target": tgt, "relation": relation,
+                "source_path": src_path, "target_path": tgt_path}
+    return None
+
+
+def _edge_analysis(
+    index: ProjectIndex,
+    node_info: Dict[str, Dict[str, Any]],
+    surprising_limit: int = 10,
+) -> Tuple[
+    Dict[str, int],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+]:
+    degree: Dict[str, int] = Counter()
+    node_section, section_files, section_symbols = _build_node_sections(node_info)
 
     surprising_raw: List[Dict[str, Any]] = []
     seen_surprising: Set[Tuple[str, str, str]] = set()
@@ -119,24 +146,9 @@ def _edge_analysis(
         degree[src] += 1
         degree[tgt] += 1
 
-        src_info = node_info.get(src, {})
-        tgt_info = node_info.get(tgt, {})
-        src_path = src_info.get("path", "")
-        tgt_path = tgt_info.get("path", "")
-        if src_path and tgt_path and src_path != tgt_path:
-            key = (src, relation, tgt)
-            if key not in seen_surprising:
-                seen_surprising.add(key)
-                src_pkg = src_path.split("/")[0] if "/" in src_path else ""
-                tgt_pkg = tgt_path.split("/")[0] if "/" in tgt_path else ""
-                if src_pkg and tgt_pkg and src_pkg != tgt_pkg:
-                    surprising_raw.append({
-                        "source": src,
-                        "target": tgt,
-                        "relation": relation,
-                        "source_path": src_path,
-                        "target_path": tgt_path,
-                    })
+        hit = _detect_surprising(src, tgt, relation, node_info, seen_surprising)
+        if hit is not None:
+            surprising_raw.append(hit)
 
         src_sec = node_section.get(src)
         tgt_sec = node_section.get(tgt)
@@ -151,15 +163,16 @@ def _edge_analysis(
     surprising = surprising_raw[:surprising_limit]
 
     all_sections = sorted(set(section_files) | set(section_symbols))
-    sections: List[Dict[str, Any]] = []
-    for section in all_sections:
-        sections.append({
+    sections: List[Dict[str, Any]] = [
+        {
             "name": section,
             "files": section_files.get(section, 0),
             "symbols": section_symbols.get(section, 0),
             "internal_edges": section_internal.get(section, 0),
             "cross_section_deps": sorted(section_cross.get(section, set())),
-        })
+        }
+        for section in all_sections
+    ]
 
     return dict(degree), surprising, sections
 

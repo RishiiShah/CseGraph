@@ -80,8 +80,7 @@ def test_python_parser_satisfies_widened_protocol():
     assert hasattr(parser, "resolve_local_import")
 
 
-def test_typescript_parser_registered_when_available():
-    ts = pytest.importorskip("tree_sitter")
+def test_typescript_parser_registered():
     from csegraph_core.languages import registry
     from csegraph_core.languages.treesitter.parser import TreeSitterParser
     parser = registry.for_extension(".ts")
@@ -90,3 +89,15 @@ def test_typescript_parser_registered_when_available():
     assert ".tsx" in parser.extensions
     tokenizer = registry.tokenizer_for("typescript")
     assert tokenizer is not None
+
+
+def test_all_supported_extensions_registered_on_import():
+    from csegraph_core.languages import registry
+    from csegraph_core.languages.treesitter.languages import LANGUAGE_SPECS
+
+    expected = {
+        extension
+        for spec in LANGUAGE_SPECS
+        for extension in spec.extensions
+    }
+    assert expected <= registry.supported_extensions()

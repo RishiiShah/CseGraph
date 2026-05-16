@@ -1,21 +1,10 @@
-import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-pytest.importorskip("tree_sitter")
+import tree_sitter
 
-
-def _run_cli(*args: str) -> dict:
-    proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return json.loads(proc.stdout)
+from tests.conftest import run_cli
 
 
 def _write_ts_repo(root: Path) -> None:
@@ -40,7 +29,7 @@ def _write_ts_repo(root: Path) -> None:
 def test_index_typescript_files(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
 
     assert result["files_indexed"] == 2
     assert result["symbols_indexed"] >= 3
@@ -50,9 +39,9 @@ def test_index_typescript_files(tmp_path):
 def test_context_retrieval_for_typescript(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "context",
         "Implement createUser method",
         "--target", "createUser",
@@ -70,9 +59,9 @@ def test_context_retrieval_for_typescript(tmp_path):
 def test_inspect_typescript_class(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect", "UserService",
         "--repo", str(repo),
         "--json",
@@ -86,9 +75,9 @@ def test_inspect_typescript_class(tmp_path):
 def test_typescript_cross_file_call_edge(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "symbol::service.ts::method::UserService.createUser",
         "--repo", str(repo),
@@ -105,9 +94,9 @@ def test_typescript_cross_file_call_edge(tmp_path):
 def test_typescript_import_edge(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect", "file::service.ts",
         "--repo", str(repo),
         "--depth", "1",
@@ -130,7 +119,7 @@ def test_mixed_python_and_typescript(tmp_path):
         "def main():\n    print('hello')\n",
         encoding="utf-8",
     )
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
 
     assert result["files_indexed"] == 2
     assert result["symbols_indexed"] == 2
@@ -139,7 +128,7 @@ def test_mixed_python_and_typescript(tmp_path):
 def test_refresh_detects_typescript_changes(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     (repo / "utils.ts").write_text(
         "export function formatName(name: string): string {\n"
@@ -149,7 +138,7 @@ def test_refresh_detects_typescript_changes(tmp_path):
         encoding="utf-8",
     )
 
-    result = _run_cli("refresh", str(repo), "--json")
+    result = run_cli("refresh", str(repo), "--json")
 
     assert "utils.ts" in result["changed_files"]
     assert result["files_indexed"] >= 1
@@ -158,9 +147,9 @@ def test_refresh_detects_typescript_changes(tmp_path):
 def test_report_includes_typescript_symbols(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli("report", str(repo), "--json")
+    result = run_cli("report", str(repo), "--json")
 
     assert result["total_files"] == 2
     assert result["total_symbols"] >= 3
@@ -169,10 +158,10 @@ def test_report_includes_typescript_symbols(tmp_path):
 def test_graph_visual_export_with_typescript(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     output = tmp_path / "graph.html"
-    result = _run_cli(
+    result = run_cli(
         "graph",
         "--repo", str(repo),
         "--output", str(output),

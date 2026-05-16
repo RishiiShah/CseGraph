@@ -14,6 +14,7 @@ from csegraph_core.cse.metrics import (
 from csegraph_core.index.loaders import load_edge_maps, load_summaries, load_symbols
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.explain import build_explanation, normalize_reasons
+from csegraph_core.retrieval.helpers import is_small_helper_row
 from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
 from csegraph_core.text.source_reader import read_source_lines
 
@@ -101,49 +102,20 @@ class ContextService:
                 raw_nodes,
             )
 
-            nodes: List[ContextNode] = []
-            target_row = symbols.get(target_id, {})
-            for node_id in context_ids:
-                row = symbols[node_id]
-                raw_evidence = evidence.get(node_id, [])
-                lineage = sorted({e for e in raw_evidence if e.startswith("expanded-from-")})
-                clean_evidence = sorted({e for e in raw_evidence if not e.startswith("expanded-from-")})
-                summary = summaries.get(node_id, "")
-                source_text = (
-                    _read_node_source(repo_root, row) if node_id in source_ids else None
-                )
-                estimated_tokens = _estimate_node_tokens(row, summary, source_text)
-                reason = normalize_reasons(
-                    node_id=node_id,
-                    target_id=target_id,
-                    row=row,
-                    target_row=target_row,
-                    evidence=clean_evidence,
-                    lineage=lineage,
-                    outgoing=outgoing,
-                    incoming=incoming,
-                    symbols=symbols,
-                    raw_nodes=raw_nodes,
-                )
-                nodes.append(
-                    ContextNode(
-                        id=node_id,
-                        kind=row["kind"],
-                        name=row["name"],
-                        path=row["file_path"],
-                        line_range=_line_range(row["start_line"], row["end_line"]),
-                        score=round(scores.get(node_id, 0.0), 4),
-                        language=row["language"],
-                        raw_code=node_id in raw_nodes and source_text is not None,
-                        evidence=clean_evidence,
-                        summary=summary,
-                        lineage=lineage,
-                        source_text=source_text,
-                        estimated_tokens=estimated_tokens,
-                        reason=reason,
-                        explanation=build_explanation(reason) if explain else None,
-                    )
-                )
+            nodes = _assemble_context_nodes(
+                repo_root=repo_root,
+                context_ids=context_ids,
+                symbols=symbols,
+                summaries=summaries,
+                evidence=evidence,
+                scores=scores,
+                source_ids=source_ids,
+                target_id=target_id,
+                outgoing=outgoing,
+                incoming=incoming,
+                raw_nodes=raw_nodes,
+                explain=explain,
+            )
 
             nodes = _apply_token_budget(nodes, max_tokens)
             context_ids = [node.id for node in nodes]
@@ -212,6 +184,65 @@ class ContextService:
             index.close()
 
 
+def _assemble_context_nodes(
+    *,
+    repo_root: str,
+    context_ids: Sequence[str],
+    symbols: Dict[str, Dict[str, Any]],
+    summaries: Dict[str, str],
+    evidence: Dict[str, List[str]],
+    scores: Dict[str, float],
+    source_ids: set[str],
+    target_id: str,
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+    raw_nodes: Sequence[str],
+    explain: bool,
+) -> List[ContextNode]:
+    nodes: List[ContextNode] = []
+    target_row = symbols.get(target_id, {})
+    for node_id in context_ids:
+        row = symbols[node_id]
+        raw_evidence = evidence.get(node_id, [])
+        lineage = sorted({e for e in raw_evidence if e.startswith("expanded-from-")})
+        clean_evidence = sorted({e for e in raw_evidence if not e.startswith("expanded-from-")})
+        summary = summaries.get(node_id, "")
+        source_text = _read_node_source(repo_root, row) if node_id in source_ids else None
+        estimated_tokens = _estimate_node_tokens(row, summary, source_text)
+        reason = normalize_reasons(
+            node_id=node_id,
+            target_id=target_id,
+            row=row,
+            target_row=target_row,
+            evidence=clean_evidence,
+            lineage=lineage,
+            outgoing=outgoing,
+            incoming=incoming,
+            symbols=symbols,
+            raw_nodes=raw_nodes,
+        )
+        nodes.append(
+            ContextNode(
+                id=node_id,
+                kind=row["kind"],
+                name=row["name"],
+                path=row["file_path"],
+                line_range=_line_range(row["start_line"], row["end_line"]),
+                score=round(scores.get(node_id, 0.0), 4),
+                language=row["language"],
+                raw_code=node_id in raw_nodes and source_text is not None,
+                evidence=clean_evidence,
+                summary=summary,
+                lineage=lineage,
+                source_text=source_text,
+                estimated_tokens=estimated_tokens,
+                reason=reason,
+                explanation=build_explanation(reason) if explain else None,
+            )
+        )
+    return nodes
+
+
 def _resolve_target(
     target: Optional[str],
     task: str,
@@ -224,30 +255,18 @@ def _resolve_target(
             return target
         if index is not None:
             lowered = target.lower()
-            row = index.conn.execute(
-                """
-                SELECT id FROM nodes
-                 WHERE type IN ('class','function','method')
-                   AND (LOWER(name) = ? OR LOWER(path) = ?)
-                 ORDER BY (LOWER(name) = ?) DESC, length(name) ASC
-                 LIMIT 1
-                """,
-                (lowered, lowered, lowered),
-            ).fetchone()
-            if row is not None:
-                return row["id"]
-            row = index.conn.execute(
-                """
-                SELECT id FROM nodes
-                 WHERE type IN ('class','function','method')
-                   AND (LOWER(name) LIKE ? OR LOWER(path) LIKE ?)
-                 ORDER BY length(name) ASC
-                 LIMIT 1
-                """,
-                (f"%{lowered}%", f"%{lowered}%"),
-            ).fetchone()
-            if row is not None:
-                return row["id"]
+            for where, params in (
+                ("(LOWER(name) = ? OR LOWER(path) = ?) ORDER BY (LOWER(name) = ?) DESC, length(name) ASC",
+                 (lowered, lowered, lowered)),
+                ("(LOWER(name) LIKE ? OR LOWER(path) LIKE ?) ORDER BY length(name) ASC",
+                 (f"%{lowered}%", f"%{lowered}%")),
+            ):
+                row = index.conn.execute(
+                    f"SELECT id FROM nodes WHERE type IN ('class','function','method') AND {where} LIMIT 1",
+                    params,
+                ).fetchone()
+                if row is not None:
+                    return row["id"]
         raise ValueError(f"Target '{target}' did not match any indexed symbol.")
     scores, _ = lexical_scores(task, symbols, summaries, fts_seed=None)
     return max(scores.items(), key=lambda item: item[1])[0]
@@ -305,18 +324,9 @@ def _source_candidate_ids(
     small_helpers = {
         node_id
         for node_id in context_set
-        if _line_count(symbols.get(node_id, {})) <= 12
-        and symbols.get(node_id, {}).get("kind") in {"function", "method"}
+        if is_small_helper_row(symbols.get(node_id, {}))
     }
     return ({target_id} | set(raw_nodes) | direct_calls | small_helpers) & context_set
-
-
-def _line_count(row: Dict[str, Any]) -> int:
-    start = row.get("start_line")
-    end = row.get("end_line")
-    if start is None or end is None:
-        return 0
-    return max(0, int(end) - int(start) + 1)
 
 
 def _line_range(start_line: Optional[int], end_line: Optional[int]) -> Optional[List[int]]:
@@ -361,6 +371,19 @@ def _estimate_tokens(text: str) -> int:
     return max(1, math.ceil(len(text) / 4))
 
 
+def _strip_source(node: ContextNode) -> ContextNode:
+    reason = [item for item in node.reason if item != "raw_code_fallback"] or list(node.reason)
+    return ContextNode(
+        id=node.id, kind=node.kind, name=node.name, path=node.path,
+        line_range=node.line_range, score=node.score, language=node.language,
+        raw_code=False, evidence=node.evidence, summary=node.summary,
+        lineage=node.lineage, source_text=None,
+        estimated_tokens=_estimate_tokens(" ".join(v for v in (node.name, node.path, node.summary) if v)),
+        reason=reason,
+        explanation=build_explanation(reason) if node.explanation is not None else None,
+    )
+
+
 def _apply_token_budget(
     nodes: List[ContextNode],
     max_tokens: Optional[int],
@@ -373,31 +396,7 @@ def _apply_token_budget(
     for node in nodes:
         candidate = node
         if used + candidate.estimated_tokens > max_tokens and candidate.source_text is not None:
-            reason = [item for item in node.reason if item != "raw_code_fallback"]
-            compact_reason = reason or list(node.reason)
-            candidate = ContextNode(
-                id=node.id,
-                kind=node.kind,
-                name=node.name,
-                path=node.path,
-                line_range=node.line_range,
-                score=node.score,
-                language=node.language,
-                raw_code=False,
-                evidence=node.evidence,
-                summary=node.summary,
-                lineage=node.lineage,
-                source_text=None,
-                estimated_tokens=_estimate_tokens(
-                    " ".join(
-                        value
-                        for value in (node.name, node.path, node.summary)
-                        if value
-                    )
-                ),
-                reason=compact_reason,
-                explanation=build_explanation(compact_reason) if node.explanation is not None else None,
-            )
+            candidate = _strip_source(node)
         if used + candidate.estimated_tokens <= max_tokens:
             selected.append(candidate)
             used += candidate.estimated_tokens

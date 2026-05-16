@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>csegraph - __CSEGRAPH_REPO_NAME__</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #334155; }
+#header { padding: 12px 16px; background: #eef2f7; border-bottom: 1px solid #cbd5e1; }
+#header h1 { font-size: 16px; font-weight: 600; }
+#controls { padding: 8px 16px; background: #eef2f7; border-bottom: 1px solid #cbd5e1; }
+#search { padding: 4px 8px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; color: #334155; font-size: 13px; width: 260px; }
+#canvas-wrap { position: relative; width: 100%; height: calc(100vh - 84px); overflow: hidden; }
+canvas { display: block; width: 100%; height: 100%; }
+#detail { position: absolute; top: 8px; right: 8px; width: 320px; max-height: calc(100% - 16px); background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; font-size: 13px; overflow-y: auto; display: none; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>csegraph - __CSEGRAPH_REPO_NAME__</h1>
+  <span id="stats"></span>
+</div>
+<div id="controls">
+  <input id="search" type="text" placeholder="Filter nodes by name or path">
+</div>
+<div id="canvas-wrap">
+  <canvas id="graph"></canvas>
+  <div id="detail"></div>
+</div>
+<script>
+(function() {
+  var DATA = __CSEGRAPH_DATA_JSON__;
+  var nodes = DATA.nodes, edges = DATA.edges;
+  var canvas = document.getElementById("graph");
+  var ctx = canvas.getContext("2d");
+  var W = 0, H = 0, dpr = 1;
+  var INITIAL_SPREAD_X = Math.max(1400, W * 2.4);
+  var INITIAL_SPREAD_Y = Math.max(900, H * 2.0);
+  var INITIAL_ZOOM = 0.45;
+  var camX = 0, camY = 0, camZ = INITIAL_ZOOM;
+  var idxById = {};
+  var sim = [];
+  var searchVal = "";
+  var expanded = {};
+  var childrenById = {};
+  var parentById = {};
+  var REPULSION = 2600, SPRING = 0.003, SPRING_LEN = 180, DAMPING = 0.88, CENTER = 0.00035;
+
+  document.getElementById("stats").textContent = nodes.length + " nodes, " + edges.length + " edges";
+  nodes.forEach(function(n, i) {
+    idxById[n.id] = i;
+    sim.push({ x: (Math.random() - 0.5) * INITIAL_SPREAD_X, y: (Math.random() - 0.5) * INITIAL_SPREAD_Y, vx: 0, vy: 0, pinned: false });
+    if (!n.parent_id) expanded[n.id] = true;
+  });
+  nodes.forEach(function(n) {
+    if (n.parent_id && idxById[n.parent_id] !== undefined) {
+      parentById[n.id] = n.parent_id;
+      if (!childrenById[n.parent_id]) childrenById[n.parent_id] = [];
+      childrenById[n.parent_id].push(n.id);
+    }
+  });
+
+  function resize() {
+    var rect = canvas.parentElement.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    W = rect.width; H = rect.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function toScreen(x, y) { return [(x - camX) * camZ + W / 2, (y - camY) * camZ + H / 2]; }
+  function matchesSearch(n) {
+    if (!searchVal) return true;
+    return n.name.toLowerCase().indexOf(searchVal) >= 0 || n.path.toLowerCase().indexOf(searchVal) >= 0 || n.id.toLowerCase().indexOf(searchVal) >= 0;
+  }
+  function hasChildren(id) { return !!(childrenById[id] && childrenById[id].length); }
+  function visibleNodeSet() {
+    var visible = {};
+    nodes.forEach(function(n) {
+      if (searchVal && !matchesSearch(n)) return;
+      visible[n.id] = true;
+      var parent = parentById[n.id];
+      while (parent) { visible[parent] = true; parent = parentById[parent]; }
+    });
+    if (!searchVal) {
+      nodes.forEach(function(n) {
+        if (n.parent_id && !expanded[n.parent_id]) visible[n.id] = false;
+      });
+    }
+    return visible;
+  }
+  function toggleExpanded(i) {
+    var id = nodes[i].id;
+    if (!hasChildren(id)) return;
+    expanded[id] = !expanded[id];
+  }
+  function findNode(mx, my) {
+    var visible = visibleNodeSet();
+    for (var i = nodes.length - 1; i >= 0; i--) {
+      if (!visible[nodes[i].id]) continue;
+      var sp = toScreen(sim[i].x, sim[i].y);
+      var dx = sp[0] - mx, dy = sp[1] - my;
+      if (dx * dx + dy * dy < 64) return i;
+    }
+    return -1;
+  }
+  function stepSim() {
+    var visible = visibleNodeSet();
+    for (var i = 0; i < sim.length; i++) {
+      if (!visible[nodes[i].id] || sim[i].pinned) continue;
+      var fx = 0, fy = 0;
+      edges.forEach(function(e) {
+        var other = -1;
+        if (idxById[e.source] === i) other = idxById[e.target];
+        if (idxById[e.target] === i) other = idxById[e.source];
+        if (other < 0 || !visible[nodes[other].id]) return;
+        var dx = sim[other].x - sim[i].x, dy = sim[other].y - sim[i].y;
+        var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        var force = SPRING * (dist - SPRING_LEN);
+        fx += force * dx / dist; fy += force * dy / dist;
+      });
+      fx += (0 - sim[i].x) * CENTER;
+      fy += (0 - sim[i].y) * CENTER;
+      sim[i].vx = (sim[i].vx + fx) * DAMPING;
+      sim[i].vy = (sim[i].vy + fy) * DAMPING;
+      sim[i].x += sim[i].vx;
+      sim[i].y += sim[i].vy;
+    }
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    var visible = visibleNodeSet();
+    ctx.strokeStyle = "#cbd5e1";
+    edges.forEach(function(e) {
+      var si = idxById[e.source], ti = idxById[e.target];
+      if (si === undefined || ti === undefined || !visible[e.source] || !visible[e.target]) return;
+      var a = toScreen(sim[si].x, sim[si].y), b = toScreen(sim[ti].x, sim[ti].y);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    });
+    nodes.forEach(function(n, i) {
+      if (!visible[n.id]) return;
+      var p = toScreen(sim[i].x, sim[i].y);
+      ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fillStyle = "#2563eb"; ctx.fill();
+      ctx.fillStyle = "#334155"; ctx.font = "11px system-ui"; ctx.fillText(n.name || n.id, p[0] + 8, p[1] + 4);
+    });
+  }
+  function resetSim() { }
+
+  canvas.addEventListener("mousedown", function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var hit = findNode(e.clientX - rect.left, e.clientY - rect.top);
+    if (hit >= 0) {
+      toggleExpanded(hit);
+      resetSim();
+      draw();
+    }
+  });
+  document.getElementById("search").addEventListener("input", function(e) {
+    searchVal = e.target.value.toLowerCase();
+    draw();
+  });
+  window.addEventListener("resize", function() { resize(); draw(); });
+  resize();
+  function loop() { stepSim(); draw(); requestAnimationFrame(loop); }
+  loop();
+})();
+</script>
+</body>
+</html>
