@@ -160,6 +160,7 @@ def test_index_default_output_is_human_summary(tmp_path):
     assert "  Files:" in proc.stdout
     assert "  Symbols:" in proc.stdout
     assert "  Edges:" in proc.stdout
+    assert "  Cache:" in proc.stdout
     assert "  Profile:" in proc.stdout
     assert "  DB:" in proc.stdout
 
@@ -179,6 +180,7 @@ def test_refresh_default_output_is_human_summary(tmp_path):
     assert "Scanning:" in proc.stdout
     assert "  Changed:" in proc.stdout
     assert "  Unchanged:" in proc.stdout
+    assert "  Cache:" in proc.stdout
     assert "  Profile:" in proc.stdout
     assert "  DB:" in proc.stdout
 
@@ -191,6 +193,8 @@ def test_index_json_flag_returns_parseable_json(tmp_path):
 
     assert result["command"] == "index"
     assert result["files_indexed"] == 2
+    assert result["cache_hits"] == 0
+    assert result["cache_misses"] == 2
     assert isinstance(result["changed_files"], list)
 
 
@@ -202,6 +206,8 @@ def test_refresh_json_flag_returns_parseable_json(tmp_path):
     result = _run_cli("refresh", str(repo), "--json")
 
     assert result["command"] == "refresh"
+    assert result["cache_hits"] == 2
+    assert result["cache_misses"] == 0
     assert isinstance(result["unchanged_files"], list)
 
 
@@ -527,7 +533,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
 
     subprocess.run(
-        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation",
+        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation", "--no-deps",
          "-e", str(repo_root),
          "-e", str(repo_root / "packages" / "csegraph-cli")],
         check=True,

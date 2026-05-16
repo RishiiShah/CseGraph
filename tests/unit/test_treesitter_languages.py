@@ -6,7 +6,15 @@ symbols, calls, imports, and doc comments for a given language config.
 import pytest
 from pathlib import Path
 
-ts = pytest.importorskip("tree_sitter")
+import tree_sitter
+import tree_sitter_c
+import tree_sitter_c_sharp
+import tree_sitter_cpp
+import tree_sitter_go
+import tree_sitter_java
+import tree_sitter_kotlin
+import tree_sitter_ruby
+import tree_sitter_rust
 
 
 def _write(root, name, content):
@@ -18,8 +26,6 @@ def _write(root, name, content):
 # ---------------------------------------------------------------------------
 # Go
 # ---------------------------------------------------------------------------
-
-go = pytest.importorskip("tree_sitter_go")
 
 from csegraph_core.languages.treesitter.languages import make_go_config
 from csegraph_core.languages.treesitter.parser import TreeSitterParser
@@ -132,8 +138,6 @@ def test_go_test_file_detection(tmp_path, go_parser):
 # Rust
 # ---------------------------------------------------------------------------
 
-rust = pytest.importorskip("tree_sitter_rust")
-
 from csegraph_core.languages.treesitter.languages import make_rust_config
 
 
@@ -227,8 +231,6 @@ def test_rust_iter_files_skips_target(tmp_path, rust_parser):
 # Java
 # ---------------------------------------------------------------------------
 
-java = pytest.importorskip("tree_sitter_java")
-
 from csegraph_core.languages.treesitter.languages import make_java_config
 
 
@@ -306,8 +308,6 @@ def test_java_inheritance(tmp_path, java_parser):
 # C
 # ---------------------------------------------------------------------------
 
-c = pytest.importorskip("tree_sitter_c")
-
 from csegraph_core.languages.treesitter.languages import make_c_config
 
 
@@ -366,8 +366,6 @@ def test_c_extract_calls(tmp_path, c_parser):
 # C++
 # ---------------------------------------------------------------------------
 
-cpp = pytest.importorskip("tree_sitter_cpp")
-
 from csegraph_core.languages.treesitter.languages import make_cpp_config
 
 
@@ -403,8 +401,6 @@ def test_cpp_parse_function(tmp_path, cpp_parser):
 # ---------------------------------------------------------------------------
 # Ruby
 # ---------------------------------------------------------------------------
-
-ruby = pytest.importorskip("tree_sitter_ruby")
 
 from csegraph_core.languages.treesitter.languages import make_ruby_config
 
@@ -460,8 +456,6 @@ def test_ruby_inheritance(tmp_path, ruby_parser):
 # C#
 # ---------------------------------------------------------------------------
 
-csharp = pytest.importorskip("tree_sitter_c_sharp")
-
 from csegraph_core.languages.treesitter.languages import make_csharp_config
 
 
@@ -505,8 +499,6 @@ def test_csharp_extract_imports(tmp_path, csharp_parser):
 # Kotlin
 # ---------------------------------------------------------------------------
 
-kotlin = pytest.importorskip("tree_sitter_kotlin")
-
 from csegraph_core.languages.treesitter.languages import make_kotlin_config
 
 
@@ -536,3 +528,17 @@ def test_kotlin_parse_function(tmp_path, kotlin_parser):
     funcs = [s for s in result.symbols if s.kind == "function"]
     assert len(funcs) == 1
     assert funcs[0].name == "main"
+
+
+def test_fallback_module_name_single_extension_language():
+    from csegraph_core.languages.treesitter.languages import make_scala_config
+
+    parser = TreeSitterParser(make_scala_config())
+    assert parser.module_name_from_relpath("src/main/App.scala") == "src.main.App"
+
+
+def test_fallback_module_name_multi_extension_language():
+    from csegraph_core.languages.treesitter.languages import make_powershell_config
+
+    parser = TreeSitterParser(make_powershell_config())
+    assert parser.module_name_from_relpath("scripts/Profile.psm1") == "scripts.Profile"

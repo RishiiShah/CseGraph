@@ -6,6 +6,34 @@ import sys
 import tomllib
 
 
+CORE_LANGUAGE_DEPENDENCIES = [
+    "tree-sitter>=0.23",
+    "tree-sitter-python>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-go>=0.23",
+    "tree-sitter-rust>=0.23",
+    "tree-sitter-java>=0.23",
+    "tree-sitter-c>=0.23",
+    "tree-sitter-cpp>=0.23",
+    "tree-sitter-ruby>=0.23",
+    "tree-sitter-c-sharp>=0.23",
+    "tree-sitter-kotlin>=0.23",
+    "tree-sitter-groovy>=0.1.2",
+    "tree-sitter-scala>=0.23",
+    "tree-sitter-php>=0.23",
+    "tree-sitter-swift>=0.7",
+    "tree-sitter-lua>=0.2",
+    "tree-sitter-zig>=0.1",
+    "tree-sitter-powershell>=0.1",
+    "tree-sitter-elixir>=0.3",
+    "tree-sitter-objc>=0.23",
+    "tree-sitter-julia>=0.23",
+    "tree-sitter-verilog>=0.23",
+    "tree-sitter-fortran>=0.6",
+]
+
+
 def _project_metadata(path: Path) -> dict:
     with (path / "pyproject.toml").open("rb") as fh:
         return tomllib.load(fh)["project"]
@@ -26,7 +54,8 @@ def test_v140_package_layout_and_versions():
 
     assert root_project["name"] == "csegraph-core"
     assert root_project["version"] == "1.5.0"
-    assert root_project.get("dependencies", []) == []
+    assert root_project["dependencies"] == CORE_LANGUAGE_DEPENDENCIES
+    assert set(root_project.get("optional-dependencies", {})) == {"mcp", "watch", "test"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
@@ -54,7 +83,16 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
     python = bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")
 
     subprocess.run(
-        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation", "-e", str(repo_root)],
+        [
+            str(pip),
+            "install",
+            "--quiet",
+            "--no-index",
+            "--no-build-isolation",
+            "--no-deps",
+            "-e",
+            str(repo_root),
+        ],
         check=True,
         env=_offline_pip_env(),
     )
@@ -62,6 +100,7 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
         [str(python), "-c", "import csegraph_core; import importlib.util; assert importlib.util.find_spec('csegraph') is None"],
         check=True,
         capture_output=True,
+        env=_offline_pip_env(),
         text=True,
     )
     assert core_only.returncode == 0
@@ -73,6 +112,7 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
             "--quiet",
             "--no-index",
             "--no-build-isolation",
+            "--no-deps",
             "-e",
             str(repo_root),
             "-e",
@@ -95,6 +135,7 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
         ],
         check=True,
         capture_output=True,
+        env=_offline_pip_env(),
         text=True,
     )
     assert sdk.returncode == 0

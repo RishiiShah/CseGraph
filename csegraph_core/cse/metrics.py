@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Sequence, Set
 from csegraph_core.languages.registry import registry
 from csegraph_core.text.entities import extract_query_entities
 from csegraph_core.text.query_tokenizer import query_tokenizer
+from csegraph_core.text.tokens import tokenize_node_content
 
 
 DEP_THRESHOLD = 0.80
@@ -49,21 +50,8 @@ def compute_metrics(
     for node_id in context_set:
         if node_id not in symbols:
             continue
-        row = symbols[node_id]
-        lang = row["language"]
-        source_tokenizer = registry.tokenizer_for(lang)
         context_tokens.update(
-            source_tokenizer.tokenize(
-                " ".join(
-                    [
-                        row["name"],
-                        row["file_path"],
-                        row.get("signature") or "",
-                        row.get("docstring") or "",
-                        summaries.get(node_id, ""),
-                    ]
-                )
-            )
+            tokenize_node_content(node_id, symbols[node_id], summaries, registry)
         )
     if not task_tokens or not context_tokens:
         sem = 0.0

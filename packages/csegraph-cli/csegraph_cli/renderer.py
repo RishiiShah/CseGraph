@@ -17,6 +17,8 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
     edges = payload.get("edges_indexed", 0)
     parse_errors = payload.get("parse_errors") or {}
     db = _display_path(str(payload.get("db_path", "")), str(payload.get("repo_root", "")))
+    cache_hits = payload.get("cache_hits", 0)
+    cache_misses = payload.get("cache_misses", 0)
 
     progress = [f"Parsing: {files:,} files"]
     indexing = f"Indexing: {symbols:,} symbols, {edges:,} edges"
@@ -29,6 +31,7 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
         f"  Files:   {files:,}",
         f"  Symbols: {symbols:,}",
         f"  Edges:   {edges:,}",
+        f"  Cache:   {cache_hits:,} hits, {cache_misses:,} misses",
         f"  Profile: {payload.get('profile', '')}",
         f"  DB:      {db}",
     ]
@@ -45,6 +48,8 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
     edges = payload.get("edges_indexed", 0)
     parse_errors = payload.get("parse_errors") or {}
     db = _display_path(str(payload.get("db_path", "")), str(payload.get("repo_root", "")))
+    cache_hits = payload.get("cache_hits", 0)
+    cache_misses = payload.get("cache_misses", 0)
 
     progress = [f"Scanning: {changed + deleted + unchanged:,} files"]
     if changed or deleted:
@@ -65,6 +70,7 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
         )
     detail.extend(
         [
+            f"  Cache:     {cache_hits:,} hits, {cache_misses:,} misses",
             f"  Profile:   {payload.get('profile', '')}",
             f"  DB:        {db}",
         ]

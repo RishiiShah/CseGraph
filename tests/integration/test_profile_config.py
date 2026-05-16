@@ -14,18 +14,7 @@ class TestDefaultsMatchConstants:
         assert cfg.semantic_threshold == 0.50
         assert cfg.semantic_threshold_relaxed == 0.0
         assert cfg.confidence_threshold == 0.70
-        assert cfg.max_expansion_rounds == 3
         assert cfg.context_budget == 60
-        assert cfg.import_budget == 20
-        assert cfg.tier0_target == 1.00
-        assert cfg.tier1_target == 0.75
-        assert cfg.confidence_drop_threshold == 0.15
-
-    def test_medium_profile_compression_defaults(self):
-        cfg = get_profile("medium")
-        assert cfg.compression_hub_count == 20
-        assert cfg.compression_max_nodes_per_slice == 50
-        assert cfg.compression_source_char_limit == 800
 
     def test_small_and_large_inherit_cse_defaults(self):
         for name in ("small", "large"):
@@ -58,6 +47,28 @@ class TestLoadProfile:
         config_file.write_text(json.dumps({"bogus_key": 42}), encoding="utf-8")
         with pytest.raises(ValueError, match="Unknown config keys"):
             load_profile(config_path=str(config_file))
+
+    def test_deprecated_keys_are_ignored(self, tmp_path):
+        config_file = tmp_path / "csegraph.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "context_budget": 100,
+                    "import_budget": 999,
+                    "max_expansion_rounds": 999,
+                    "tier0_target": 0.1,
+                    "tier1_target": 0.1,
+                    "confidence_drop_threshold": 0.9,
+                    "compression_hub_count": 999,
+                    "compression_max_nodes_per_slice": 999,
+                    "compression_source_char_limit": 999,
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_profile(config_path=str(config_file))
+        assert cfg.context_budget == 100
+        assert not hasattr(cfg, "import_budget")
 
     def test_explicit_name_wins_over_config_profile(self, tmp_path):
         config_file = tmp_path / "csegraph.json"

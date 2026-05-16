@@ -14,6 +14,7 @@ from csegraph_core.cse.metrics import (
 from csegraph_core.index.loaders import load_edge_maps, load_summaries, load_symbols
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.explain import build_explanation, normalize_reasons
+from csegraph_core.retrieval.helpers import is_small_helper_row
 from csegraph_core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
 from csegraph_core.text.source_reader import read_source_lines
 
@@ -101,49 +102,20 @@ class ContextService:
                 raw_nodes,
             )
 
-            nodes: List[ContextNode] = []
-            target_row = symbols.get(target_id, {})
-            for node_id in context_ids:
-                row = symbols[node_id]
-                raw_evidence = evidence.get(node_id, [])
-                lineage = sorted({e for e in raw_evidence if e.startswith("expanded-from-")})
-                clean_evidence = sorted({e for e in raw_evidence if not e.startswith("expanded-from-")})
-                summary = summaries.get(node_id, "")
-                source_text = (
-                    _read_node_source(repo_root, row) if node_id in source_ids else None
-                )
-                estimated_tokens = _estimate_node_tokens(row, summary, source_text)
-                reason = normalize_reasons(
-                    node_id=node_id,
-                    target_id=target_id,
-                    row=row,
-                    target_row=target_row,
-                    evidence=clean_evidence,
-                    lineage=lineage,
-                    outgoing=outgoing,
-                    incoming=incoming,
-                    symbols=symbols,
-                    raw_nodes=raw_nodes,
-                )
-                nodes.append(
-                    ContextNode(
-                        id=node_id,
-                        kind=row["kind"],
-                        name=row["name"],
-                        path=row["file_path"],
-                        line_range=_line_range(row["start_line"], row["end_line"]),
-                        score=round(scores.get(node_id, 0.0), 4),
-                        language=row["language"],
-                        raw_code=node_id in raw_nodes and source_text is not None,
-                        evidence=clean_evidence,
-                        summary=summary,
-                        lineage=lineage,
-                        source_text=source_text,
-                        estimated_tokens=estimated_tokens,
-                        reason=reason,
-                        explanation=build_explanation(reason) if explain else None,
-                    )
-                )
+            nodes = _assemble_context_nodes(
+                repo_root=repo_root,
+                context_ids=context_ids,
+                symbols=symbols,
+                summaries=summaries,
+                evidence=evidence,
+                scores=scores,
+                source_ids=source_ids,
+                target_id=target_id,
+                outgoing=outgoing,
+                incoming=incoming,
+                raw_nodes=raw_nodes,
+                explain=explain,
+            )
 
             nodes = _apply_token_budget(nodes, max_tokens)
             context_ids = [node.id for node in nodes]
@@ -210,6 +182,65 @@ class ContextService:
             )
         finally:
             index.close()
+
+
+def _assemble_context_nodes(
+    *,
+    repo_root: str,
+    context_ids: Sequence[str],
+    symbols: Dict[str, Dict[str, Any]],
+    summaries: Dict[str, str],
+    evidence: Dict[str, List[str]],
+    scores: Dict[str, float],
+    source_ids: set[str],
+    target_id: str,
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+    raw_nodes: Sequence[str],
+    explain: bool,
+) -> List[ContextNode]:
+    nodes: List[ContextNode] = []
+    target_row = symbols.get(target_id, {})
+    for node_id in context_ids:
+        row = symbols[node_id]
+        raw_evidence = evidence.get(node_id, [])
+        lineage = sorted({e for e in raw_evidence if e.startswith("expanded-from-")})
+        clean_evidence = sorted({e for e in raw_evidence if not e.startswith("expanded-from-")})
+        summary = summaries.get(node_id, "")
+        source_text = _read_node_source(repo_root, row) if node_id in source_ids else None
+        estimated_tokens = _estimate_node_tokens(row, summary, source_text)
+        reason = normalize_reasons(
+            node_id=node_id,
+            target_id=target_id,
+            row=row,
+            target_row=target_row,
+            evidence=clean_evidence,
+            lineage=lineage,
+            outgoing=outgoing,
+            incoming=incoming,
+            symbols=symbols,
+            raw_nodes=raw_nodes,
+        )
+        nodes.append(
+            ContextNode(
+                id=node_id,
+                kind=row["kind"],
+                name=row["name"],
+                path=row["file_path"],
+                line_range=_line_range(row["start_line"], row["end_line"]),
+                score=round(scores.get(node_id, 0.0), 4),
+                language=row["language"],
+                raw_code=node_id in raw_nodes and source_text is not None,
+                evidence=clean_evidence,
+                summary=summary,
+                lineage=lineage,
+                source_text=source_text,
+                estimated_tokens=estimated_tokens,
+                reason=reason,
+                explanation=build_explanation(reason) if explain else None,
+            )
+        )
+    return nodes
 
 
 def _resolve_target(
@@ -305,18 +336,9 @@ def _source_candidate_ids(
     small_helpers = {
         node_id
         for node_id in context_set
-        if _line_count(symbols.get(node_id, {})) <= 12
-        and symbols.get(node_id, {}).get("kind") in {"function", "method"}
+        if is_small_helper_row(symbols.get(node_id, {}))
     }
     return ({target_id} | set(raw_nodes) | direct_calls | small_helpers) & context_set
-
-
-def _line_count(row: Dict[str, Any]) -> int:
-    start = row.get("start_line")
-    end = row.get("end_line")
-    if start is None or end is None:
-        return 0
-    return max(0, int(end) - int(start) + 1)
 
 
 def _line_range(start_line: Optional[int], end_line: Optional[int]) -> Optional[List[int]]:

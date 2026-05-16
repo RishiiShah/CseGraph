@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("tree_sitter")
+import tree_sitter
 
 
 def _run_cli(*args: str) -> dict:

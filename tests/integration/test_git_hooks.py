@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import shutil
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,8 @@ from csegraph_core.hooks import (
 
 
 def _init_git_repo(tmp_path: Path) -> Path:
+    if shutil.which("git") is None:
+        pytest.skip("git executable is not available")
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(

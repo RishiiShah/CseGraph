@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import Any, Dict, List, Set
 
 _STOP_WORDS = {
     "in", "on", "by", "to", "of", "at", "is", "it", "or", "an", "do", "be",
@@ -29,3 +29,22 @@ def code_tokenize(text: str) -> List[str]:
     Filters stop words and single-character tokens.
     """
     return _default_text_tokenize(text)
+
+
+def tokenize_node_content(
+    node_id: str,
+    row: Dict[str, Any],
+    summaries: Dict[str, str],
+    language_registry: Any,
+) -> Set[str]:
+    content = " ".join(
+        [
+            row["name"],
+            row["file_path"],
+            row.get("signature") or "",
+            row.get("docstring") or "",
+            summaries.get(node_id, ""),
+        ]
+    )
+    source_tokenizer = language_registry.tokenizer_for(row["language"])
+    return set(source_tokenizer.tokenize(content))

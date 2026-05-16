@@ -24,6 +24,8 @@ class TestExtractionCache:
         assert result is not None
         assert result.rel_path == "test.py"
         assert result.sha256 == "abc123"
+        assert cache.stats()["hits"] == 1
+        assert cache.stats()["misses"] == 0
         cache.close()
 
     def test_miss_on_different_sha(self, tmp_path):
@@ -37,11 +39,14 @@ class TestExtractionCache:
         )
         cache.put(parsed)
         assert cache.get("test.py", "different") is None
+        assert cache.stats()["hits"] == 0
+        assert cache.stats()["misses"] == 1
         cache.close()
 
     def test_miss_on_absent_key(self, tmp_path):
         cache = ExtractionCache(str(tmp_path / "cache.db"))
         assert cache.get("nope.py", "abc") is None
+        assert cache.stats()["misses"] == 1
         cache.close()
 
     def test_clear(self, tmp_path):
@@ -84,7 +89,9 @@ class TestCacheIntegration:
         repo.mkdir()
         (repo / "app.py").write_text("def hello(): pass\n", encoding="utf-8")
         db = str(tmp_path / "index.db")
-        IndexService(db).index(str(repo), profile="small")
+        result = IndexService(db).index(str(repo), profile="small")
+        assert result.cache_hits == 0
+        assert result.cache_misses == 1
         cache_path = tmp_path / "parse_cache.db"
         assert cache_path.exists()
 
@@ -96,3 +103,16 @@ class TestCacheIntegration:
         IndexService(db).index(str(repo), profile="small")
         result = IndexService(db).index(str(repo), profile="small")
         assert result.files_indexed >= 1
+        assert result.cache_hits == 1
+        assert result.cache_misses == 0
+
+    def test_noop_refresh_reports_cache_stats(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text("def hello(): pass\n", encoding="utf-8")
+        db = str(tmp_path / "index.db")
+        IndexService(db).index(str(repo), profile="small")
+        result = RefreshService(db).refresh(profile="small")
+        assert result.files_indexed == 0
+        assert result.cache_hits == 1
+        assert result.cache_misses == 0

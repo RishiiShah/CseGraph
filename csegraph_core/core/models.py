@@ -12,20 +12,12 @@ class ProfileConfig:
     top_k: int
     graph_radius: int
     context_budget: int
-    import_budget: int
     raw_code_budget: int
     dep_threshold: float = 0.80
     entity_threshold: float = 0.80
     semantic_threshold: float = 0.50
     semantic_threshold_relaxed: float = 0.0
     confidence_threshold: float = 0.70
-    max_expansion_rounds: int = 3
-    tier0_target: float = 1.00
-    tier1_target: float = 0.75
-    confidence_drop_threshold: float = 0.15
-    compression_hub_count: int = 20
-    compression_max_nodes_per_slice: int = 50
-    compression_source_char_limit: int = 800
 
 
 @dataclass
@@ -37,6 +29,8 @@ class IndexResult:
     files_indexed: int
     symbols_indexed: int
     edges_indexed: int
+    cache_hits: int = 0
+    cache_misses: int = 0
     unchanged_files: List[str] = field(default_factory=list)
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)
@@ -53,6 +47,8 @@ class RefreshResult:
     files_indexed: int
     symbols_indexed: int
     edges_indexed: int
+    cache_hits: int = 0
+    cache_misses: int = 0
     unchanged_files: List[str] = field(default_factory=list)
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)

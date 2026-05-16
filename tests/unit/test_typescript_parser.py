@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-ts = pytest.importorskip("tree_sitter")
+import tree_sitter
 
 from csegraph_core.languages.treesitter.languages import make_typescript_config
 from csegraph_core.languages.treesitter.parser import TreeSitterParser
