@@ -387,19 +387,18 @@ def _insert_edges(
             if target_file_id:
                 edge_rows.append(_edge(current_file_id, target_file_id, "imports", {"import": import_name}))
 
+        _SYMBOL_EDGE_SPECS = [
+            ("calls", "calls", "symbol", False),
+            ("bases", "inherits", "base", False),
+            ("decorators", "decorates", "decorator", True),
+        ]
         for symbol in parsed.symbols:
-            for call in symbol.calls:
-                target = _pick_call_target(call, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
-                if target and target != symbol.node_id:
-                    edge_rows.append(_edge(symbol.node_id, target, "calls", {"symbol": call}))
-            for base in symbol.bases:
-                target = _pick_call_target(base, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
-                if target and target != symbol.node_id:
-                    edge_rows.append(_edge(symbol.node_id, target, "inherits", {"base": base}))
-            for decorator in symbol.decorators:
-                target = _pick_call_target(decorator, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
-                if target and target != symbol.node_id:
-                    edge_rows.append(_edge(target, symbol.node_id, "decorates", {"decorator": decorator}))
+            for attr, relation, meta_key, reverse in _SYMBOL_EDGE_SPECS:
+                for name in getattr(symbol, attr):
+                    target = _pick_call_target(name, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
+                    if target and target != symbol.node_id:
+                        src, tgt = (target, symbol.node_id) if reverse else (symbol.node_id, target)
+                        edge_rows.append(_edge(src, tgt, relation, {meta_key: name}))
             if symbol.is_test:
                 for call in symbol.calls:
                     target = _pick_call_target(call, current_file_id, batch.symbol_by_name, batch.node_to_file_node)

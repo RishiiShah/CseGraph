@@ -195,113 +195,120 @@ def _line_range_text(line_range: Optional[List[int]]) -> str:
 
 def render_report_markdown(payload: Dict[str, Any]) -> str:
     lines: List[str] = ["# csegraph report", ""]
+    _render_corpus_check(lines, payload)
+    _render_summary_tables(lines, payload)
+    _render_god_nodes(lines, payload)
+    _render_knowledge_gaps(lines, payload)
+    _render_sections(lines, payload)
+    _render_surprising(lines, payload)
+    _render_questions(lines, payload)
+    return "\n".join(lines)
 
-    lines.append("## Corpus Check")
-    lines.append("")
-    lines.append(f"| Metric | Count |")
-    lines.append(f"|---|---:|")
-    lines.append(f"| Files | {payload['total_files']:,} |")
-    lines.append(f"| Symbols | {payload['total_symbols']:,} |")
-    lines.append(f"| Edges | {payload['total_edges']:,} |")
-    lines.append(f"| Parse errors | {payload['parse_error_count']:,} |")
-    lines.append("")
 
-    lines.append("## Summary")
-    lines.append("")
+def _render_corpus_check(lines: List[str], payload: Dict[str, Any]) -> None:
+    lines.extend([
+        "## Corpus Check", "",
+        "| Metric | Count |", "|---|---:|",
+        f"| Files | {payload['total_files']:,} |",
+        f"| Symbols | {payload['total_symbols']:,} |",
+        f"| Edges | {payload['total_edges']:,} |",
+        f"| Parse errors | {payload['parse_error_count']:,} |",
+        "",
+    ])
+
+
+def _render_summary_tables(lines: List[str], payload: Dict[str, Any]) -> None:
+    lines.extend(["## Summary", ""])
     if payload.get("node_counts"):
-        lines.append("### Nodes by type")
-        lines.append("")
-        lines.append("| Type | Count |")
-        lines.append("|---|---:|")
+        lines.extend(["### Nodes by type", "", "| Type | Count |", "|---|---:|"])
         for ntype, count in sorted(payload["node_counts"].items()):
             lines.append(f"| {ntype} | {count:,} |")
         lines.append("")
     if payload.get("edge_counts"):
-        lines.append("### Edges by relation")
-        lines.append("")
-        lines.append("| Relation | Count |")
-        lines.append("|---|---:|")
+        lines.extend(["### Edges by relation", "", "| Relation | Count |", "|---|---:|"])
         for relation, count in sorted(payload["edge_counts"].items()):
             lines.append(f"| {relation} | {count:,} |")
         lines.append("")
 
-    if payload.get("god_nodes"):
-        lines.append("## God Nodes")
-        lines.append("")
-        lines.append("| Rank | Name | Kind | Path | Degree |")
-        lines.append("|---:|---|---|---|---:|")
-        for rank, node in enumerate(payload["god_nodes"], start=1):
-            lines.append(
-                f"| {rank} | `{node['name']}` | {node['kind']} "
-                f"| {node['path']} | {node['degree']} |"
-            )
-        lines.append("")
 
-    if payload.get("knowledge_gaps"):
-        lines.append("## Knowledge Gaps")
-        lines.append("")
-        groups = payload.get("knowledge_gap_groups") or []
-        if groups:
-            for group in groups:
-                lines.append(f"### {group['label']}")
-                lines.append("")
-                if group.get("description"):
-                    lines.append(group["description"])
-                    lines.append("")
-                lines.append("| Name | Kind | Path | Degree |")
-                lines.append("|---|---|---|---:|")
-                for node in payload["knowledge_gaps"]:
-                    if node.get("reason") != group["reason"]:
-                        continue
-                    lines.append(
-                        f"| `{node['name']}` | {node['kind']} "
-                        f"| {node['path']} | {node['degree']} |"
-                    )
-                lines.append("")
-        else:
-            lines.append("| Name | Kind | Path | Degree |")
-            lines.append("|---|---|---|---:|")
-            for node in payload["knowledge_gaps"]:
-                lines.append(
-                    f"| `{node['name']}` | {node['kind']} "
-                    f"| {node['path']} | {node['degree']} |"
-                )
-        lines.append("")
+def _render_god_nodes(lines: List[str], payload: Dict[str, Any]) -> None:
+    if not payload.get("god_nodes"):
+        return
+    lines.extend([
+        "## God Nodes", "",
+        "| Rank | Name | Kind | Path | Degree |",
+        "|---:|---|---|---|---:|",
+    ])
+    for rank, node in enumerate(payload["god_nodes"], start=1):
+        lines.append(
+            f"| {rank} | `{node['name']}` | {node['kind']} "
+            f"| {node['path']} | {node['degree']} |"
+        )
+    lines.append("")
 
-    if payload.get("sections"):
-        lines.append("## Sections")
-        lines.append("")
-        lines.append("| Section | Files | Symbols | Internal edges | Cross-section deps |")
-        lines.append("|---|---:|---:|---:|---|")
-        for section in payload["sections"]:
-            deps = ", ".join(section.get("cross_section_deps", []))
-            lines.append(
-                f"| `{section['name']}` | {section['files']:,} "
-                f"| {section['symbols']:,} | {section['internal_edges']:,} "
-                f"| {deps} |"
-            )
-        lines.append("")
 
-    if payload.get("surprising_connections"):
-        lines.append("## Surprising Connections")
-        lines.append("")
-        lines.append("| Source | Relation | Target |")
-        lines.append("|---|---|---|")
-        for edge in payload["surprising_connections"]:
-            lines.append(
-                f"| `{edge['source_path']}` | {edge['relation']} "
-                f"| `{edge['target_path']}` |"
-            )
-        lines.append("")
+def _render_gap_table(lines: List[str], gaps: List[Dict[str, Any]], reason: Optional[str] = None) -> None:
+    lines.extend(["| Name | Kind | Path | Degree |", "|---|---|---|---:|"])
+    for node in gaps:
+        if reason is not None and node.get("reason") != reason:
+            continue
+        lines.append(f"| `{node['name']}` | {node['kind']} | {node['path']} | {node['degree']} |")
 
-    if payload.get("suggested_questions"):
-        lines.append("## Suggested Questions")
-        lines.append("")
-        for question in payload["suggested_questions"]:
-            lines.append(f"- {question}")
-        lines.append("")
 
-    return "\n".join(lines)
+def _render_knowledge_gaps(lines: List[str], payload: Dict[str, Any]) -> None:
+    if not payload.get("knowledge_gaps"):
+        return
+    lines.extend(["## Knowledge Gaps", ""])
+    groups = payload.get("knowledge_gap_groups") or []
+    if groups:
+        for group in groups:
+            lines.extend([f"### {group['label']}", ""])
+            if group.get("description"):
+                lines.extend([group["description"], ""])
+            _render_gap_table(lines, payload["knowledge_gaps"], reason=group["reason"])
+            lines.append("")
+    else:
+        _render_gap_table(lines, payload["knowledge_gaps"])
+    lines.append("")
+
+
+def _render_sections(lines: List[str], payload: Dict[str, Any]) -> None:
+    if not payload.get("sections"):
+        return
+    lines.extend([
+        "## Sections", "",
+        "| Section | Files | Symbols | Internal edges | Cross-section deps |",
+        "|---|---:|---:|---:|---|",
+    ])
+    for section in payload["sections"]:
+        deps = ", ".join(section.get("cross_section_deps", []))
+        lines.append(
+            f"| `{section['name']}` | {section['files']:,} "
+            f"| {section['symbols']:,} | {section['internal_edges']:,} "
+            f"| {deps} |"
+        )
+    lines.append("")
+
+
+def _render_surprising(lines: List[str], payload: Dict[str, Any]) -> None:
+    if not payload.get("surprising_connections"):
+        return
+    lines.extend(["## Surprising Connections", "", "| Source | Relation | Target |", "|---|---|---|"])
+    for edge in payload["surprising_connections"]:
+        lines.append(
+            f"| `{edge['source_path']}` | {edge['relation']} "
+            f"| `{edge['target_path']}` |"
+        )
+    lines.append("")
+
+
+def _render_questions(lines: List[str], payload: Dict[str, Any]) -> None:
+    if not payload.get("suggested_questions"):
+        return
+    lines.extend(["## Suggested Questions", ""])
+    for question in payload["suggested_questions"]:
+        lines.append(f"- {question}")
+    lines.append("")
 
 
 def _display_path(path: str, repo_root: str) -> str:

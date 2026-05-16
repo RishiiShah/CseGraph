@@ -1,7 +1,6 @@
-import json
-import subprocess
-import sys
 from pathlib import Path
+
+from tests.conftest import run_cli
 
 
 def _write_repo(root: Path) -> None:
@@ -27,16 +26,6 @@ def _write_repo(root: Path) -> None:
     )
 
 
-def _run_cli(*args: str) -> dict:
-    proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return json.loads(proc.stdout)
-
-
 def test_csegraphignore_excludes_files_from_index(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
@@ -46,7 +35,7 @@ def test_csegraphignore_excludes_files_from_index(tmp_path):
         encoding="utf-8",
     )
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
     assert result["files_indexed"] == 2
     indexed_files = result["changed_files"]
     assert "generated.py" not in indexed_files
@@ -68,7 +57,7 @@ def test_csegraphignore_glob_pattern(tmp_path):
         encoding="utf-8",
     )
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
     indexed_files = result["changed_files"]
     assert "models.generated.py" not in indexed_files
     assert "generated.py" in indexed_files
@@ -86,7 +75,7 @@ def test_csegraphignore_negation(tmp_path):
         encoding="utf-8",
     )
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
     indexed_files = result["changed_files"]
     assert "a.log.py" not in indexed_files
     assert "important.log.py" in indexed_files
@@ -105,7 +94,7 @@ def test_csegraphignore_rooted_pattern(tmp_path):
         encoding="utf-8",
     )
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
     indexed_files = result["changed_files"]
     assert "generated.py" not in indexed_files
     assert "sub/generated.py" in indexed_files
@@ -115,7 +104,7 @@ def test_refresh_removes_newly_ignored_files(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
     assert result["files_indexed"] == 4
 
     (repo / ".csegraphignore").write_text(
@@ -123,7 +112,7 @@ def test_refresh_removes_newly_ignored_files(tmp_path):
         encoding="utf-8",
     )
 
-    refreshed = _run_cli("refresh", str(repo), "--json")
+    refreshed = run_cli("refresh", str(repo), "--json")
     assert "generated.py" in refreshed["deleted_files"]
     assert any("scripts/" in f for f in refreshed["deleted_files"])
 
@@ -132,5 +121,5 @@ def test_no_csegraphignore_indexes_everything(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
 
-    result = _run_cli("index", str(repo), "--json")
+    result = run_cli("index", str(repo), "--json")
     assert result["files_indexed"] == 4

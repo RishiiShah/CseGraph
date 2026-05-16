@@ -4,29 +4,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.conftest import run_cli
+
 
 def _write_repo(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "helpers.py").write_text(
-        "\n".join(
-            [
-                "def clean_name(value: str) -> str:",
-                "    return value.strip().lower()",
-                "",
-            ]
-        ),
+        "def clean_name(value: str) -> str:\n    return value.strip().lower()\n",
         encoding="utf-8",
     )
     (root / "service.py").write_text(
-        "\n".join(
-            [
-                "from helpers import clean_name",
-                "",
-                "def create_user(name: str) -> dict:",
-                "    return {'name': clean_name(name)}",
-                "",
-            ]
-        ),
+        "from helpers import clean_name\n\ndef create_user(name: str) -> dict:\n    return {'name': clean_name(name)}\n",
         encoding="utf-8",
     )
 
@@ -37,25 +25,9 @@ def _write_nested_repo(root: Path) -> None:
     package.mkdir()
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "worker.py").write_text(
-        "\n".join(
-            [
-                "def run() -> str:",
-                "    return 'ok'",
-                "",
-            ]
-        ),
+        "def run() -> str:\n    return 'ok'\n",
         encoding="utf-8",
     )
-
-
-def _run_cli(*args: str) -> dict:
-    proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return json.loads(proc.stdout)
 
 
 def _html_graph_data(content: str) -> dict:
@@ -67,9 +39,9 @@ def _html_graph_data(content: str) -> dict:
 def test_inspect_json_matches_neighborhood_contract(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "symbol::service.py::function::create_user",
         "--repo",
@@ -89,7 +61,7 @@ def test_inspect_json_matches_neighborhood_contract(tmp_path):
 def test_inspect_default_output_is_pretty_json(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -113,7 +85,7 @@ def test_inspect_default_output_is_pretty_json(tmp_path):
 def test_graph_rejects_node_argument(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -136,7 +108,7 @@ def test_graph_rejects_node_argument(tmp_path):
 def test_graph_rejects_node_flag_and_depth(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -163,7 +135,7 @@ def test_graph_rejects_node_flag_and_depth(tmp_path):
 def test_graph_visual_export_creates_html(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     output_html = tmp_path / "out.html"
     proc = subprocess.run(
@@ -211,10 +183,10 @@ def test_graph_visual_export_creates_html(tmp_path):
 def test_graph_visual_export_connects_folders_and_empty_files(tmp_path):
     repo = tmp_path / "repo"
     _write_nested_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     output_html = tmp_path / "out.html"
-    result = _run_cli(
+    result = run_cli(
         "graph",
         "--repo",
         str(repo),
@@ -235,10 +207,10 @@ def test_graph_visual_export_connects_folders_and_empty_files(tmp_path):
 def test_graph_visual_export_has_click_to_expand_nodes(tmp_path):
     repo = tmp_path / "repo"
     _write_nested_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     output_html = tmp_path / "out.html"
-    _run_cli(
+    run_cli(
         "graph",
         "--repo",
         str(repo),
@@ -260,7 +232,7 @@ def test_graph_visual_export_has_click_to_expand_nodes(tmp_path):
 def test_graph_visual_export_default_output_path(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -289,7 +261,7 @@ def test_graph_visual_export_default_output_path(tmp_path):
 def test_graph_visual_export_default_output_is_concise_message(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -316,7 +288,7 @@ def test_graph_visual_export_default_output_follows_custom_db_path(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "custom-index" / "index.db"
     _write_repo(repo)
-    _run_cli("index", "--repo", str(repo), "--db", str(db_path), "--json")
+    run_cli("index", "--repo", str(repo), "--db", str(db_path), "--json")
 
     proc = subprocess.run(
         [
@@ -344,7 +316,7 @@ def test_graph_visual_export_default_output_follows_custom_db_path(tmp_path):
 def test_graph_visual_export_has_clean_stderr(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
         [
@@ -368,9 +340,9 @@ def test_graph_visual_export_has_clean_stderr(tmp_path):
 def test_inspect_resolves_folder_node(tmp_path):
     repo = tmp_path / "repo"
     _write_nested_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "folder::pkg",
         "--repo",
@@ -388,9 +360,9 @@ def test_inspect_resolves_folder_node(tmp_path):
 def test_inspect_resolves_folder_by_name(tmp_path):
     repo = tmp_path / "repo"
     _write_nested_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "pkg",
         "--repo",
@@ -403,9 +375,9 @@ def test_inspect_resolves_folder_by_name(tmp_path):
 def test_inspect_resolves_repo_node(tmp_path):
     repo = tmp_path / "repo"
     _write_nested_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "repo::repo",
         "--repo",
@@ -422,9 +394,9 @@ def test_inspect_resolves_repo_node(tmp_path):
 def test_inspect_folder_includes_child_contains_edges(tmp_path):
     repo = tmp_path / "repo"
     _write_nested_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "folder::pkg",
         "--repo",
@@ -443,9 +415,9 @@ def test_inspect_folder_includes_child_contains_edges(tmp_path):
 def test_inspect_dot_resolves_to_repo_node(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         ".",
         "--repo",
@@ -458,9 +430,9 @@ def test_inspect_dot_resolves_to_repo_node(tmp_path):
 def test_inspect_repo_absolute_path_resolves_to_repo_node(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         str(repo),
         "--repo",
@@ -473,9 +445,9 @@ def test_inspect_repo_absolute_path_resolves_to_repo_node(tmp_path):
 def test_inspect_repo_basename_resolves_to_repo_node(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
-    _run_cli("index", str(repo), "--json")
+    run_cli("index", str(repo), "--json")
 
-    result = _run_cli(
+    result = run_cli(
         "inspect",
         "repo",
         "--repo",

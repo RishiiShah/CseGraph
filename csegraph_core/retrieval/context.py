@@ -255,30 +255,18 @@ def _resolve_target(
             return target
         if index is not None:
             lowered = target.lower()
-            row = index.conn.execute(
-                """
-                SELECT id FROM nodes
-                 WHERE type IN ('class','function','method')
-                   AND (LOWER(name) = ? OR LOWER(path) = ?)
-                 ORDER BY (LOWER(name) = ?) DESC, length(name) ASC
-                 LIMIT 1
-                """,
-                (lowered, lowered, lowered),
-            ).fetchone()
-            if row is not None:
-                return row["id"]
-            row = index.conn.execute(
-                """
-                SELECT id FROM nodes
-                 WHERE type IN ('class','function','method')
-                   AND (LOWER(name) LIKE ? OR LOWER(path) LIKE ?)
-                 ORDER BY length(name) ASC
-                 LIMIT 1
-                """,
-                (f"%{lowered}%", f"%{lowered}%"),
-            ).fetchone()
-            if row is not None:
-                return row["id"]
+            for where, params in (
+                ("(LOWER(name) = ? OR LOWER(path) = ?) ORDER BY (LOWER(name) = ?) DESC, length(name) ASC",
+                 (lowered, lowered, lowered)),
+                ("(LOWER(name) LIKE ? OR LOWER(path) LIKE ?) ORDER BY length(name) ASC",
+                 (f"%{lowered}%", f"%{lowered}%")),
+            ):
+                row = index.conn.execute(
+                    f"SELECT id FROM nodes WHERE type IN ('class','function','method') AND {where} LIMIT 1",
+                    params,
+                ).fetchone()
+                if row is not None:
+                    return row["id"]
         raise ValueError(f"Target '{target}' did not match any indexed symbol.")
     scores, _ = lexical_scores(task, symbols, summaries, fts_seed=None)
     return max(scores.items(), key=lambda item: item[1])[0]
@@ -383,6 +371,19 @@ def _estimate_tokens(text: str) -> int:
     return max(1, math.ceil(len(text) / 4))
 
 
+def _strip_source(node: ContextNode) -> ContextNode:
+    reason = [item for item in node.reason if item != "raw_code_fallback"] or list(node.reason)
+    return ContextNode(
+        id=node.id, kind=node.kind, name=node.name, path=node.path,
+        line_range=node.line_range, score=node.score, language=node.language,
+        raw_code=False, evidence=node.evidence, summary=node.summary,
+        lineage=node.lineage, source_text=None,
+        estimated_tokens=_estimate_tokens(" ".join(v for v in (node.name, node.path, node.summary) if v)),
+        reason=reason,
+        explanation=build_explanation(reason) if node.explanation is not None else None,
+    )
+
+
 def _apply_token_budget(
     nodes: List[ContextNode],
     max_tokens: Optional[int],
@@ -395,31 +396,7 @@ def _apply_token_budget(
     for node in nodes:
         candidate = node
         if used + candidate.estimated_tokens > max_tokens and candidate.source_text is not None:
-            reason = [item for item in node.reason if item != "raw_code_fallback"]
-            compact_reason = reason or list(node.reason)
-            candidate = ContextNode(
-                id=node.id,
-                kind=node.kind,
-                name=node.name,
-                path=node.path,
-                line_range=node.line_range,
-                score=node.score,
-                language=node.language,
-                raw_code=False,
-                evidence=node.evidence,
-                summary=node.summary,
-                lineage=node.lineage,
-                source_text=None,
-                estimated_tokens=_estimate_tokens(
-                    " ".join(
-                        value
-                        for value in (node.name, node.path, node.summary)
-                        if value
-                    )
-                ),
-                reason=compact_reason,
-                explanation=build_explanation(compact_reason) if node.explanation is not None else None,
-            )
+            candidate = _strip_source(node)
         if used + candidate.estimated_tokens <= max_tokens:
             selected.append(candidate)
             used += candidate.estimated_tokens

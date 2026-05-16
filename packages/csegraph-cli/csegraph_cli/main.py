@@ -69,6 +69,23 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _add_repo_positional(p: argparse.ArgumentParser) -> None:
+    p.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    p.add_argument("--repo", dest="repo_opt", help="Repository root.")
+
+
+def _add_db(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+
+
+def _add_json(p: argparse.ArgumentParser, *, suppress: bool = False) -> None:
+    p.add_argument("--json", action="store_true", help=argparse.SUPPRESS if suppress else "Emit machine-readable JSON.")
+
+
+def _add_profile(p: argparse.ArgumentParser, *, default: str = "medium") -> None:
+    p.add_argument("--profile", choices=sorted(PROFILES), default=default)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="csegraph",
@@ -77,26 +94,24 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     index = subparsers.add_parser("index", help="Build a fresh project index.")
-    index.add_argument("repo_arg", nargs="?", help="Repository root to index (default: current directory).")
-    index.add_argument("--repo", dest="repo_opt", help="Repository root to index.")
-    index.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    index.add_argument("--profile", choices=sorted(PROFILES), default="medium")
-    index.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_repo_positional(index)
+    _add_db(index)
+    _add_profile(index)
+    _add_json(index)
 
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
-    refresh.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
-    refresh.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
-    refresh.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    refresh.add_argument("--profile", choices=sorted(PROFILES), default="medium")
-    refresh.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_repo_positional(refresh)
+    _add_db(refresh)
+    _add_profile(refresh)
+    _add_json(refresh)
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
     context.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    context.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    _add_db(context)
     context.add_argument("--task", default=None, help="Natural-language task.")
     context.add_argument("--target", default=None, help="Optional target node, symbol name, or file path.")
-    context.add_argument("--profile", choices=sorted(PROFILES), default=None)
+    _add_profile(context, default=None)
     context.add_argument("--config", default=None, help="Path to csegraph.json/toml with threshold overrides.")
     context.add_argument(
         "--include-source",
@@ -122,7 +137,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include human-readable explanations for context node selection.",
     )
-    context.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_json(context)
 
     path = subparsers.add_parser("path", help="Find the shortest path between two nodes.")
     path.add_argument("source_arg", nargs="?", help="Source node ID, symbol name, or file path.")
@@ -130,79 +145,63 @@ def _build_parser() -> argparse.ArgumentParser:
     path.add_argument("--source", default=None, help="Source node.")
     path.add_argument("--target", default=None, help="Target node.")
     path.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    path.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    path.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_db(path)
+    _add_json(path)
 
     inspect = subparsers.add_parser("inspect", help="Inspect a graph neighborhood.")
     inspect.add_argument("node_arg", nargs="?", help="Node ID, symbol name, or file path.")
     inspect.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    inspect.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    _add_db(inspect)
     inspect.add_argument("--node", default=None, help="Node ID, symbol name, or file path.")
     inspect.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
-    inspect.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_json(inspect)
 
     graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
     graph.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    graph.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    graph.add_argument(
-        "--output",
-        "-o",
-        default=None,
-        help="Output HTML file path (default: beside the SQLite index DB).",
-    )
-    graph.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_db(graph)
+    graph.add_argument("--output", "-o", default=None, help="Output HTML file path (default: beside the SQLite index DB).")
+    _add_json(graph)
 
     tree = subparsers.add_parser("tree", help="Export an interactive HTML file tree visualization.")
     tree.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    tree.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    tree.add_argument(
-        "--output", "-o", default=None,
-        help="Output HTML file path (default: beside the SQLite index DB).",
-    )
-    tree.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_db(tree)
+    tree.add_argument("--output", "-o", default=None, help="Output HTML file path (default: beside the SQLite index DB).")
+    _add_json(tree)
 
     communities = subparsers.add_parser("communities", help="Detect communities in the dependency graph.")
-    communities.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
-    communities.add_argument("--repo", dest="repo_opt", help="Repository root.")
-    communities.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    communities.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_repo_positional(communities)
+    _add_db(communities)
+    _add_json(communities)
 
     hooks = subparsers.add_parser("hooks", help="Manage csegraph git hooks.")
     hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
-    hooks_install = hooks_sub.add_parser("install", help="Install post-commit/merge/checkout hooks.")
-    hooks_install.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
-    hooks_install.add_argument("--repo", dest="repo_opt", help="Repository root.")
-    hooks_install.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
-    hooks_uninstall = hooks_sub.add_parser("uninstall", help="Remove csegraph git hooks.")
-    hooks_uninstall.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
-    hooks_uninstall.add_argument("--repo", dest="repo_opt", help="Repository root.")
-    hooks_uninstall.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    for name, help_text in [("install", "Install post-commit/merge/checkout hooks."), ("uninstall", "Remove csegraph git hooks.")]:
+        sub = hooks_sub.add_parser(name, help=help_text)
+        _add_repo_positional(sub)
+        _add_json(sub)
 
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
-    report.add_argument("repo_arg", nargs="?", help="Repository root containing the default .csegraph index.")
-    report.add_argument("--repo", dest="repo_opt", help="Repository root containing the default .csegraph index.")
-    report.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    report.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_repo_positional(report)
+    _add_db(report)
+    _add_json(report)
 
     watch = subparsers.add_parser("watch", help="Watch for file changes and auto-refresh the index.")
-    watch.add_argument("repo_arg", nargs="?", help="Repository root to watch (default: current directory).")
-    watch.add_argument("--repo", dest="repo_opt", help="Repository root to watch.")
-    watch.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    watch.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    _add_repo_positional(watch)
+    _add_db(watch)
+    _add_profile(watch)
     watch.add_argument("--debounce", type=int, default=500, help="Debounce interval in milliseconds (default: 500).")
-    watch.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    _add_json(watch, suppress=True)
 
     serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
-    serve.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    _add_json(serve, suppress=True)
 
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
-    benchmark.add_argument("repo_arg", nargs="?", help="Repository root to benchmark (default: current directory).")
-    benchmark.add_argument("--repo", dest="repo_opt", help="Repository root to benchmark.")
-    benchmark.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    benchmark.add_argument("--profile", choices=sorted(PROFILES), default="medium")
+    _add_repo_positional(benchmark)
+    _add_db(benchmark)
+    _add_profile(benchmark)
     benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
     benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
-    benchmark.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    _add_json(benchmark)
 
     return parser
 
