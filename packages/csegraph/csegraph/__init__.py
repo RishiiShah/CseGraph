@@ -1,4 +1,4 @@
-"""csegraph v1.5.0 SDK.
+"""csegraph v1.6.0 SDK.
 
 Thin facade over `csegraph-core` (import namespace: `csegraph_core`) for
 coding-agent context retrieval. The CLI package (`csegraph-cli`) imports
@@ -40,7 +40,7 @@ from csegraph_core import (
     to_dict,
 )
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 __all__ = [
     "__version__",

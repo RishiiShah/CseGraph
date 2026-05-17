@@ -53,18 +53,18 @@ def test_v140_package_layout_and_versions():
     cli_project = _project_metadata(repo_root / "packages" / "csegraph-cli")
 
     assert root_project["name"] == "csegraph-core"
-    assert root_project["version"] == "1.5.0"
+    assert root_project["version"] == "1.6.0"
     assert root_project["dependencies"] == CORE_LANGUAGE_DEPENDENCIES
     assert set(root_project.get("optional-dependencies", {})) == {"mcp", "watch", "test"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
-    assert sdk_project["version"] == "1.5.0"
-    assert sdk_project["dependencies"] == ["csegraph-core>=1.5.0"]
+    assert sdk_project["version"] == "1.6.0"
+    assert sdk_project["dependencies"] == ["csegraph-core>=1.6.0"]
 
     assert cli_project["name"] == "csegraph-cli"
-    assert cli_project["version"] == "1.5.0"
-    assert cli_project["dependencies"] == ["csegraph-core>=1.5.0"]
+    assert cli_project["version"] == "1.6.0"
+    assert cli_project["dependencies"] == ["csegraph-core>=1.6.0"]
 
     assert (repo_root / "csegraph_core" / "__init__.py").exists()
     assert (repo_root / "packages" / "csegraph" / "csegraph" / "__init__.py").exists()
