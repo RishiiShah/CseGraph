@@ -66,9 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         print(render_path_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
-    elif args.command == "index":
+    elif args.command in {"index", "build"}:
         print(render_index_summary(payload), end="")
-    elif args.command == "refresh":
+    elif args.command in {"refresh", "update"}:
         print(render_refresh_summary(payload), end="")
     else:
         print(render_json(payload, compact=False))
@@ -105,11 +105,23 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(index)
     _add_json(index)
 
+    build = subparsers.add_parser("build", help="Alias for index; build a fresh project graph.")
+    _add_repo_positional(build)
+    _add_db(build)
+    _add_profile(build)
+    _add_json(build)
+
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
     _add_repo_positional(refresh)
     _add_db(refresh)
     _add_profile(refresh)
     _add_json(refresh)
+
+    update = subparsers.add_parser("update", help="Alias for refresh; update changed files in the graph.")
+    _add_repo_positional(update)
+    _add_db(update)
+    _add_profile(update)
+    _add_json(update)
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
@@ -228,11 +240,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _dispatch(args: argparse.Namespace) -> Any:
-    if args.command == "index":
+    if args.command in {"index", "build"}:
         from csegraph_core.index.services import IndexService
         repo = _repo_arg(args)
         return IndexService(_db_arg(args, repo)).index(repo, profile=args.profile)
-    if args.command == "refresh":
+    if args.command in {"refresh", "update"}:
         from csegraph_core.index.services import RefreshService
         repo = _repo_arg(args)
         return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)

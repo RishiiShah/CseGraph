@@ -5,7 +5,7 @@ csegraph is a repository context engine for coding agents. It indexes Python cod
 The product loop is:
 
 ```text
-index once -> refresh changed files -> retrieve graph-backed context
+build once -> update changed files -> retrieve graph-backed context
 ```
 
 Use csegraph when you want an agent to see the target code, direct dependencies, imports, nearby tests, and a short explanation of why each node was selected without repeatedly scanning the repository.
@@ -16,7 +16,7 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 |---|---|---|
 | `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
-| `csegraph-cli` | `packages/csegraph-cli/` | CLI with `index`, `refresh`, `context`, `inspect`, `graph`, `report`, and `benchmark`. |
+| `csegraph-cli` | `packages/csegraph-cli/` | CLI with `build`, `update`, `context`, `inspect`, `graph`, `report`, and `benchmark`. |
 
 Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 
@@ -34,34 +34,34 @@ env/bin/pip install -e packages/csegraph-cli/
 
 ```bash
 # Build the SQLite graph index.
-csegraph index . --json
+csegraph build --json
 
 # Refresh changed/deleted Python files.
-csegraph refresh . --json
+csegraph update --json
 
 # Ask for dependency-aware context before an agent edits.
-csegraph context "fix auth token refresh bug" --target refresh_token --repo . --json
+csegraph context "fix auth token refresh bug" --target refresh_token --json
 
 # Render context for human inspection.
-csegraph context "fix auth token refresh bug" --target refresh_token --repo . --format markdown --explain
+csegraph context "fix auth token refresh bug" --target refresh_token --format markdown --explain
 
 # Check index health and staleness.
-csegraph status . --verbose
+csegraph status --verbose
 
 # Rebuild FTS and communities without re-parsing.
-csegraph postprocess . --no-fts --no-communities --json
+csegraph postprocess --no-fts --no-communities --json
 
 # Inspect a graph neighborhood.
-csegraph inspect refresh_token --repo . --depth 1 --json
+csegraph inspect refresh_token --depth 1 --json
 
 # Export a visual HTML graph to .csegraph/csegraph-graph.html.
-csegraph graph --repo .
+csegraph graph
 
 # Generate a project report from the index.
-csegraph report . --json
+csegraph report --json
 
 # Time the core workflow before/after optimization work.
-csegraph benchmark . --target refresh_token
+csegraph benchmark --target refresh_token
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.

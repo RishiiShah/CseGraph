@@ -189,6 +189,44 @@ def test_refresh_json_flag_returns_parseable_json(tmp_path):
     assert isinstance(result["unchanged_files"], list)
 
 
+def test_build_alias_matches_index_json_contract(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    result = run_cli("build", str(repo), "--json")
+
+    assert result["command"] == "index"
+    assert result["files_indexed"] == 2
+    assert result["symbols_indexed"] == 2
+    assert result["db_path"] == str(repo / ".csegraph" / "index.db")
+
+
+def test_update_alias_matches_refresh_json_contract(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("build", str(repo), "--json")
+
+    result = run_cli("update", str(repo), "--json")
+
+    assert result["command"] == "refresh"
+    assert result["changed_files"] == []
+    assert result["deleted_files"] == []
+    assert result["cache_hits"] == 2
+    assert result["cache_misses"] == 0
+
+
+def test_help_lists_build_and_update_aliases():
+    proc = subprocess.run(
+        [sys.executable, "-m", "csegraph_cli", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "build" in proc.stdout
+    assert "update" in proc.stdout
+
+
 def test_benchmark_json_profiles_core_commands(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
