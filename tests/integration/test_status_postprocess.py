@@ -10,9 +10,11 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from csegraph_core.core.models import to_dict
 from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
+from csegraph_core.postprocess import PostprocessService, _read_source_slice
 from csegraph_core.status import StatusService
 
 
@@ -102,21 +104,15 @@ class TestStatusService:
 
     def test_status_missing_db(self, tmp_path):
         db = str(tmp_path / "nonexistent" / "index.db")
-        try:
+        with pytest.raises(ValueError, match="No csegraph index found"):
             StatusService(db).status()
-            assert False, "Should have raised"
-        except ValueError as exc:
-            assert "No csegraph index found" in str(exc)
 
     def test_status_empty_db(self, tmp_path):
         # Create an empty DB file (no schema)
         db = str(tmp_path / "empty.db")
         Path(db).touch()
-        try:
+        with pytest.raises(ValueError, match="No csegraph index found"):
             StatusService(db).status()
-            assert False, "Should have raised"
-        except ValueError as exc:
-            assert "No csegraph index found" in str(exc)
 
     def test_status_languages_sorted(self, tmp_path):
         _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
@@ -270,11 +266,8 @@ class TestPostprocessService:
 class TestPostprocessPreflight:
     def test_postprocess_missing_db_raises(self, tmp_path):
         db = str(tmp_path / "nonexistent" / "index.db")
-        try:
+        with pytest.raises(ValueError, match="No csegraph index found"):
             PostprocessService(db).postprocess()
-            assert False, "Should have raised ValueError"
-        except ValueError as exc:
-            assert "No csegraph index found" in str(exc)
 
     def test_postprocess_missing_db_not_created(self, tmp_path):
         db = str(tmp_path / "nonexistent" / "index.db")
@@ -283,6 +276,23 @@ class TestPostprocessPreflight:
         except ValueError:
             pass
         assert not Path(db).exists(), "postprocess should not create DB on error"
+
+
+class TestReadSourceSliceTraversal:
+    def test_path_traversal_returns_empty(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        outside = tmp_path / "outside.py"
+        outside.write_text("secret = 'leaked'\n", encoding="utf-8")
+        result = _read_source_slice(str(repo), "../outside.py", "python", 1, 1)
+        assert result == ""
+
+    def test_valid_path_returns_source(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "valid.py").write_text("def f(): pass\n", encoding="utf-8")
+        result = _read_source_slice(str(repo), "valid.py", "python", 1, 1)
+        assert result != ""
 
 
 class TestPostprocessRenderer:
@@ -326,7 +336,7 @@ class TestCLIStatus:
         code, stdout, stderr = _run_cli("status", "--db", db)
         assert code == 1
         payload = json.loads(stderr)
-        assert payload["error"] == "No csegraph index found. Run csegraph index . first."
+        assert payload["error"] == "No csegraph index found. Run csegraph index first."
 
     def test_cli_status_empty_db(self, tmp_path):
         db = str(tmp_path / "empty.db")
@@ -334,7 +344,7 @@ class TestCLIStatus:
         code, stdout, stderr = _run_cli("status", "--db", db)
         assert code == 1
         payload = json.loads(stderr)
-        assert payload["error"] == "No csegraph index found. Run csegraph index . first."
+        assert payload["error"] == "No csegraph index found. Run csegraph index first."
 
 
 class TestCLIPostprocess:
@@ -364,7 +374,7 @@ class TestCLIPostprocess:
         code, stdout, stderr = _run_cli("postprocess", "--db", db)
         assert code == 1
         payload = json.loads(stderr)
-        assert payload["error"] == "No csegraph index found. Run csegraph index . first."
+        assert payload["error"] == "No csegraph index found. Run csegraph index first."
 
     def test_cli_postprocess_empty_db(self, tmp_path):
         db = str(tmp_path / "empty.db")
@@ -372,4 +382,4 @@ class TestCLIPostprocess:
         code, stdout, stderr = _run_cli("postprocess", "--db", db)
         assert code == 1
         payload = json.loads(stderr)
-        assert payload["error"] == "No csegraph index found. Run csegraph index . first."
+        assert payload["error"] == "No csegraph index found. Run csegraph index first."
