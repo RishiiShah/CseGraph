@@ -94,10 +94,14 @@ class ContextResult:
     profile: str
     query: str
     target: str
+    detail_level: str
+    returned_detail_level: str
     sufficiency: SufficiencyResult
     total_estimated_tokens: int
     nodes: List[ContextNode]
     raw_code_nodes: List[str] = field(default_factory=list)
+    next_actions: List[Dict[str, Any]] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
     run_id: Optional[int] = None
 
 
@@ -240,6 +244,28 @@ class PostprocessResult:
     communities_detected: int
     modularity: float = 0.0
     skipped: List[str] = field(default_factory=list)
+
+
+@dataclass
+class McpInstallTarget:
+    platform: str
+    path: str
+    scope: str
+    action: str
+    dry_run: bool = False
+    reason: Optional[str] = None
+
+
+@dataclass
+class McpInstallResult:
+    command: str
+    repo_root: str
+    server_name: str
+    server_command: str
+    server_args: List[str]
+    dry_run: bool
+    installed: List[McpInstallTarget] = field(default_factory=list)
+    skipped: List[McpInstallTarget] = field(default_factory=list)
 
 
 def to_dict(value: Any) -> Any:
