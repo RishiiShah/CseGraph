@@ -59,6 +59,7 @@ def test_markdown_output_uses_language_fence(tmp_path):
             "--db", str(db_path),
             "--repo", str(repo),
             "--format", "markdown",
+            "--detail-level", "standard",
         ],
         check=True,
         capture_output=True,
