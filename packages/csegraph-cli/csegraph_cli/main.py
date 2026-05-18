@@ -19,6 +19,7 @@ from csegraph_cli.renderer import (
     render_context_markdown,
     render_benchmark_summary,
     render_hooks_summary,
+    render_install_summary,
     render_index_summary,
     render_json,
     render_path_summary,
@@ -62,13 +63,15 @@ def main(argv: list[str] | None = None) -> int:
         print(render_postprocess_summary(payload), end="")
     elif args.command == "hooks" and not args.json:
         print(render_hooks_summary(payload), end="")
+    elif args.command == "install" and not args.json:
+        print(render_install_summary(payload), end="")
     elif args.command == "path" and not args.json:
         print(render_path_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
-    elif args.command in {"index", "build"}:
+    elif args.command == "index":
         print(render_index_summary(payload), end="")
-    elif args.command in {"refresh", "update"}:
+    elif args.command == "refresh":
         print(render_refresh_summary(payload), end="")
     else:
         print(render_json(payload, compact=False))
@@ -105,23 +108,11 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(index)
     _add_json(index)
 
-    build = subparsers.add_parser("build", help="Alias for index; build a fresh project graph.")
-    _add_repo_positional(build)
-    _add_db(build)
-    _add_profile(build)
-    _add_json(build)
-
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
     _add_repo_positional(refresh)
     _add_db(refresh)
     _add_profile(refresh)
     _add_json(refresh)
-
-    update = subparsers.add_parser("update", help="Alias for refresh; update changed files in the graph.")
-    _add_repo_positional(update)
-    _add_db(update)
-    _add_profile(update)
-    _add_json(update)
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
@@ -154,6 +145,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--explain",
         action="store_true",
         help="Include human-readable explanations for context node selection.",
+    )
+    context.add_argument(
+        "--detail-level",
+        choices=("auto", "minimal", "standard", "full"),
+        default="auto",
+        help="Context detail level: auto starts minimal if sufficient, minimal is compact routing, standard is working context, full includes all explanations.",
     )
     _add_json(context)
 
@@ -198,6 +195,23 @@ def _build_parser() -> argparse.ArgumentParser:
         _add_repo_positional(sub)
         _add_json(sub)
 
+    install = subparsers.add_parser("install", help="Configure MCP clients to run csegraph serve.")
+    _add_repo_positional(install)
+    install.add_argument(
+        "--platform",
+        choices=["auto", "codex", "cursor", "claude-code", "gemini-cli", "kiro", "copilot"],
+        default="auto",
+        help="MCP client platform to configure.",
+    )
+    install.add_argument(
+        "--command",
+        dest="server_command",
+        default="csegraph",
+        help="Executable command used by MCP clients to launch csegraph.",
+    )
+    install.add_argument("--dry-run", action="store_true", help="Show planned writes without modifying files.")
+    _add_json(install)
+
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
     _add_repo_positional(report)
     _add_db(report)
@@ -240,11 +254,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _dispatch(args: argparse.Namespace) -> Any:
-    if args.command in {"index", "build"}:
+    if args.command == "index":
         from csegraph_core.index.services import IndexService
         repo = _repo_arg(args)
         return IndexService(_db_arg(args, repo)).index(repo, profile=args.profile)
-    if args.command in {"refresh", "update"}:
+    if args.command == "refresh":
         from csegraph_core.index.services import RefreshService
         repo = _repo_arg(args)
         return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)
@@ -262,6 +276,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             max_tokens=args.max_tokens,
             explain=args.explain,
             config_path=args.config,
+            detail_level=args.detail_level,
         )
     if args.command == "path":
         from csegraph_core.graph.queries import GraphQueryService
@@ -304,6 +319,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if args.hooks_command == "uninstall":
             return uninstall_hooks(repo)
         raise ValueError(f"Unknown hooks subcommand: {args.hooks_command}")
+    if args.command == "install":
+        from csegraph_core.mcp_install import McpInstallService
+        repo = _repo_arg(args)
+        return McpInstallService(repo, command=args.server_command).install(
+            platform=args.platform,
+            dry_run=args.dry_run,
+        )
     if args.command == "report":
         from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)
