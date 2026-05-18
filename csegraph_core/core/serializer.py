@@ -4,7 +4,7 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Dict
 
 
-CONTEXT_OUTPUT_SCHEMA_VERSION = "csegraph-context-v1"
+CONTEXT_OUTPUT_SCHEMA_VERSION = "csegraph-context-v2"
 
 
 def to_dict(value: Any) -> Any:
@@ -32,9 +32,13 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         "schema_version": CONTEXT_OUTPUT_SCHEMA_VERSION,
         "query": result.query,
         "target": result.target,
+        "detail_level": result.detail_level,
+        "returned_detail_level": result.returned_detail_level,
         "total_estimated_tokens": result.total_estimated_tokens,
         "sufficiency": to_dict(result.sufficiency),
         "raw_code_nodes": to_dict(result.raw_code_nodes),
+        "next_actions": to_dict(result.next_actions),
+        "warnings": to_dict(result.warnings),
         "run_id": result.run_id,
         "nodes": [_canonical_context_node_to_dict(node) for node in result.nodes],
     }
@@ -44,14 +48,17 @@ def _canonical_context_node_to_dict(node: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "id": node.id,
         "kind": node.kind,
+        "name": node.name,
         "language": node.language,
         "path": node.path,
         "line_range": node.line_range,
+        "score": node.score,
         "reason": list(node.reason),
         "summary": node.summary,
-        "source_text": node.source_text,
         "estimated_tokens": node.estimated_tokens,
     }
+    if node.source_text is not None:
+        payload["source_text"] = node.source_text
     if node.explanation is not None:
         payload["explanation"] = node.explanation
     return payload

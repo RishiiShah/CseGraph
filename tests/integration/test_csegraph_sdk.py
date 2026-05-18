@@ -212,14 +212,17 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
         task="Implement build_report using format_user",
         target="build_report",
         profile="small",
+        detail_level="standard",
     )
 
     by_id = {node.id: node for node in context.nodes}
     target = by_id["symbol::main.py::function::build_report"]
     helper = by_id["symbol::utils.py::function::format_user"]
 
+    assert target.source_text is not None
     assert "def build_report(name: str) -> str:" in target.source_text
     assert "return f'Report: {format_user(name)}'" in target.source_text
+    assert helper.source_text is not None
     assert "def format_user(name: str) -> str:" in helper.source_text
     assert "return name.strip().title()" in helper.source_text
     assert target.estimated_tokens >= 1

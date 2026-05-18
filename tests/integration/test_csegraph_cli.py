@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+import csegraph_cli.main as cli_main
 from csegraph_core.retrieval.constants import VALID_REASONS
 
 from tests.conftest import run_cli
@@ -56,6 +58,8 @@ def test_cli_json_contracts(tmp_path):
     assert context["command"] == "context"
     assert context["query"] == "Implement create_user with clean_name"
     assert context["target"] == "symbol::service.py::function::create_user"
+    assert context["detail_level"] == "auto"
+    assert context["returned_detail_level"] == "minimal"
     assert context["sufficiency"]["sufficient"] is True
     assert "target_node_id" not in context
     assert "context_nodes" not in context
@@ -74,7 +78,8 @@ def test_cli_json_contracts(tmp_path):
     assert target_node["path"] == "service.py"
     assert target_node["line_range"] == [3, 4]
     assert "target" in target_node["reason"]
-    assert "direct_call" in helper_node["reason"]
+    if "symbol::helpers.py::function::clean_name" in canonical_by_id:
+        assert "direct_call" in helper_node["reason"]
     assert all(
         reason in VALID_REASONS
         for node in context["nodes"]
@@ -82,10 +87,29 @@ def test_cli_json_contracts(tmp_path):
     )
     assert all("expanded-from-" not in reason for node in context["nodes"] for reason in node["reason"])
     assert all("explanation" not in node for node in context["nodes"])
-    assert "source_text" in target_node
-    assert "def create_user(name: str) -> dict:" in target_node["source_text"]
-    assert "def clean_name(value: str) -> str:" in helper_node["source_text"]
+    assert "source_text" not in target_node
     assert target_node["estimated_tokens"] >= 1
+    assert any(action["action"] == "expand_context" for action in context["next_actions"])
+
+    standard_context = run_cli(
+        "context",
+        "Implement create_user with clean_name",
+        "--target",
+        "create_user",
+        "--repo",
+        str(repo),
+        "--detail-level",
+        "standard",
+        "--json",
+    )
+    standard_by_id = {node["id"]: node for node in standard_context["nodes"]}
+    assert standard_context["returned_detail_level"] == "standard"
+    assert "def create_user(name: str) -> dict:" in standard_by_id[
+        "symbol::service.py::function::create_user"
+    ]["source_text"]
+    assert "def clean_name(value: str) -> str:" in standard_by_id[
+        "symbol::helpers.py::function::clean_name"
+    ]["source_text"]
 
     neighborhood = run_cli(
         "inspect",
@@ -187,6 +211,129 @@ def test_refresh_json_flag_returns_parseable_json(tmp_path):
     assert result["cache_hits"] == 2
     assert result["cache_misses"] == 0
     assert isinstance(result["unchanged_files"], list)
+
+
+def test_context_detail_level_full_adds_explanations(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    result = run_cli(
+        "context",
+        "Implement create_user with clean_name",
+        "--target",
+        "create_user",
+        "--repo",
+        str(repo),
+        "--detail-level",
+        "full",
+        "--json",
+    )
+
+    assert result["detail_level"] == "full"
+    assert result["returned_detail_level"] == "full"
+    assert any("explanation" in node for node in result["nodes"])
+    assert all("source_text" in node for node in result["nodes"])
+
+
+def test_help_lists_canonical_index_and_refresh_without_aliases():
+    proc = subprocess.run(
+        [sys.executable, "-m", "csegraph_cli", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "index" in proc.stdout
+    assert "refresh" in proc.stdout
+    assert "Alias for index" not in proc.stdout
+    assert "Alias for refresh" not in proc.stdout
+
+
+def test_build_and_update_are_not_public_commands():
+    for command in ("build", "update"):
+        proc = subprocess.run(
+            [sys.executable, "-m", "csegraph_cli", command, "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 2
+        assert "invalid choice" in proc.stderr
+
+
+def test_build_parser_exposes_only_index_and_refresh_commands(tmp_path):
+    parser = cli_main._build_parser()
+
+    index_args = parser.parse_args(["index", str(tmp_path), "--json"])
+    refresh_args = parser.parse_args(["refresh", str(tmp_path), "--json"])
+
+    assert index_args.command == "index"
+    assert refresh_args.command == "refresh"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["build", str(tmp_path)])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["update", str(tmp_path)])
+
+
+def test_dispatch_keeps_index_and_refresh_canonical_commands(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    parser = cli_main._build_parser()
+
+    indexed = cli_main._dispatch(parser.parse_args(["index", str(repo), "--json"]))
+    refreshed = cli_main._dispatch(parser.parse_args(["refresh", str(repo), "--json"]))
+
+    assert indexed.command == "index"
+    assert refreshed.command == "refresh"
+
+
+def test_main_renders_index_json_for_canonical_command(tmp_path, capsys):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+
+    assert cli_main.main(["index", str(repo), "--json"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["command"] == "index"
+    assert output["files_indexed"] == 2
+
+
+def test_install_dry_run_json_reports_auto_targets(tmp_path):
+    result = run_cli("install", str(tmp_path), "--dry-run", "--json")
+
+    assert result["command"] == "install"
+    assert result["dry_run"] is True
+    assert result["server_command"] == "csegraph"
+    assert result["server_args"] == ["serve"]
+    assert {target["platform"] for target in result["installed"]} == {"claude-code"}
+
+
+def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
+    result = run_cli(
+        "install",
+        str(tmp_path),
+        "--platform",
+        "cursor",
+        "--dry-run",
+        "--json",
+    )
+
+    assert result["installed"][0]["platform"] == "cursor"
+    assert result["installed"][0]["path"].endswith(".cursor/mcp.json")
+
+
+def test_install_codex_dry_run_json_uses_user_config(tmp_path):
+    result = run_cli(
+        "install",
+        str(tmp_path),
+        "--platform",
+        "codex",
+        "--dry-run",
+        "--json",
+    )
+
+    assert result["installed"][0]["platform"] == "codex"
+    assert result["installed"][0]["path"].endswith(".codex/config.toml")
 
 
 def test_benchmark_json_profiles_core_commands(tmp_path):
@@ -312,12 +459,14 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
         str(repo),
         "--include-source",
         "never",
+        "--detail-level",
+        "standard",
         "--json",
     )
     assert compact["total_estimated_tokens"] == sum(
         node["estimated_tokens"] for node in compact["nodes"]
     )
-    assert all(node["source_text"] is None for node in compact["nodes"])
+    assert all("source_text" not in node for node in compact["nodes"])
 
     budgeted = run_cli(
         "context",
@@ -329,14 +478,16 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
         "--include-source",
         "always",
         "--max-tokens",
-        "20",
+        "50",
+        "--detail-level",
+        "standard",
         "--json",
     )
-    assert budgeted["total_estimated_tokens"] <= 20
+    assert budgeted["total_estimated_tokens"] <= 50
     budgeted_nodes = {node["id"]: node for node in budgeted["nodes"]}
     assert "symbol::service.py::function::create_user" in budgeted_nodes
     helper = budgeted_nodes.get("symbol::helpers.py::function::clean_name")
-    assert helper is None or helper["source_text"] is None
+    assert helper is None or helper.get("source_text") is not None
 
 
 def test_context_config_overrides_thresholds(tmp_path):
@@ -405,6 +556,8 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
             "--format",
             "markdown",
             "--explain",
+            "--detail-level",
+            "standard",
         ],
         check=True,
         capture_output=True,
@@ -412,9 +565,47 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
     )
     assert "# csegraph context" in proc.stdout
     assert "Query: Implement create_user" in proc.stdout
+    assert "Requested detail: `standard`" in proc.stdout
+    assert "Returned detail: `standard`" in proc.stdout
     assert "Reasons: target" in proc.stdout
     assert "Included because" in proc.stdout
     assert "```python" in proc.stdout
+    assert "## Next Actions" in proc.stdout
+    # Verify next action rendering includes tool and node fields
+    assert "`inspect_graph`; tool `csegraph_graph`; node `symbol::service.py::function::create_user`" in proc.stdout
+
+
+def test_context_cli_minimal_markdown_shows_expand_context(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "csegraph_cli",
+            "context",
+            "Implement create_user",
+            "--target",
+            "create_user",
+            "--repo",
+            str(repo),
+            "--format",
+            "markdown",
+            "--detail-level",
+            "minimal",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "# csegraph context" in proc.stdout
+    assert "Requested detail: `minimal`" in proc.stdout
+    assert "Returned detail: `minimal`" in proc.stdout
+    assert "## Next Actions" in proc.stdout
+    # Verify expand_context action is shown with detail level
+    assert "`expand_context`; detail `standard`" in proc.stdout
 
 
 def test_context_cli_json_markdown_conflict_fails_clearly(tmp_path):

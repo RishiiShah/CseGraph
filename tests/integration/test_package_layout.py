@@ -139,3 +139,16 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
         text=True,
     )
     assert sdk.returncode == 0
+
+
+def test_status_and_postprocess_exports():
+    from csegraph_core import StatusService, StatusResult, PostprocessService, PostprocessResult
+    from csegraph import StatusService as SDKStatusService
+    from csegraph import PostprocessService as SDKPostprocessService
+    from csegraph import StatusResult as SDKStatusResult
+    from csegraph import PostprocessResult as SDKPostprocessResult
+
+    assert StatusService is SDKStatusService
+    assert PostprocessService is SDKPostprocessService
+    assert StatusResult is SDKStatusResult
+    assert PostprocessResult is SDKPostprocessResult

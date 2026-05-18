@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from csegraph_core.core.errors import UnsupportedSchemaError
 from csegraph_core.core.ids import file_node_id
+from csegraph_core.repo_state import git_head_state
 from csegraph_core.index.schema import (
     METADATA_UPSERT,
     SCHEMA_DDL,
@@ -80,12 +81,15 @@ class ProjectIndex:
         now = time.time()
         existing = self.metadata(raise_if_empty=False)
         created_at = existing.get("created_at", str(now))
+        branch, commit = git_head_state(root_dir)
         rows = {
             "schema_version": SCHEMA_VERSION,
             "root_dir": root_dir,
             "active_profile": profile,
             "created_at": created_at,
             "updated_at": str(now),
+            "built_branch": branch or "",
+            "built_commit": commit or "",
         }
         self.conn.executemany(
             """
@@ -256,9 +260,9 @@ class ProjectIndex:
             self.conn.commit()
 
 
-def json_dumps(value: Optional[Dict[str, Any]]) -> Optional[str]:
+def json_dumps(value: Optional[Dict[str, Any]]) -> str:
     if value is None:
-        return None
+        return "{}"
     return json.dumps(value, sort_keys=True)
 
 

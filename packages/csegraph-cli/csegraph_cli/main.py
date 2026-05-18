@@ -19,11 +19,14 @@ from csegraph_cli.renderer import (
     render_context_markdown,
     render_benchmark_summary,
     render_hooks_summary,
+    render_install_summary,
     render_index_summary,
     render_json,
     render_path_summary,
+    render_postprocess_summary,
     render_refresh_summary,
     render_report_markdown,
+    render_status_summary,
     render_visual_export_summary,
 )
 
@@ -54,8 +57,14 @@ def main(argv: list[str] | None = None) -> int:
         print(render_benchmark_summary(payload), end="")
     elif args.command == "communities" and not args.json:
         print(render_communities_summary(payload), end="")
+    elif args.command == "status" and not args.json:
+        print(render_status_summary(payload), end="")
+    elif args.command == "postprocess" and not args.json:
+        print(render_postprocess_summary(payload), end="")
     elif args.command == "hooks" and not args.json:
         print(render_hooks_summary(payload), end="")
+    elif args.command == "install" and not args.json:
+        print(render_install_summary(payload), end="")
     elif args.command == "path" and not args.json:
         print(render_path_summary(payload), end="")
     elif args.json:
@@ -137,6 +146,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include human-readable explanations for context node selection.",
     )
+    context.add_argument(
+        "--detail-level",
+        choices=("auto", "minimal", "standard", "full"),
+        default="auto",
+        help="Context detail level: auto starts minimal if sufficient, minimal is compact routing, standard is working context, full includes all explanations.",
+    )
     _add_json(context)
 
     path = subparsers.add_parser("path", help="Find the shortest path between two nodes.")
@@ -180,6 +195,23 @@ def _build_parser() -> argparse.ArgumentParser:
         _add_repo_positional(sub)
         _add_json(sub)
 
+    install = subparsers.add_parser("install", help="Configure MCP clients to run csegraph serve.")
+    _add_repo_positional(install)
+    install.add_argument(
+        "--platform",
+        choices=["auto", "codex", "cursor", "claude-code", "gemini-cli", "kiro", "copilot"],
+        default="auto",
+        help="MCP client platform to configure.",
+    )
+    install.add_argument(
+        "--command",
+        dest="server_command",
+        default="csegraph",
+        help="Executable command used by MCP clients to launch csegraph.",
+    )
+    install.add_argument("--dry-run", action="store_true", help="Show planned writes without modifying files.")
+    _add_json(install)
+
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
     _add_repo_positional(report)
     _add_db(report)
@@ -194,6 +226,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
     serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
     _add_json(serve, suppress=True)
+
+    status = subparsers.add_parser("status", help="Show graph health and staleness info.")
+    status.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    status.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    status.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    status.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    status.add_argument("--verbose", action="store_true", help="Include extra detail (parse error paths).")
+
+    postprocess = subparsers.add_parser("postprocess", help="Rebuild FTS and communities without re-parsing.")
+    postprocess.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
+    postprocess.add_argument("--repo", dest="repo_opt", help="Repository root.")
+    postprocess.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    postprocess.add_argument("--no-fts", action="store_true", help="Skip FTS rebuild.")
+    postprocess.add_argument("--no-communities", action="store_true", help="Skip community detection.")
+    postprocess.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     _add_repo_positional(benchmark)
@@ -229,6 +276,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             max_tokens=args.max_tokens,
             explain=args.explain,
             config_path=args.config,
+            detail_level=args.detail_level,
         )
     if args.command == "path":
         from csegraph_core.graph.queries import GraphQueryService
@@ -271,6 +319,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if args.hooks_command == "uninstall":
             return uninstall_hooks(repo)
         raise ValueError(f"Unknown hooks subcommand: {args.hooks_command}")
+    if args.command == "install":
+        from csegraph_core.mcp_install import McpInstallService
+        repo = _repo_arg(args)
+        return McpInstallService(repo, command=args.server_command).install(
+            platform=args.platform,
+            dry_run=args.dry_run,
+        )
     if args.command == "report":
         from csegraph_core.graph.report import ReportService
         repo = _repo_arg(args)
@@ -285,6 +340,17 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.server import run_stdio
         asyncio.run(run_stdio())
         return None
+    if args.command == "status":
+        from csegraph_core.status import StatusService
+        repo = _repo_arg(args)
+        return StatusService(_db_arg(args, repo)).status(verbose=args.verbose)
+    if args.command == "postprocess":
+        from csegraph_core.postprocess import PostprocessService
+        repo = _repo_arg(args)
+        return PostprocessService(_db_arg(args, repo)).postprocess(
+            no_fts=args.no_fts,
+            no_communities=args.no_communities,
+        )
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)

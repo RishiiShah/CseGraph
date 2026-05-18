@@ -25,8 +25,10 @@ from csegraph_core.core.models import (
     PathEdge,
     PathResult,
     PathStep,
+    PostprocessResult,
     RefreshResult,
     ReportResult,
+    StatusResult,
     SufficiencyResult,
     VisualExportResult,
     to_dict,
@@ -39,8 +41,10 @@ from csegraph_core.graph.report import ReportService
 from csegraph_core.graph.visual import VisualExportService
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.index.services import IndexService, RefreshService
+from csegraph_core.postprocess import PostprocessService
 from csegraph_core.retrieval.constants import VALID_REASONS
 from csegraph_core.retrieval.context import ContextService
+from csegraph_core.status import StatusService
 
 __all__ = [
     "__version__",
@@ -62,6 +66,8 @@ __all__ = [
     "PathEdge",
     "PathResult",
     "PathStep",
+    "PostprocessResult",
+    "PostprocessService",
     "PROFILES",
     "ProfileConfig",
     "ProjectIndex",
@@ -69,6 +75,8 @@ __all__ = [
     "RefreshService",
     "ReportResult",
     "ReportService",
+    "StatusResult",
+    "StatusService",
     "SufficiencyMetrics",
     "SufficiencyResult",
     "VALID_REASONS",

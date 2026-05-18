@@ -137,6 +137,59 @@ def render_hooks_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_install_summary(payload: Dict[str, Any]) -> str:
+    lines = [
+        "MCP install:",
+        f"  Server:  {payload.get('server_name', 'csegraph')}",
+        f"  Command: {payload.get('server_command', 'csegraph')} {' '.join(payload.get('server_args') or [])}".rstrip(),
+    ]
+    if payload.get("dry_run"):
+        lines.append("  Mode:    dry run")
+    for target in payload.get("installed", []):
+        action = "Would write" if target.get("dry_run") else target.get("action", "updated").capitalize()
+        lines.append(f"  {action}: {target.get('platform')} -> {target.get('path')}")
+    for target in payload.get("skipped", []):
+        reason = target.get("reason") or "skipped"
+        lines.append(f"  Skipped: {target.get('platform')} ({reason})")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_status_summary(payload: Dict[str, Any]) -> str:
+    lines = [
+        f"Nodes: {payload.get('total_nodes', 0):,}",
+        f"Edges: {payload.get('total_edges', 0):,}",
+        f"Files: {payload.get('total_files', 0):,}",
+        f"Languages: {', '.join(payload.get('languages', []))}",
+        f"Schema: {payload.get('schema_version', '')}",
+        f"Last updated: {payload.get('updated_at', 'unknown')}",
+    ]
+    if payload.get("built_branch"):
+        lines.append(f"Built on branch: {payload['built_branch']}")
+    if payload.get("built_commit"):
+        lines.append(f"Built at commit: {payload['built_commit']}")
+    parse_errors = payload.get("parse_errors") or {}
+    if parse_errors:
+        lines.append("Parse errors:")
+        for path, error in sorted(parse_errors.items()):
+            lines.append(f"  {path}: {error}")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_postprocess_summary(payload: Dict[str, Any]) -> str:
+    parts = []
+    if "fts" not in payload.get("skipped", []):
+        parts.append(f"{payload.get('fts_entries', 0):,} FTS entries")
+    if "communities" not in payload.get("skipped", []):
+        parts.append(f"{payload.get('communities_detected', 0)} communities")
+    if not parts:
+        return "Post-processing: (skipped all steps)\n"
+    return f"Post-processing: {', '.join(parts)}\n"
+
+
 def render_path_summary(payload: Dict[str, Any]) -> str:
     if not payload.get("found"):
         return f"No path found between {payload.get('source', '?')} and {payload.get('target', '?')}.\n"
@@ -157,13 +210,48 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
         "",
         f"Query: {payload['query']}",
         f"Target: `{payload['target']}`",
+        f"Requested detail: `{payload.get('detail_level', 'auto')}`",
+        f"Returned detail: `{payload.get('returned_detail_level', 'minimal')}`",
         f"Total estimated tokens: {payload['total_estimated_tokens']}",
         f"Sufficient: {payload['sufficiency']['sufficient']}",
         "",
     ]
+
+    warnings = payload.get("warnings", [])
+    if warnings:
+        lines.extend(["## Warnings", ""])
+        for warning in warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+
+    next_actions = payload.get("next_actions", [])
+    if next_actions:
+        lines.extend(["## Next Actions", ""])
+        for action in next_actions:
+            lines.append(_render_next_action(action))
+        lines.append("")
+
     for rank, node in enumerate(payload["nodes"], start=1):
         lines.extend(_render_node(rank, node))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_next_action(action: Dict[str, Any]) -> str:
+    """Render a single next-action with its context fields."""
+    action_name = action.get("action", "unknown")
+    parts = [f"`{action_name}`"]
+
+    if action.get("detail_level"):
+        parts.append(f"detail `{action['detail_level']}`")
+    if action.get("tool"):
+        parts.append(f"tool `{action['tool']}`")
+    if action.get("node"):
+        parts.append(f"node `{action['node']}`")
+
+    reason = action.get("reason") or action.get("description") or ""
+    suffix = f" - {reason}" if reason else ""
+
+    return f"- {'; '.join(parts)}{suffix}"
 
 
 def _render_node(rank: int, node: Dict[str, Any]) -> List[str]:

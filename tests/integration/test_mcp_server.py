@@ -11,7 +11,13 @@ import json
 import pytest
 from pathlib import Path
 
-from csegraph_core.server.app import create_server, _handle_tool, _TOOLS
+from csegraph_core.server.app import (
+    create_server,
+    _handle_prompt,
+    _handle_tool,
+    _PROMPTS,
+    _TOOLS,
+)
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -56,6 +62,87 @@ class TestToolListing:
             for key in required:
                 assert key in props, f"{tool.name} declares required '{key}' not in properties"
 
+    def test_context_tool_declares_detail_level(self):
+        context_tool = next(tool for tool in _TOOLS if tool.name == "csegraph_context")
+        detail_level = context_tool.inputSchema["properties"]["detail_level"]
+
+        assert detail_level["enum"] == ["auto", "minimal", "standard", "full"]
+        assert detail_level["default"] == "auto"
+
+
+class TestPromptListing:
+    def test_prompt_names(self):
+        names = {prompt.name for prompt in _PROMPTS}
+        assert names == {
+            "csegraph-index",
+            "csegraph-refresh",
+            "csegraph-context",
+            "csegraph-review",
+            "csegraph-architecture",
+            "csegraph-pre-merge",
+        }
+
+    def test_prompts_have_metadata(self):
+        for prompt in _PROMPTS:
+            assert prompt.name
+            assert prompt.title
+            assert prompt.description
+            assert "-" in prompt.name
+
+    def test_prompt_arguments_are_declared_for_contextual_workflows(self):
+        by_name = {prompt.name: prompt for prompt in _PROMPTS}
+
+        context_args = {arg.name: arg for arg in by_name["csegraph-context"].arguments}
+        assert context_args["repo"].required is True
+        assert context_args["task"].required is True
+        assert context_args["target"].required is False
+
+        review_args = {arg.name: arg for arg in by_name["csegraph-review"].arguments}
+        assert review_args["repo"].required is True
+
+
+class TestHandlePrompt:
+    def test_context_prompt_references_context_tool(self):
+        result = _handle_prompt(
+            "csegraph-context",
+            {
+                "repo": "/repo",
+                "task": "fix auth refresh",
+                "target": "refresh_token",
+            },
+        )
+
+        assert result.messages
+        message = result.messages[0]
+        assert message.role == "user"
+        assert message.content.type == "text"
+        assert "csegraph_context" in message.content.text
+        assert "detail_level=auto" in message.content.text
+        assert "/repo" in message.content.text
+        assert "fix auth refresh" in message.content.text
+        assert "refresh_token" in message.content.text
+
+    def test_review_prompt_mentions_review_tool_workflow(self):
+        result = _handle_prompt("csegraph-review", {"repo": "/repo"})
+        text = result.messages[0].content.text
+
+        assert "csegraph_context" in text
+        assert "detail_level=auto" in text
+        assert "csegraph_report" in text
+        assert "csegraph_graph" in text
+
+    def test_pre_merge_prompt_mentions_detail_level_auto(self):
+        result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
+        text = result.messages[0].content.text
+
+        assert "csegraph_context" in text
+        assert "detail_level=auto" in text
+        assert "csegraph_report" in text
+
+    def test_unknown_prompt_raises(self):
+        with pytest.raises(ValueError, match="Unknown prompt"):
+            _handle_prompt("csegraph-nope", {})
+
 
 class TestHandleTool:
     def test_index_and_context(self, tmp_path):
@@ -79,6 +166,8 @@ class TestHandleTool:
         })
         assert "nodes" in ctx
         assert ctx["query"] == "How does greet work?"
+        assert ctx["detail_level"] == "auto"
+        assert ctx["returned_detail_level"] in {"minimal", "standard"}
 
     def test_refresh(self, tmp_path):
         repo = _make_repo(tmp_path)

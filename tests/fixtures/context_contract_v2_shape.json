@@ -1,5 +1,5 @@
 {
-  "schema_version": "csegraph-context-v1",
+  "schema_version": "csegraph-context-v2",
   "canonical_fields": [
     "command",
     "db_path",
@@ -7,21 +7,26 @@
     "profile",
     "query",
     "target",
+    "detail_level",
+    "returned_detail_level",
     "total_estimated_tokens",
     "sufficiency",
     "raw_code_nodes",
+    "next_actions",
+    "warnings",
     "run_id",
     "nodes"
   ],
   "canonical_node_fields": [
     "id",
     "kind",
+    "name",
     "language",
     "path",
     "line_range",
+    "score",
     "reason",
     "summary",
-    "source_text",
     "estimated_tokens"
   ],
   "sufficiency_fields": [
