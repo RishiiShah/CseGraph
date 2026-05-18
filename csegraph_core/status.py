@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from csegraph_core.core.models import StatusResult
 from csegraph_core.index.schema import SCHEMA_VERSION
@@ -17,7 +17,7 @@ class StatusService:
     def status(self, *, verbose: bool = False) -> StatusResult:
         if not Path(self.db_path).exists():
             raise ValueError(
-                "No csegraph index found. Run csegraph index . first."
+                "No csegraph index found. Run csegraph index first."
             )
 
         conn = sqlite3.connect(self.db_path)
@@ -29,7 +29,7 @@ class StatusService:
             ).fetchone()
             if not table_check:
                 raise ValueError(
-                    "No csegraph index found. Run csegraph index . first."
+                    "No csegraph index found. Run csegraph index first."
                 )
 
             meta = {
@@ -38,7 +38,7 @@ class StatusService:
             }
             if "root_dir" not in meta:
                 raise ValueError(
-                    "No csegraph index found. Run csegraph index . first."
+                    "No csegraph index found. Run csegraph index first."
                 )
 
             repo_root = meta["root_dir"]
@@ -68,7 +68,10 @@ class StatusService:
                     )
                 }
 
-            warnings = _build_warnings(meta, repo_root)
+            current_branch, current_commit = (
+                git_head_state(repo_root) if Path(repo_root).exists() else (None, None)
+            )
+            warnings = _build_warnings(meta, repo_root, current_branch, current_commit)
 
             built_branch = meta.get("built_branch") or None
             built_commit = meta.get("built_commit") or None
@@ -88,8 +91,8 @@ class StatusService:
                 updated_at=_epoch_to_iso(meta.get("updated_at")),
                 built_branch=built_branch,
                 built_commit=built_commit,
-                current_branch=git_head_state(repo_root)[0] if Path(repo_root).exists() else None,
-                current_commit=git_head_state(repo_root)[1] if Path(repo_root).exists() else None,
+                current_branch=current_branch,
+                current_commit=current_commit,
                 warnings=warnings,
                 parse_errors=parse_errors,
             )
@@ -108,31 +111,32 @@ def _epoch_to_iso(value: Optional[str]) -> Optional[str]:
         return None
 
 
-def _build_warnings(meta: dict, repo_root: str) -> List[str]:
+def _build_warnings(
+    meta: Dict[str, str],
+    repo_root: str,
+    current_branch: Optional[str] = None,
+    current_commit: Optional[str] = None,
+) -> List[str]:
     warnings: List[str] = []
     schema = meta.get("schema_version")
     if schema and schema != SCHEMA_VERSION:
         warnings.append(
             f"Schema mismatch: index has '{schema}' but current version is '{SCHEMA_VERSION}'. "
-            "Run 'csegraph index .' to rebuild."
+            "Run 'csegraph index' to rebuild."
         )
 
-    if not Path(repo_root).exists():
-        return warnings
-
-    current_branch, current_commit = git_head_state(repo_root)
     built_branch = meta.get("built_branch")
     built_commit = meta.get("built_commit")
 
     if built_branch and current_branch and built_branch != current_branch:
         warnings.append(
             f"Graph was built on '{built_branch}' but you are now on '{current_branch}'. "
-            "Run 'csegraph index .' to rebuild."
+            "Run 'csegraph index' to rebuild."
         )
     if built_commit and current_commit and built_commit != current_commit:
         warnings.append(
             f"Graph was built at commit {built_commit} but HEAD is now {current_commit}. "
-            "Run 'csegraph refresh .' to update."
+            "Run 'csegraph refresh' to update."
         )
 
     return warnings

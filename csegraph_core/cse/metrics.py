@@ -99,8 +99,9 @@ def raw_code_nodes(
 ) -> Set[str]:
     if metrics.model_confidence >= confidence_threshold:
         return set()
+    context_set = set(context_ids)
     raw: List[str] = []
     for edge in outgoing.get(target_id, []):
-        if edge["relation"] == "calls" and edge["target_id"] in context_ids:
+        if edge["relation"] == "calls" and edge["target_id"] in context_set:
             raw.append(edge["target_id"])
     return set(raw[:budget])

@@ -8,7 +8,7 @@ If working from source (monorepo):
 
     pip install -e . -e packages/csegraph-cli/
 
-Then use: csegraph index . / csegraph context "..."
+Then use: csegraph index / csegraph context "..."
 """
 
 import sys

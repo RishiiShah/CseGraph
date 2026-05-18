@@ -20,7 +20,7 @@ class PostprocessService:
     ) -> PostprocessResult:
         # Preflight check: ensure DB exists and has been indexed
         if not Path(self.db_path).exists():
-            raise ValueError("No csegraph index found. Run csegraph index . first.")
+            raise ValueError("No csegraph index found. Run csegraph index first.")
 
         index = ProjectIndex(self.db_path)
         try:
@@ -28,7 +28,7 @@ class PostprocessService:
                 meta = index.metadata(raise_if_empty=True)
             except ValueError:
                 raise ValueError(
-                    "No csegraph index found. Run csegraph index . first."
+                    "No csegraph index found. Run csegraph index first."
                 )
             repo_root = meta["root_dir"]
 
@@ -117,7 +117,10 @@ def _read_source_slice(
     end_line: int,
 ) -> str:
     try:
-        full_path = Path(repo_root) / rel_path
+        root = Path(repo_root).resolve()
+        full_path = (root / rel_path).resolve()
+        if not full_path.is_relative_to(root):
+            return ""
         lines = full_path.read_text(errors="replace").splitlines()
         source = "\n".join(lines[start_line - 1 : end_line])
     except (OSError, IndexError):
@@ -126,5 +129,5 @@ def _read_source_slice(
     try:
         tokenizer = registry.tokenizer_for(language)
         return " ".join(tokenizer.tokenize(source))
-    except (UnsupportedLanguageError, Exception):
+    except UnsupportedLanguageError:
         return ""
