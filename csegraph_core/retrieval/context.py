@@ -194,7 +194,7 @@ class ContextService:
                 total_estimated_tokens=estimated_tokens,
                 nodes=nodes,
                 raw_code_nodes=sorted(final_raw_nodes),
-                next_actions=_next_actions(returned_detail_level, sufficient, target_id),
+                next_actions=_next_actions(returned_detail_level, target_id),
                 warnings=_warnings(sufficient),
                 run_id=run_id,
             )
@@ -437,7 +437,6 @@ def _source_candidate_ids(
 
 def _next_actions(
     returned_detail_level: str,
-    sufficient: bool,
     target_id: str,
 ) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
@@ -453,12 +452,6 @@ def _next_actions(
             "tool": "csegraph_graph",
             "node": target_id,
             "reason": "Inspect graph neighbors when blast radius or dependencies matter.",
-        })
-    if not sufficient:
-        actions.append({
-            "action": "check_report",
-            "tool": "csegraph_report",
-            "reason": "Review structural gaps because sufficiency thresholds were not met.",
         })
     return actions
 

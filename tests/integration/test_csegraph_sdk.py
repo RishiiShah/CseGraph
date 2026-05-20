@@ -124,6 +124,7 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     graph = GraphQueryService(db_path).neighborhood(
         "symbol::main.py::function::build_report",
         depth=1,
+        detail_level="standard",
     )
     edge_shapes = {(edge.source, edge.relation, edge.target) for edge in graph.edges}
     assert (

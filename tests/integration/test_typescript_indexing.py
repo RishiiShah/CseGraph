@@ -64,6 +64,7 @@ def test_inspect_typescript_class(tmp_path):
     result = run_cli(
         "inspect", "UserService",
         "--repo", str(repo),
+        "--detail-level", "standard",
         "--json",
     )
 
@@ -82,6 +83,7 @@ def test_typescript_cross_file_call_edge(tmp_path):
         "symbol::service.ts::method::UserService.createUser",
         "--repo", str(repo),
         "--depth", "1",
+        "--detail-level", "standard",
         "--json",
     )
 
@@ -100,6 +102,7 @@ def test_typescript_import_edge(tmp_path):
         "inspect", "file::service.ts",
         "--repo", str(repo),
         "--depth", "1",
+        "--detail-level", "standard",
         "--json",
     )
 

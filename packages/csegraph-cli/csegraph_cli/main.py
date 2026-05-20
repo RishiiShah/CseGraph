@@ -114,6 +114,23 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(refresh)
     _add_json(refresh)
 
+    minimal = subparsers.add_parser(
+        "minimal",
+        help="Compact routing card with key entities and next-tool suggestions (call first).",
+    )
+    minimal.add_argument(
+        "--repo",
+        default=None,
+        help="Repository root containing the default .csegraph index.",
+    )
+    minimal.add_argument(
+        "--task",
+        default=None,
+        help="Optional task description for keyword routing.",
+    )
+    _add_db(minimal)
+    _add_json(minimal)
+
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
     context.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
@@ -160,6 +177,12 @@ def _build_parser() -> argparse.ArgumentParser:
     path.add_argument("--source", default=None, help="Source node.")
     path.add_argument("--target", default=None, help="Target node.")
     path.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    path.add_argument(
+        "--detail-level",
+        choices=["minimal", "standard"],
+        default="minimal",
+        help="minimal: name chain + length. standard: full nodes/edges.",
+    )
     _add_db(path)
     _add_json(path)
 
@@ -169,6 +192,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(inspect)
     inspect.add_argument("--node", default=None, help="Node ID, symbol name, or file path.")
     inspect.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
+    inspect.add_argument(
+        "--detail-level",
+        choices=["minimal", "standard"],
+        default="minimal",
+        help="minimal: summary + top-degree key nodes. standard: full nodes/edges.",
+    )
     _add_json(inspect)
 
     graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
@@ -268,6 +297,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.index.services import RefreshService
         repo = _repo_arg(args)
         return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)
+    if args.command == "minimal":
+        from csegraph_core.retrieval.minimal import MinimalService
+        repo = Path(args.repo or ".").resolve()
+        return MinimalService(_db_arg(args, str(repo))).first(task=args.task)
     if args.command == "context":
         from csegraph_core.retrieval.context import ContextService
         repo = Path(args.repo or ".").resolve()
@@ -291,14 +324,18 @@ def _dispatch(args: argparse.Namespace) -> Any:
         target = args.target or args.target_arg
         if not source or not target:
             raise ValueError("path requires two nodes. Example: csegraph path greet main")
-        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(source, target)
+        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(
+            source, target, detail_level=args.detail_level
+        )
     if args.command == "inspect":
         from csegraph_core.graph.queries import GraphQueryService
         repo = Path(args.repo or ".").resolve()
         node = args.node or args.node_arg
         if not node:
             raise ValueError("inspect requires a node. Example: csegraph inspect MyClass.method")
-        result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
+        result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(
+            node, depth=args.depth, detail_level=args.detail_level
+        )
         result.command = "inspect"
         return result
     if args.command == "graph":

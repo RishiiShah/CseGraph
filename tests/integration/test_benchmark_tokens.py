@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from csegraph_core.benchmark import BenchmarkService, _count_raw_tokens
+import subprocess
+
+from csegraph_core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -54,11 +56,24 @@ class TestBenchmarkTokenReduction:
         result = BenchmarkService(db).run(repo, profile="small")
         tr = next(s for s in result.steps if s.name == "token_reduction")
         assert "raw_tokens" in tr.stats
+        assert "diff_tokens" in tr.stats
         assert "context_tokens" in tr.stats
         assert "reduction_percent" in tr.stats
+        assert "naive_to_graph_ratio" in tr.stats
+        assert "diff_to_graph_ratio" in tr.stats
         assert "ratio" in tr.stats
         assert tr.stats["raw_tokens"] > 0
         assert isinstance(tr.stats["reduction_percent"], float)
+        assert isinstance(tr.stats["naive_to_graph_ratio"], float)
+        assert isinstance(tr.stats["diff_to_graph_ratio"], float)
+
+    def test_non_git_repo_reports_zero_diff(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "bench.db")
+        result = BenchmarkService(db).run(repo, profile="small")
+        tr = next(s for s in result.steps if s.name == "token_reduction")
+        assert tr.stats["diff_tokens"] == 0
+        assert tr.stats["diff_to_graph_ratio"] == 0.0
 
     def test_context_tokens_less_than_raw(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -84,6 +99,42 @@ class TestBenchmarkTokenReduction:
         serialized = json.dumps(payload)
         assert "token_reduction" in serialized
         assert "raw_tokens" in serialized
+
+
+class TestCountDiffTokens:
+    def _git(self, repo: Path, *args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+                 "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        )
+
+    def test_non_git_repo_returns_zero(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        assert _count_diff_tokens(repo) == 0
+
+    def test_clean_git_repo_returns_zero(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        self._git(repo, "init", "-q", "-b", "main")
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-q", "-m", "init")
+        assert _count_diff_tokens(repo) == 0
+
+    def test_dirty_git_repo_counts_diff(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        self._git(repo, "init", "-q", "-b", "main")
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-q", "-m", "init")
+        (repo / "app.py").write_text(
+            'from helpers import fmt\n\ndef greet(name: str) -> str:\n    """Say hello loudly."""\n    return fmt(name).upper()\n',
+            encoding="utf-8",
+        )
+        tokens = _count_diff_tokens(repo)
+        assert tokens > 0
 
 
 class TestBenchmarkContextQuality:

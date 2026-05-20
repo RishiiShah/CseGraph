@@ -69,6 +69,32 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_minimal",
+        description=(
+            "Call this FIRST. Returns a ~150-token routing card: graph summary, top-degree key "
+            "entities, detected task intent, and next-tool suggestions tailored to the task. "
+            "Use this before invoking heavier tools so the agent knows which one to call."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Optional natural-language task. Used for keyword-based next-tool routing.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
         name="csegraph_context",
         description=(
             "Retrieve task-specific context from a csegraph index. "
@@ -128,7 +154,9 @@ _TOOLS: list[Tool] = [
         name="csegraph_graph",
         description=(
             "Inspect the graph neighborhood around a symbol or node. "
-            "Returns nodes and edges within a configurable BFS depth."
+            "Returns nodes and edges within a configurable BFS depth. "
+            "Default detail_level=minimal returns a summary and top-degree nodes; "
+            "use standard for the full node and edge list."
         ),
         inputSchema={
             "type": "object",
@@ -146,6 +174,12 @@ _TOOLS: list[Tool] = [
                     "default": 1,
                     "description": "BFS neighborhood depth.",
                 },
+                "detail_level": {
+                    "type": "string",
+                    "enum": ["minimal", "standard"],
+                    "default": "minimal",
+                    "description": "minimal returns summary + top-degree key nodes; standard returns the full nodes and edges.",
+                },
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
@@ -158,7 +192,8 @@ _TOOLS: list[Tool] = [
         name="csegraph_path",
         description=(
             "Find the shortest path between two nodes in the csegraph dependency graph. "
-            "Returns the sequence of nodes and edges connecting them via BFS."
+            "Default detail_level=minimal returns a name-chain summary; "
+            "use standard for the full PathStep and PathEdge sequence."
         ),
         inputSchema={
             "type": "object",
@@ -175,79 +210,18 @@ _TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Absolute path to the repository root.",
                 },
+                "detail_level": {
+                    "type": "string",
+                    "enum": ["minimal", "standard"],
+                    "default": "minimal",
+                    "description": "minimal returns the name chain + length; standard returns the full PathStep nodes and PathEdge edges.",
+                },
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
                 },
             },
             "required": ["source", "target", "repo"],
-        },
-    ),
-    Tool(
-        name="csegraph_tree",
-        description=(
-            "Export an interactive HTML file tree visualization of the indexed repository. "
-            "Shows the full hierarchy of folders, files, classes, functions, and methods."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Absolute path to the repository root.",
-                },
-                "output": {
-                    "type": "string",
-                    "description": "Output HTML file path. Default: <repo>/.csegraph/csegraph-tree.html",
-                },
-                "db": {
-                    "type": "string",
-                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
-                },
-            },
-            "required": ["repo"],
-        },
-    ),
-    Tool(
-        name="csegraph_communities",
-        description=(
-            "Detect communities in the csegraph dependency graph using modularity optimization. "
-            "Returns clusters of related files and symbols."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Absolute path to the repository root.",
-                },
-                "db": {
-                    "type": "string",
-                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
-                },
-            },
-            "required": ["repo"],
-        },
-    ),
-    Tool(
-        name="csegraph_report",
-        description=(
-            "Generate a structural report from a csegraph index. "
-            "Includes node/edge counts, god nodes, knowledge gaps, and suggested questions."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Absolute path to the repository root.",
-                },
-                "db": {
-                    "type": "string",
-                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
-                },
-            },
-            "required": ["repo"],
         },
     ),
 ]
@@ -272,6 +246,15 @@ _PROMPTS: list[Prompt] = [
         ],
     ),
     Prompt(
+        name="csegraph-minimal",
+        title="Routing Card (Call First)",
+        description="Run csegraph_minimal first to get a compact summary and next-tool suggestions.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="task", description="Optional task description for keyword routing.", required=False),
+        ],
+    ),
+    Prompt(
         name="csegraph-context",
         title="Retrieve Context",
         description="Retrieve compact graph-backed context for a task and optional target.",
@@ -288,15 +271,6 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Optional review focus.", required=False),
-        ],
-    ),
-    Prompt(
-        name="csegraph-architecture",
-        title="Map Architecture",
-        description="Build an architecture overview from csegraph report, communities, and graph inspection.",
-        arguments=[
-            PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="focus", description="Optional subsystem or symbol focus.", required=False),
         ],
     ),
     Prompt(
@@ -361,6 +335,13 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         return to_dict(RefreshService(db).refresh(profile=profile))
 
+    if name == "csegraph_minimal":
+        from csegraph_core.retrieval.minimal import MinimalService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(MinimalService(db).first(task=arguments.get("task")))
+
     if name == "csegraph_context":
         from csegraph_core.retrieval.context import ContextService
 
@@ -384,36 +365,28 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
         depth = arguments.get("depth", 1)
-        return to_dict(GraphQueryService(db).neighborhood(arguments["node"], depth=depth))
+        detail_level = arguments.get("detail_level", "minimal")
+        return to_dict(
+            GraphQueryService(db).neighborhood(
+                arguments["node"],
+                depth=depth,
+                detail_level=detail_level,
+            )
+        )
 
     if name == "csegraph_path":
         from csegraph_core.graph.queries import GraphQueryService
 
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(GraphQueryService(db).shortest_path(arguments["source"], arguments["target"]))
-
-    if name == "csegraph_tree":
-        from csegraph_core.graph.tree import TreeExportService
-
-        repo = arguments["repo"]
-        db = _db_path(repo, arguments.get("db"))
-        output = arguments.get("output") or str(Path(db).with_name("csegraph-tree.html"))
-        return to_dict(TreeExportService(db).export(output))
-
-    if name == "csegraph_communities":
-        from csegraph_core.graph.communities import detect_communities
-
-        repo = arguments["repo"]
-        db = _db_path(repo, arguments.get("db"))
-        return to_dict(detect_communities(db))
-
-    if name == "csegraph_report":
-        from csegraph_core.graph.report import ReportService
-
-        repo = arguments["repo"]
-        db = _db_path(repo, arguments.get("db"))
-        return to_dict(ReportService(db).report())
+        detail_level = arguments.get("detail_level", "minimal")
+        return to_dict(
+            GraphQueryService(db).shortest_path(
+                arguments["source"],
+                arguments["target"],
+                detail_level=detail_level,
+            )
+        )
 
     raise ValueError(f"Unknown tool: {name}")
 
@@ -440,6 +413,16 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             ],
             args,
         )
+    elif name == "csegraph-minimal":
+        text = _prompt_text(
+            "Get a compact routing card before invoking heavier tools.",
+            [
+                "If `repo` is missing, ask the user for the absolute repository path.",
+                "Call `csegraph_minimal` with the repo and the user's task (if any).",
+                "Use the returned `next_tool_suggestions` to choose the next call; do not invoke unrelated tools.",
+            ],
+            args,
+        )
     elif name == "csegraph-context":
         text = _prompt_text(
             "Retrieve graph-backed context for the task, starting with minimal if sufficient.",
@@ -456,20 +439,8 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             "Review the current work using csegraph before making recommendations.",
             [
                 "Call `csegraph_context` with detail_level=auto to start efficiently (returns minimal if sufficient, standard otherwise).",
-                "Call `csegraph_report` to inspect structural risks and knowledge gaps.",
                 "Use `csegraph_graph` for key changed symbols when a neighborhood clarifies blast radius.",
                 "Report findings first, ordered by severity, with file and symbol references.",
-            ],
-            args,
-        )
-    elif name == "csegraph-architecture":
-        text = _prompt_text(
-            "Map the repository architecture from graph data.",
-            [
-                "Call `csegraph_report` for corpus, node, edge, hotspot, and gap summaries.",
-                "Call `csegraph_communities` to identify dependency clusters.",
-                "Use `csegraph_graph` to inspect important hubs or focused subsystems.",
-                "Summarize components, dependencies, hotspots, and recommended next questions.",
             ],
             args,
         )
@@ -479,7 +450,6 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             [
                 "Call `csegraph_refresh` first if the index may be stale.",
                 "Call `csegraph_context` with detail_level=auto for the merge or PR task; request standard only when source is needed.",
-                "Call `csegraph_report` for structural risks and knowledge gaps.",
                 "Use `csegraph_path` or `csegraph_graph` for any risky dependency questions.",
                 "Return blockers, residual risks, and verification commands.",
             ],

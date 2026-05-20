@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 import time
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar
@@ -165,6 +166,10 @@ class BenchmarkService:
             lambda: _count_raw_tokens(Path(repo_root))
         )
 
+        diff_tokens, diff_elapsed = _time_call(
+            lambda: _count_diff_tokens(Path(repo_root))
+        )
+
         context_with_source, ctx_elapsed = _time_call(
             lambda: ContextService(self.db_path).build_context(
                 task=query,
@@ -180,14 +185,27 @@ class BenchmarkService:
             if raw_tokens > 0
             else 0.0
         )
+        naive_to_graph_ratio = (
+            round(raw_tokens / context_tokens, 2)
+            if context_tokens > 0
+            else 0.0
+        )
+        diff_to_graph_ratio = (
+            round(diff_tokens / context_tokens, 2)
+            if context_tokens > 0 and diff_tokens > 0
+            else 0.0
+        )
         steps.append(
             BenchmarkStep(
                 name="token_reduction",
-                elapsed_ms=round(raw_elapsed + ctx_elapsed, 3),
+                elapsed_ms=round(raw_elapsed + diff_elapsed + ctx_elapsed, 3),
                 stats={
                     "raw_tokens": raw_tokens,
+                    "diff_tokens": diff_tokens,
                     "context_tokens": context_tokens,
                     "reduction_percent": reduction_pct,
+                    "naive_to_graph_ratio": naive_to_graph_ratio,
+                    "diff_to_graph_ratio": diff_to_graph_ratio,
                     "ratio": f"{context_tokens}:{raw_tokens}",
                 },
             )
@@ -231,3 +249,26 @@ def _count_raw_tokens(repo_root: Path) -> int:
         except OSError:
             continue
     return total
+
+
+def _count_diff_tokens(repo_root: Path) -> int:
+    """Token count of `git diff HEAD` output. Returns 0 for non-git repos or git failures."""
+    if not (repo_root / ".git").exists():
+        return 0
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), "diff", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    if completed.returncode != 0:
+        return 0
+    diff_text = completed.stdout
+    if not diff_text:
+        return 0
+    return max(1, math.ceil(len(diff_text) / 2.7))

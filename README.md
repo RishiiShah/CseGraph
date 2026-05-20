@@ -65,12 +65,12 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 |---|---|
 | `csegraph_index` | Build a repository SQLite graph index. |
 | `csegraph_refresh` | Refresh changed/deleted files in an existing index. |
+| `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. |
 | `csegraph_context` | Retrieve compact task-specific context. |
 | `csegraph_graph` | Inspect a graph neighborhood around a node. |
 | `csegraph_path` | Find the shortest path between two nodes. |
-| `csegraph_tree` | Export an interactive HTML file tree. |
-| `csegraph_communities` | Detect dependency graph communities. |
-| `csegraph_report` | Generate a structural report from the index. |
+
+The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
 MCP prompts are workflow templates that clients may expose as slash commands.
 
@@ -78,9 +78,9 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 |---|---|
 | `csegraph-index` | Ask the agent to build the graph with `csegraph_index`. |
 | `csegraph-refresh` | Ask the agent to refresh changed files with `csegraph_refresh`. |
+| `csegraph-minimal` | Call `csegraph_minimal` first for a routing card. |
 | `csegraph-context` | Retrieve task-specific context with `csegraph_context`. |
-| `csegraph-review` | Review changes with context, report, and graph tools. |
-| `csegraph-architecture` | Map architecture from report, communities, and graph data. |
+| `csegraph-review` | Review changes with context and graph tools. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
 
 ## .csegraphignore

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -13,6 +14,11 @@ from csegraph_core.core.models import (
     PathStep,
 )
 from csegraph_core.index.repository import ProjectIndex, json_loads
+
+
+_MINIMAL_GRAPH_KEY_NODES = 5
+_HUB_FLOOR = 50
+_HUB_PERCENTILE = 0.99
 
 
 _BFS_CTE = """
@@ -32,11 +38,55 @@ SELECT DISTINCT node_id FROM bfs
 """
 
 
+def _compute_hub_threshold(index: Any) -> int:
+    """p99 of node degrees, floored at _HUB_FLOOR. Returns large int when graph is tiny."""
+    rows = index.conn.execute(
+        """
+        SELECT COUNT(*) AS deg FROM (
+            SELECT source AS node_id FROM edges
+            UNION ALL
+            SELECT target AS node_id FROM edges
+        )
+        GROUP BY node_id
+        ORDER BY deg ASC
+        """
+    ).fetchall()
+    if not rows:
+        return _HUB_FLOOR
+    degrees = [int(row["deg"]) for row in rows]
+    idx = max(0, math.ceil(_HUB_PERCENTILE * len(degrees)) - 1)
+    p99 = degrees[idx]
+    return max(p99, _HUB_FLOOR)
+
+
+def _hub_node_ids(index: Any, threshold: int) -> Set[str]:
+    rows = index.conn.execute(
+        """
+        SELECT node_id FROM (
+            SELECT source AS node_id FROM edges
+            UNION ALL
+            SELECT target AS node_id FROM edges
+        )
+        GROUP BY node_id
+        HAVING COUNT(*) >= ?
+        """,
+        (threshold,),
+    ).fetchall()
+    return {row["node_id"] for row in rows}
+
+
 class GraphQueryService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def neighborhood(self, node_id: str, depth: int = 1) -> GraphResult:
+    def neighborhood(
+        self,
+        node_id: str,
+        depth: int = 1,
+        detail_level: str = "minimal",
+    ) -> GraphResult:
+        if detail_level not in ("minimal", "standard"):
+            raise ValueError(f"detail_level must be 'minimal' or 'standard', got '{detail_level}'")
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -45,9 +95,37 @@ class GraphQueryService:
 
             resolved = _resolve_graph_node(index, node_id, repo_root)
 
+            threshold = _compute_hub_threshold(index)
+            hubs = _hub_node_ids(index, threshold)
+            hubs.discard(resolved)
+
             visited: Set[str] = set()
-            for row in index.conn.execute(_BFS_CTE, (resolved, depth)):
-                visited.add(row["node_id"])
+            if hubs:
+                hub_placeholders = ",".join("?" for _ in hubs)
+                hub_aware_cte = f"""
+                WITH RECURSIVE bfs(node_id, depth) AS (
+                    SELECT ?, 0
+                  UNION
+                    SELECT
+                        CASE WHEN e.source = bfs.node_id THEN e.target
+                             ELSE e.source END,
+                        bfs.depth + 1
+                    FROM bfs
+                    JOIN edges e
+                      ON (e.source = bfs.node_id OR e.target = bfs.node_id)
+                    WHERE bfs.depth < ?
+                      AND bfs.node_id NOT IN ({hub_placeholders})
+                )
+                SELECT DISTINCT node_id FROM bfs
+                """
+                params: Tuple[Any, ...] = (resolved, depth, *hubs)
+                for row in index.conn.execute(hub_aware_cte, params):
+                    visited.add(row["node_id"])
+            else:
+                for row in index.conn.execute(_BFS_CTE, (resolved, depth)):
+                    visited.add(row["node_id"])
+
+            hubs_skipped = len(hubs & visited)
 
             placeholders = ",".join("?" for _ in visited)
             visited_list = list(visited)
@@ -72,6 +150,39 @@ class GraphQueryService:
                 key = (edge["source"], edge["target"], edge["relation"], edge.get("metadata") or "")
                 selected_edges[key] = edge
 
+            total_nodes = len(visited)
+            total_edges = len(selected_edges)
+            hubs_note = f" Skipped {hubs_skipped} hub(s)." if hubs_skipped else ""
+            summary = (
+                f"{total_nodes} nodes, {total_edges} edges within depth {depth} around "
+                f"'{_short_name(resolved, node_rows)}'."
+                + hubs_note
+            )
+
+            if detail_level == "minimal":
+                key_node_ids = _top_nodes_by_degree(
+                    visited_list,
+                    selected_edges.values(),
+                    resolved,
+                    limit=_MINIMAL_GRAPH_KEY_NODES,
+                )
+                nodes = [_node_view_from_row(nid, node_rows) for nid in key_node_ids]
+                return GraphResult(
+                    command="graph",
+                    db_path=self.db_path,
+                    repo_root=repo_root,
+                    target=resolved,
+                    depth=depth,
+                    nodes=nodes,
+                    edges=[],
+                    detail_level="minimal",
+                    summary=summary,
+                    total_nodes=total_nodes,
+                    total_edges=total_edges,
+                    truncated=total_nodes > len(nodes) or total_edges > 0,
+                    hubs_skipped=hubs_skipped,
+                )
+
             nodes = [_node_view_from_row(nid, node_rows) for nid in sorted(visited)]
             graph_edges = [
                 GraphEdgeView(
@@ -95,12 +206,25 @@ class GraphQueryService:
                 depth=depth,
                 nodes=nodes,
                 edges=graph_edges,
+                detail_level="standard",
+                summary=summary,
+                total_nodes=total_nodes,
+                total_edges=total_edges,
+                truncated=False,
+                hubs_skipped=hubs_skipped,
             )
         finally:
             index.close()
 
 
-    def shortest_path(self, source: str, target: str) -> PathResult:
+    def shortest_path(
+        self,
+        source: str,
+        target: str,
+        detail_level: str = "minimal",
+    ) -> PathResult:
+        if detail_level not in ("minimal", "standard"):
+            raise ValueError(f"detail_level must be 'minimal' or 'standard', got '{detail_level}'")
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -130,6 +254,7 @@ class GraphQueryService:
                         queue.append(neighbor)
 
             if not found:
+                summary = f"No path: '{source}' ↛ '{target}'."
                 return PathResult(
                     command="path",
                     db_path=self.db_path,
@@ -140,6 +265,8 @@ class GraphQueryService:
                     length=0,
                     nodes=[],
                     edges=[],
+                    detail_level=detail_level,
+                    summary=summary,
                 )
 
             path_ids: List[str] = []
@@ -165,8 +292,35 @@ class GraphQueryService:
             ):
                 node_rows[row["id"]] = dict(row)
 
-            steps = [_path_step_from_row(nid, node_rows) for nid in path_ids]
+            name_chain = " → ".join(_short_name(nid, node_rows) for nid in path_ids)
+            summary = f"{name_chain} ({len(path_edges)} hops)"
 
+            if detail_level == "minimal":
+                minimal_steps = [
+                    PathStep(
+                        node_id=nid,
+                        kind="",
+                        name=_short_name(nid, node_rows),
+                        path="",
+                        line_range=None,
+                    )
+                    for nid in path_ids
+                ]
+                return PathResult(
+                    command="path",
+                    db_path=self.db_path,
+                    repo_root=repo_root,
+                    source=src,
+                    target=dst,
+                    found=True,
+                    length=len(path_edges),
+                    nodes=minimal_steps,
+                    edges=[],
+                    detail_level="minimal",
+                    summary=summary,
+                )
+
+            steps = [_path_step_from_row(nid, node_rows) for nid in path_ids]
             return PathResult(
                 command="path",
                 db_path=self.db_path,
@@ -177,9 +331,41 @@ class GraphQueryService:
                 length=len(path_edges),
                 nodes=steps,
                 edges=path_edges,
+                detail_level="standard",
+                summary=summary,
             )
         finally:
             index.close()
+
+
+def _short_name(node_id: str, node_rows: Dict[str, Dict[str, Any]]) -> str:
+    row = node_rows.get(node_id)
+    if row is None:
+        return node_id
+    name = row.get("name")
+    if name:
+        return name
+    path = row.get("path") or ""
+    return Path(path).name if path else node_id
+
+
+def _top_nodes_by_degree(
+    visited: List[str],
+    edges: Any,
+    target_id: str,
+    limit: int,
+) -> List[str]:
+    degree: Dict[str, int] = {nid: 0 for nid in visited}
+    for edge in edges:
+        if edge["source"] in degree:
+            degree[edge["source"]] += 1
+        if edge["target"] in degree:
+            degree[edge["target"]] += 1
+    ranked = sorted(
+        visited,
+        key=lambda nid: (nid != target_id, -degree.get(nid, 0), nid),
+    )
+    return ranked[:limit]
 
 
 def _path_step_from_row(node_id: str, node_rows: Dict[str, Dict[str, Any]]) -> PathStep:

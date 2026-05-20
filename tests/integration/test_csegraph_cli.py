@@ -118,6 +118,8 @@ def test_cli_json_contracts(tmp_path):
         str(repo),
         "--depth",
         "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
     assert neighborhood["command"] == "inspect"

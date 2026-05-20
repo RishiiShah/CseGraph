@@ -133,6 +133,12 @@ class GraphResult:
     depth: int
     nodes: List[GraphNodeView]
     edges: List[GraphEdgeView]
+    detail_level: str = "standard"
+    summary: str = ""
+    total_nodes: int = 0
+    total_edges: int = 0
+    truncated: bool = False
+    hubs_skipped: int = 0
 
 
 @dataclass
@@ -162,6 +168,8 @@ class PathResult:
     length: int
     nodes: List[PathStep]
     edges: List[PathEdge]
+    detail_level: str = "standard"
+    summary: str = ""
 
 
 @dataclass
@@ -266,6 +274,35 @@ class McpInstallResult:
     dry_run: bool
     installed: List[McpInstallTarget] = field(default_factory=list)
     skipped: List[McpInstallTarget] = field(default_factory=list)
+
+
+@dataclass
+class KeyEntity:
+    id: str
+    name: str
+    kind: str
+    path: str
+    degree: int
+
+
+@dataclass
+class NextToolSuggestion:
+    tool: str
+    reason: str
+    args: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class MinimalResult:
+    command: str
+    db_path: str
+    repo_root: str
+    summary: str
+    task: Optional[str]
+    task_intent: str
+    key_entities: List[KeyEntity]
+    next_tool_suggestions: List[NextToolSuggestion]
+    estimated_tokens: int
 
 
 def to_dict(value: Any) -> Any:
