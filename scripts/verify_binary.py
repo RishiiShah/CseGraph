@@ -1,10 +1,11 @@
-"""Verify a Nuitka-built csegraph standalone binary.
+"""Verify a Nuitka-built csegraph binary (standalone or onefile).
 
 Cross-platform verification: no dependency on GNU timeout or other
 platform-specific tools. Uses Python subprocess with timeouts.
 
 Usage:
-    python scripts/verify_binary.py dist/__main__.dist/csegraph
+    python scripts/verify_binary.py dist/__main__.dist/csegraph             # standalone
+    python scripts/verify_binary.py dist/csegraph                            # onefile
     python scripts/verify_binary.py dist/__main__.dist/csegraph --repo /path/to/repo
 """
 from __future__ import annotations
@@ -63,45 +64,45 @@ _CSEGRAPH_IDENTIFIERS = {
 }
 
 
-def _check_source_leakage(dist_dir: Path) -> list[tuple[str, str]]:
+def _check_source_leakage(binary: Path, dist_dir: Path | None) -> list[tuple[str, str]]:
     issues: list[tuple[str, str]] = []
 
-    for ext in (".py", ".pyc"):
-        found = list(dist_dir.rglob(f"*{ext}"))
-        if found:
-            rel = [str(f.relative_to(dist_dir)) for f in found[:10]]
-            suffix = f" (and {len(found) - 10} more)" if len(found) > 10 else ""
-            issues.append((FAIL, f"Found {len(found)} {ext} files in dist: {', '.join(rel)}{suffix}"))
+    if dist_dir is not None:
+        for ext in (".py", ".pyc"):
+            found = list(dist_dir.rglob(f"*{ext}"))
+            if found:
+                rel = [str(f.relative_to(dist_dir)) for f in found[:10]]
+                suffix = f" (and {len(found) - 10} more)" if len(found) > 10 else ""
+                issues.append((FAIL, f"Found {len(found)} {ext} files in dist: {', '.join(rel)}{suffix}"))
+        if not any(s == FAIL for s, _ in issues):
+            issues.append((PASS, "No .py/.pyc files in dist directory"))
 
-    binary_candidates = [
-        f for f in dist_dir.iterdir()
-        if f.is_file() and f.stat().st_size > 1_000_000 and not f.suffix
-    ]
-    for binary in binary_candidates:
-        try:
-            result = subprocess.run(
-                ["strings", str(binary)],
-                capture_output=True, text=True, timeout=30,
-            )
-            def_lines = [
-                l.strip() for l in result.stdout.splitlines()
-                if l.strip().startswith("def ") and "(" in l
-            ]
-            csegraph_leaks = [
-                l for l in result.stdout.splitlines()
-                if any(ident in l for ident in _CSEGRAPH_IDENTIFIERS)
-            ]
-            if csegraph_leaks:
-                issues.append((FAIL,
-                    f"csegraph-specific identifiers found in {binary.name}: "
-                    f"{csegraph_leaks[:5]}"))
-            if def_lines:
-                issues.append((INFO,
-                    f"strings heuristic: {len(def_lines)} 'def ' matches in {binary.name} "
-                    f"(samples: {def_lines[:5]}). All appear to be CPython/third-party, "
-                    f"not csegraph source."))
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            issues.append((FAIL, f"Could not run 'strings' on {binary.name}"))
+    try:
+        result = subprocess.run(
+            ["strings", str(binary)],
+            capture_output=True, text=True, timeout=60,
+        )
+        def_lines = [
+            l.strip() for l in result.stdout.splitlines()
+            if l.strip().startswith("def ") and "(" in l
+        ]
+        csegraph_leaks = [
+            l for l in result.stdout.splitlines()
+            if any(ident in l for ident in _CSEGRAPH_IDENTIFIERS)
+        ]
+        if csegraph_leaks:
+            issues.append((FAIL,
+                f"csegraph-specific identifiers found in {binary.name}: "
+                f"{csegraph_leaks[:5]}"))
+        if def_lines:
+            issues.append((INFO,
+                f"strings heuristic: {len(def_lines)} 'def ' matches in {binary.name} "
+                f"(samples: {def_lines[:5]}). All appear to be CPython/third-party, "
+                f"not csegraph source."))
+        if not csegraph_leaks and not def_lines:
+            issues.append((PASS, f"No def/class leakage in {binary.name}"))
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        issues.append((FAIL, f"Could not run 'strings' on {binary.name}"))
 
     return issues
 
@@ -111,7 +112,8 @@ def verify(binary: Path, repo: Path | None = None) -> bool:
         print(f"Binary not found: {binary}")
         return False
 
-    dist_dir = binary.parent
+    is_onefile = binary.parent.name != "__main__.dist"
+    dist_dir = None if is_onefile else binary.parent
     results: list[tuple[str, str, str]] = []
 
     def record(name: str, status: str, detail: str = "") -> None:
@@ -122,18 +124,17 @@ def verify(binary: Path, repo: Path | None = None) -> bool:
             line += f" — {detail}"
         print(line)
 
-    print(f"Verifying: {binary}")
-    print(f"Dist dir:  {dist_dir}")
+    mode_label = "onefile" if is_onefile else "standalone"
+    print(f"Verifying: {binary} ({mode_label})")
+    if dist_dir:
+        print(f"Dist dir:  {dist_dir}")
     print()
 
     # --- Source protection checks ---
     print("Source protection checks:")
-    leaks = _check_source_leakage(dist_dir)
-    if leaks:
-        for severity, detail in leaks:
-            record("source-protection", severity, detail)
-    else:
-        record("source-protection", PASS, "No .py/.pyc files, no obvious def leakage")
+    leaks = _check_source_leakage(binary, dist_dir)
+    for severity, detail in leaks:
+        record("source-protection", severity, detail)
     print()
 
     # --- CLI commands ---
@@ -247,11 +248,12 @@ def verify(binary: Path, repo: Path | None = None) -> bool:
                 print(f"  - {name}: {detail}")
 
     binary_size = binary.stat().st_size / (1024 * 1024)
-    dir_size_mb = sum(
-        f.stat().st_size for f in dist_dir.rglob("*") if f.is_file()
-    ) / (1024 * 1024)
     print(f"\nBinary size: {binary_size:.1f} MB")
-    print(f"Dist dir size: {dir_size_mb:.1f} MB")
+    if dist_dir is not None:
+        dir_size_mb = sum(
+            f.stat().st_size for f in dist_dir.rglob("*") if f.is_file()
+        ) / (1024 * 1024)
+        print(f"Dist dir size: {dir_size_mb:.1f} MB")
 
     return failed == 0
 
