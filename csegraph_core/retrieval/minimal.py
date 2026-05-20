@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from csegraph_core.core.models import KeyEntity, MinimalResult, NextToolSuggestion
+from csegraph_core.graph.queries import _compute_hub_threshold, _hub_node_ids
 from csegraph_core.index.repository import ProjectIndex
 
 
@@ -32,7 +33,9 @@ class MinimalService:
             repo_root = metadata.get("root_dir", "")
 
             totals = _graph_totals(index)
-            key_entities = _top_entities(index, _KEY_ENTITY_LIMIT)
+            hub_threshold = _compute_hub_threshold(index)
+            hubs = _hub_node_ids(index, hub_threshold)
+            key_entities = _top_entities(index, _KEY_ENTITY_LIMIT, exclude=hubs)
             languages = _top_languages(index)
 
             summary = _format_summary(totals, languages)
@@ -85,18 +88,29 @@ def _top_languages(index: ProjectIndex, limit: int = 3) -> List[str]:
     return [row["language"] for row in rows if row["language"]]
 
 
-def _top_entities(index: ProjectIndex, limit: int) -> List[KeyEntity]:
+def _top_entities(
+    index: ProjectIndex,
+    limit: int,
+    exclude: Optional[set[str]] = None,
+) -> List[KeyEntity]:
+    exclude_ids = list(exclude or ())
+    exclude_clause = (
+        f"AND n.id NOT IN ({','.join('?' for _ in exclude_ids)})"
+        if exclude_ids
+        else ""
+    )
     rows = index.conn.execute(
-        """
+        f"""
         SELECT n.id, n.name, n.type, n.path, COUNT(e.source) AS degree
         FROM nodes n
         LEFT JOIN edges e ON e.source = n.id OR e.target = n.id
         WHERE n.type IN ('class', 'function', 'method', 'test')
+          {exclude_clause}
         GROUP BY n.id
         ORDER BY degree DESC, n.name ASC
         LIMIT ?
         """,
-        (limit,),
+        (*exclude_ids, limit),
     ).fetchall()
     return [
         KeyEntity(

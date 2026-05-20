@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from csegraph_core.core.models import to_dict
@@ -95,6 +96,62 @@ class TestTaskKeywordRouting:
         result = MinimalService(db).first(task="add a totally unrelated feature")
         assert result.task_intent == "general"
         assert any(s.tool == "csegraph_context" for s in result.next_tool_suggestions)
+
+
+def _inject_hub(db: str, hub_id: str, caller_count: int) -> None:
+    """Make `hub_id` a hub by inserting `caller_count` synthetic callers pointing at it."""
+    conn = sqlite3.connect(db)
+    try:
+        for i in range(caller_count):
+            nid = f"symbol::synthetic.py::function::syn_caller_{i}"
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO nodes
+                  (id, type, name, path, language, source_hash, updated_at)
+                VALUES (?, 'function', ?, 'synthetic.py', 'python', 'synthetic', 0)
+                """,
+                (nid, nid),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO edges "
+                "(source, target, relation, confidence, confidence_tier) "
+                "VALUES (?, ?, 'calls', 1.0, 'EXTRACTED')",
+                (nid, hub_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestHubFilteredKeyEntities:
+    def test_tiny_repo_with_no_hubs_unaffected(self, tmp_path):
+        # Below the floor of 50 → no hubs → key_entities still surface tiny-repo symbols.
+        _, db = _indexed(tmp_path)
+        result = MinimalService(db).first()
+        names = {e.name for e in result.key_entities}
+        # The fixture's `greet` and `fmt` should still be visible (no hub filter triggered).
+        assert names & {"greet", "fmt"}
+
+    def test_injected_hub_excluded_from_key_entities(self, tmp_path):
+        _, db = _indexed(tmp_path)
+        hub_id = "symbol::helpers.py::function::fmt"
+        _inject_hub(db, hub_id, caller_count=60)
+        result = MinimalService(db).first()
+        entity_ids = {e.id for e in result.key_entities}
+        assert hub_id not in entity_ids
+
+    def test_falls_back_to_fewer_entries_when_all_candidates_are_hubs(self, tmp_path):
+        # Force both real symbols above the floor; key_entities should drop them
+        # and return only whatever non-hub candidates remain (possibly zero or
+        # just the synthetic callers, which are degree-1).
+        _, db = _indexed(tmp_path)
+        _inject_hub(db, "symbol::helpers.py::function::fmt", caller_count=60)
+        _inject_hub(db, "symbol::app.py::function::greet", caller_count=60)
+        result = MinimalService(db).first()
+        names = {e.name for e in result.key_entities}
+        # The two original symbols must NOT be there.
+        assert "greet" not in names
+        assert "fmt" not in names
 
 
 class TestMinimalMcpTool:

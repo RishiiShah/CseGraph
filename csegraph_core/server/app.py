@@ -10,6 +10,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
 
 from csegraph_core.core.models import to_dict
+from csegraph_core.server.session import _SESSION
 
 logger = logging.getLogger("csegraph.mcp")
 
@@ -156,7 +157,8 @@ _TOOLS: list[Tool] = [
             "Inspect the graph neighborhood around a symbol or node. "
             "Returns nodes and edges within a configurable BFS depth. "
             "Default detail_level=minimal returns a summary and top-degree nodes; "
-            "use standard for the full node and edge list."
+            "use standard for the full node and edge list. "
+            "Pass relations=['calls','imports',...] to restrict traversal to specific edge kinds."
         ),
         inputSchema={
             "type": "object",
@@ -179,6 +181,11 @@ _TOOLS: list[Tool] = [
                     "enum": ["minimal", "standard"],
                     "default": "minimal",
                     "description": "minimal returns summary + top-degree key nodes; standard returns the full nodes and edges.",
+                },
+                "relations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
                 },
                 "db": {
                     "type": "string",
@@ -319,6 +326,30 @@ def _db_path(repo: str, db: str | None = None) -> str:
 
 
 def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
+    result = _dispatch_tool(name, arguments)
+    _SESSION.record(name)
+    if isinstance(result, dict):
+        _apply_session_filter(result)
+    return result
+
+
+def _apply_session_filter(result: dict[str, Any]) -> None:
+    """Drop next-tool suggestions whose tool has already been called this session
+    and annotate the response with the current tools_already_called list.
+    Mutates `result` in place."""
+    called = _SESSION.tools_called
+    for key in ("next_tool_suggestions", "next_actions"):
+        items = result.get(key)
+        if not isinstance(items, list):
+            continue
+        result[key] = [
+            item for item in items
+            if not (isinstance(item, dict) and item.get("tool") in called)
+        ]
+    result["tools_already_called"] = _SESSION.snapshot()
+
+
+def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
         from csegraph_core.index.services import IndexService
 
@@ -366,11 +397,13 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         depth = arguments.get("depth", 1)
         detail_level = arguments.get("detail_level", "minimal")
+        relations = arguments.get("relations")
         return to_dict(
             GraphQueryService(db).neighborhood(
                 arguments["node"],
                 depth=depth,
                 detail_level=detail_level,
+                relations=relations,
             )
         )
 

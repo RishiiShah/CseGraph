@@ -38,18 +38,28 @@ SELECT DISTINCT node_id FROM bfs
 """
 
 
-def _compute_hub_threshold(index: Any) -> int:
-    """p99 of node degrees, floored at _HUB_FLOOR. Returns large int when graph is tiny."""
+def _relation_clause(relations: Optional[List[str]]) -> Tuple[str, Tuple[Any, ...]]:
+    """Return (sql_fragment, params). Fragment starts with 'WHERE' or is empty."""
+    if not relations:
+        return "", ()
+    placeholders = ",".join("?" for _ in relations)
+    return f"WHERE relation IN ({placeholders})", tuple(relations)
+
+
+def _compute_hub_threshold(index: Any, relations: Optional[List[str]] = None) -> int:
+    """p99 of node degrees (optionally restricted to given relations), floored at _HUB_FLOOR."""
+    clause, params = _relation_clause(relations)
     rows = index.conn.execute(
-        """
+        f"""
         SELECT COUNT(*) AS deg FROM (
-            SELECT source AS node_id FROM edges
+            SELECT source AS node_id FROM edges {clause}
             UNION ALL
-            SELECT target AS node_id FROM edges
+            SELECT target AS node_id FROM edges {clause}
         )
         GROUP BY node_id
         ORDER BY deg ASC
-        """
+        """,
+        params + params,
     ).fetchall()
     if not rows:
         return _HUB_FLOOR
@@ -59,18 +69,23 @@ def _compute_hub_threshold(index: Any) -> int:
     return max(p99, _HUB_FLOOR)
 
 
-def _hub_node_ids(index: Any, threshold: int) -> Set[str]:
+def _hub_node_ids(
+    index: Any,
+    threshold: int,
+    relations: Optional[List[str]] = None,
+) -> Set[str]:
+    clause, rel_params = _relation_clause(relations)
     rows = index.conn.execute(
-        """
+        f"""
         SELECT node_id FROM (
-            SELECT source AS node_id FROM edges
+            SELECT source AS node_id FROM edges {clause}
             UNION ALL
-            SELECT target AS node_id FROM edges
+            SELECT target AS node_id FROM edges {clause}
         )
         GROUP BY node_id
         HAVING COUNT(*) >= ?
         """,
-        (threshold,),
+        rel_params + rel_params + (threshold,),
     ).fetchall()
     return {row["node_id"] for row in rows}
 
@@ -84,9 +99,11 @@ class GraphQueryService:
         node_id: str,
         depth: int = 1,
         detail_level: str = "minimal",
+        relations: Optional[List[str]] = None,
     ) -> GraphResult:
         if detail_level not in ("minimal", "standard"):
             raise ValueError(f"detail_level must be 'minimal' or 'standard', got '{detail_level}'")
+        relations_filter = [r for r in (relations or []) if r]
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -95,9 +112,15 @@ class GraphQueryService:
 
             resolved = _resolve_graph_node(index, node_id, repo_root)
 
-            threshold = _compute_hub_threshold(index)
-            hubs = _hub_node_ids(index, threshold)
+            threshold = _compute_hub_threshold(index, relations_filter)
+            hubs = _hub_node_ids(index, threshold, relations_filter)
             hubs.discard(resolved)
+
+            bfs_rel_clause = (
+                f"AND e.relation IN ({','.join('?' for _ in relations_filter)})"
+                if relations_filter
+                else ""
+            )
 
             visited: Set[str] = set()
             if hubs:
@@ -115,11 +138,33 @@ class GraphQueryService:
                       ON (e.source = bfs.node_id OR e.target = bfs.node_id)
                     WHERE bfs.depth < ?
                       AND bfs.node_id NOT IN ({hub_placeholders})
+                      {bfs_rel_clause}
                 )
                 SELECT DISTINCT node_id FROM bfs
                 """
-                params: Tuple[Any, ...] = (resolved, depth, *hubs)
+                params: Tuple[Any, ...] = (resolved, depth, *hubs, *relations_filter)
                 for row in index.conn.execute(hub_aware_cte, params):
+                    visited.add(row["node_id"])
+            elif relations_filter:
+                filtered_cte = f"""
+                WITH RECURSIVE bfs(node_id, depth) AS (
+                    SELECT ?, 0
+                  UNION
+                    SELECT
+                        CASE WHEN e.source = bfs.node_id THEN e.target
+                             ELSE e.source END,
+                        bfs.depth + 1
+                    FROM bfs
+                    JOIN edges e
+                      ON (e.source = bfs.node_id OR e.target = bfs.node_id)
+                    WHERE bfs.depth < ?
+                      {bfs_rel_clause}
+                )
+                SELECT DISTINCT node_id FROM bfs
+                """
+                for row in index.conn.execute(
+                    filtered_cte, (resolved, depth, *relations_filter)
+                ):
                     visited.add(row["node_id"])
             else:
                 for row in index.conn.execute(_BFS_CTE, (resolved, depth)):
@@ -137,14 +182,20 @@ class GraphQueryService:
             ):
                 node_rows[row["id"]] = dict(row)
 
+            edge_rel_clause = (
+                f"AND relation IN ({','.join('?' for _ in relations_filter)})"
+                if relations_filter
+                else ""
+            )
             selected_edges: Dict[tuple, Dict[str, Any]] = {}
             for row in index.conn.execute(
                 f"""
                 SELECT * FROM edges
                 WHERE source IN ({placeholders})
                   AND target IN ({placeholders})
+                  {edge_rel_clause}
                 """,
-                visited_list + visited_list,
+                visited_list + visited_list + list(relations_filter),
             ):
                 edge = dict(row)
                 key = (edge["source"], edge["target"], edge["relation"], edge.get("metadata") or "")
@@ -152,11 +203,14 @@ class GraphQueryService:
 
             total_nodes = len(visited)
             total_edges = len(selected_edges)
+            confidence_breakdown = _confidence_breakdown(selected_edges.values())
             hubs_note = f" Skipped {hubs_skipped} hub(s)." if hubs_skipped else ""
+            conf_note = _confidence_note(confidence_breakdown)
             summary = (
                 f"{total_nodes} nodes, {total_edges} edges within depth {depth} around "
                 f"'{_short_name(resolved, node_rows)}'."
                 + hubs_note
+                + conf_note
             )
 
             if detail_level == "minimal":
@@ -181,6 +235,8 @@ class GraphQueryService:
                     total_edges=total_edges,
                     truncated=total_nodes > len(nodes) or total_edges > 0,
                     hubs_skipped=hubs_skipped,
+                    relations_filter=list(relations_filter),
+                    confidence_breakdown=confidence_breakdown,
                 )
 
             nodes = [_node_view_from_row(nid, node_rows) for nid in sorted(visited)]
@@ -212,6 +268,8 @@ class GraphQueryService:
                 total_edges=total_edges,
                 truncated=False,
                 hubs_skipped=hubs_skipped,
+                relations_filter=list(relations_filter),
+                confidence_breakdown=confidence_breakdown,
             )
         finally:
             index.close()
@@ -336,6 +394,23 @@ class GraphQueryService:
             )
         finally:
             index.close()
+
+
+def _confidence_breakdown(edges: Any) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for edge in edges:
+        tier = edge.get("confidence_tier") or "EXTRACTED"
+        counts[tier] = counts.get(tier, 0) + 1
+    return counts
+
+
+def _confidence_note(breakdown: Dict[str, int]) -> str:
+    extras = [
+        f"{count} {tier.lower()}"
+        for tier, count in breakdown.items()
+        if tier != "EXTRACTED" and count > 0
+    ]
+    return f" Confidence: {', '.join(extras)}." if extras else ""
 
 
 def _short_name(node_id: str, node_rows: Dict[str, Dict[str, Any]]) -> str:

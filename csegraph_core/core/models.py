@@ -139,6 +139,8 @@ class GraphResult:
     total_edges: int = 0
     truncated: bool = False
     hubs_skipped: int = 0
+    relations_filter: List[str] = field(default_factory=list)
+    confidence_breakdown: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

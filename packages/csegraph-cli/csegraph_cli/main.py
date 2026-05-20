@@ -198,6 +198,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="minimal",
         help="minimal: summary + top-degree key nodes. standard: full nodes/edges.",
     )
+    inspect.add_argument(
+        "--relations",
+        default=None,
+        help="Comma-separated edge kinds to restrict traversal (e.g. 'calls,imports').",
+    )
     _add_json(inspect)
 
     graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
@@ -333,8 +338,16 @@ def _dispatch(args: argparse.Namespace) -> Any:
         node = args.node or args.node_arg
         if not node:
             raise ValueError("inspect requires a node. Example: csegraph inspect MyClass.method")
+        relations = (
+            [r.strip() for r in args.relations.split(",") if r.strip()]
+            if args.relations
+            else None
+        )
         result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(
-            node, depth=args.depth, detail_level=args.detail_level
+            node,
+            depth=args.depth,
+            detail_level=args.detail_level,
+            relations=relations,
         )
         result.command = "inspect"
         return result
