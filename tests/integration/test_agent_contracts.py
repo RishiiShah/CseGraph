@@ -15,6 +15,13 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def _root_runtime_dependency_names() -> set[str]:
+    pyproject = _read("pyproject.toml")
+    match = re.search(r"dependencies = \[(?P<body>.*?)\]\n", pyproject, re.S)
+    assert match, "root pyproject.toml must define runtime dependencies"
+    return set(re.findall(r'"([A-Za-z0-9_.-]+)', match.group("body")))
+
+
 def _readme_base_command_lines() -> list[str]:
     readme = _read("README.md")
     match = re.search(r"## Base Commands\n\n```bash\n(?P<body>.*?)\n```", readme, re.S)
@@ -23,6 +30,17 @@ def _readme_base_command_lines() -> list[str]:
         line.split("#", 1)[0].strip()
         for line in match.group("body").splitlines()
         if line.strip().startswith("csegraph ")
+    ]
+
+
+def _readme_source_install_lines() -> list[str]:
+    readme = _read("README.md")
+    match = re.search(r"## Install From Source\n\n```bash\n(?P<body>.*?)\n```", readme, re.S)
+    assert match, "README.md must keep a bash Install From Source block"
+    return [
+        line.strip()
+        for line in match.group("body").splitlines()
+        if line.strip().startswith("env/bin/pip install -e ")
     ]
 
 
@@ -48,6 +66,17 @@ def test_readme_base_commands_are_real_cli_commands():
     assert not any(line.startswith("csegraph refresh .") for line in command_lines)
 
 
+def test_requirements_txt_matches_readme_source_install_order():
+    readme_installs = _readme_source_install_lines()
+    requirements_installs = [
+        f"env/bin/pip install {line}"
+        for line in _read("requirements.txt").splitlines()
+        if line.strip()
+    ]
+
+    assert requirements_installs == readme_installs
+
+
 def test_base_commands_expose_help_from_source_install():
     base_commands = [
         "index",
@@ -67,6 +96,18 @@ def test_base_commands_expose_help_from_source_install():
             text=True,
         )
         assert f"usage: csegraph {command}" in proc.stdout
+
+
+def test_documented_base_command_dependencies_are_runtime_dependencies():
+    dependency_names = _root_runtime_dependency_names()
+
+    assert {"mcp", "watchfiles", "tomlkit"}.issubset(dependency_names)
+
+
+def test_watch_dependency_message_matches_base_install_contract():
+    watch_source = _read("csegraph_core/watch.py")
+
+    assert "csegraph-core[watch]" not in watch_source
 
 
 def test_documented_mcp_tools_match_server_registry():

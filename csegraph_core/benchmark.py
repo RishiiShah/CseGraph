@@ -95,6 +95,13 @@ class BenchmarkService:
             node_id: node_id in context_node_ids
             for node_id in expected_node_ids
         }
+        expected_node_hit_count = sum(1 for present in expected_node_hits.values() if present)
+        expected_node_total = len(expected_node_hits)
+        expected_node_hit_rate = (
+            round(expected_node_hit_count / expected_node_total, 4)
+            if expected_node_total
+            else 1.0
+        )
         steps.append(
             BenchmarkStep(
                 name="context",
@@ -111,6 +118,9 @@ class BenchmarkService:
                         json.dumps(context_payload, sort_keys=True).encode("utf-8")
                     ),
                     "expected_nodes": expected_node_hits,
+                    "expected_node_hit_count": expected_node_hit_count,
+                    "expected_node_total": expected_node_total,
+                    "expected_node_hit_rate": expected_node_hit_rate,
                     "missing_expected_nodes": [
                         node_id for node_id, present in expected_node_hits.items() if not present
                     ],

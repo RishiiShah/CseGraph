@@ -22,7 +22,7 @@ def watch(
     except ImportError:
         print(
             "csegraph watch requires the 'watchfiles' package.\n"
-            "Install it with: pip install csegraph-core[watch]",
+            "Install or reinstall csegraph-core with its runtime dependencies.",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -8,6 +8,9 @@ version = "1.6.0"
 description = "Core repository context engine for coding agents. Distribution: csegraph-core; import: csegraph_core."
 requires-python = ">=3.10"
 dependencies = [
+    "mcp>=1.0.0,<2",
+    "watchfiles>=1.0.0,<2",
+    "tomlkit>=0.12.0,<1",
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
@@ -35,8 +38,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.0.0"]
-watch = ["watchfiles>=1.0.0"]
 test = ["pytest>=9.0.3"]
 
 [project.urls]

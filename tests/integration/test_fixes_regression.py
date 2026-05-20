@@ -21,7 +21,7 @@ def test_symlink_dos_protection(tmp_path):
     repo_root.mkdir()
     cache = ExtractionCache(str(tmp_path / "cache.db"))
     parser = registry.for_extension(".py")
-    
+
     # Path inside repo is fine
     inside_file = repo_root / "inside.py"
     inside_file.write_text("def foo(): pass", encoding="utf-8")
@@ -65,13 +65,13 @@ def test_cross_file_method_linkage(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     db = str(tmp_path / "test.db")
-    
+
     # Define a class in one file and a method receiver function in another
     (repo / "class_def.py").write_text("class MyClass:\n    pass\n", encoding="utf-8")
     index = ProjectIndex(db)
     index.initialize_schema()
     index.set_metadata(str(repo), "small")
-    
+
     # Insert a class node
     index.conn.execute(
         "INSERT INTO nodes (id, parent_id, type, name, path, language, source_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -94,7 +94,7 @@ def test_cross_file_method_linkage(tmp_path):
     # Run resolution
     from csegraph_core.index.services import _resolve_cross_file_methods
     _resolve_cross_file_methods(index)
-    
+
     # Check parent_id updated to the class node
     row = index.conn.execute("SELECT parent_id FROM nodes WHERE type = 'method'").fetchone()
     assert row["parent_id"] == "symbol::class_def.py::class::MyClass"
@@ -140,7 +140,7 @@ def test_absolute_path_metadata_fallback(tmp_path):
     index = ProjectIndex(db)
     index.initialize_schema()
     index.set_metadata(str(repo), "small")
-    
+
     # Insert file node
     index.conn.execute(
         "INSERT INTO nodes (id, parent_id, type, name, path, language, source_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -164,7 +164,7 @@ def test_lexical_scoring_candidates_optimization():
         "node2": {"name": "unrelated", "file_path": "helpers.py", "signature": "", "docstring": "", "language": "python"},
     }
     summaries = {}
-    
+
     # We query for "greet"
     scores, evidence = lexical_scores("greet", symbols, summaries)
     assert "node1" in scores
@@ -183,15 +183,15 @@ def test_git_hook_uninstall_block_exact_replacement_safety(tmp_path):
     hook_dir = tmp_path / ".git" / "hooks"
     hook_dir.mkdir(parents=True)
     hook_file = hook_dir / "post-commit"
-    
+
     user_script = "#!/bin/sh\n# user comment\nif true; then\n  echo 1\nfi\n"
     hook_file.write_text(user_script, encoding="utf-8")
-    
+
     # Install csegraph hook
     install_hooks(tmp_path)
     content_installed = hook_file.read_text(encoding="utf-8")
     assert HOOK_MARKER in content_installed
-    
+
     # Uninstall
     uninstall_hooks(tmp_path)
     content_uninstalled = hook_file.read_text(encoding="utf-8")

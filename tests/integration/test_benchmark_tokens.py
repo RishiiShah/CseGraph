@@ -113,6 +113,9 @@ class TestBenchmarkContextQuality:
             "symbol::app.py::function::greet": True,
             "symbol::helpers.py::function::fmt": True,
         }
+        assert context.stats["expected_node_hit_count"] == 2
+        assert context.stats["expected_node_total"] == 2
+        assert context.stats["expected_node_hit_rate"] == 1.0
         assert context.stats["missing_expected_nodes"] == []
 
         refresh = next(s for s in result.steps if s.name == "refresh")

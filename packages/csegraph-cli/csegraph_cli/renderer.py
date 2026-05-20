@@ -423,6 +423,27 @@ def _benchmark_stats(stats: Dict[str, Any]) -> str:
             f"raw={stats['raw_tokens']}, context={stats['context_tokens']}, "
             f"reduction={stats['reduction_percent']}%"
         )
+    if "schema_version" in stats and "returned_detail_level" in stats:
+        parts = [
+            f"nodes={stats.get('nodes', 0)}",
+            f"detail={stats['returned_detail_level']}",
+            f"tokens={stats.get('total_estimated_tokens', 0)}",
+        ]
+        if "mcp_response_bytes" in stats:
+            parts.append(f"mcp_bytes={stats['mcp_response_bytes']}")
+        if stats.get("expected_node_total", 0):
+            hit_rate = round(float(stats.get("expected_node_hit_rate", 0.0)) * 100, 1)
+            parts.extend(
+                [
+                    (
+                        "expected_nodes="
+                        f"{stats.get('expected_node_hit_count', 0)}/"
+                        f"{stats.get('expected_node_total', 0)}"
+                    ),
+                    f"hit_rate={hit_rate}%",
+                ]
+            )
+        return ", ".join(parts)
     preferred = (
         "files",
         "symbols",
