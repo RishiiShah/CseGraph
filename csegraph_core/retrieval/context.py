@@ -53,14 +53,14 @@ class ContextService:
             repo_root = metadata["root_dir"]
             config = load_profile(profile, config_path=config_path, repo_root=repo_root)
 
-            symbols = load_symbols(index)
+            symbols = load_symbols(index, exclude_heavy=True)
             summaries = load_summaries(index)
             outgoing, incoming = load_edge_maps(index)
 
             if not symbols:
                 raise ValueError("No symbols are indexed in this database.")
 
-            target_id = _resolve_target(target, task, symbols, summaries, index)
+            target_id = _resolve_target(target, task, symbols, summaries, index, repo_root=repo_root)
             fts_seed = fts_lexical_scores(index.conn, task)
             scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
             if target_id:
@@ -116,6 +116,7 @@ class ContextService:
                 outgoing=outgoing,
                 incoming=incoming,
                 raw_nodes=raw_nodes,
+                index=index,
             )
 
             # If auto->minimal but token budget breaks sufficiency, try standard detail
@@ -137,6 +138,7 @@ class ContextService:
                     outgoing=outgoing,
                     incoming=incoming,
                     raw_nodes=raw_nodes,
+                    index=index,
                 )
                 returned_detail_level = "standard"
 
@@ -267,12 +269,35 @@ def _resolve_target(
     symbols: Dict[str, Dict[str, Any]],
     summaries: Dict[str, str],
     index: Optional[ProjectIndex] = None,
+    repo_root: str = "",
 ) -> str:
     if target:
         if target in symbols:
             return target
         if index is not None:
+            if not repo_root:
+                try:
+                    metadata = index.metadata()
+                    repo_root = metadata.get("root_dir", "")
+                except Exception:
+                    pass
             lowered = target.lower()
+            if repo_root:
+                try:
+                    abs_target_path = Path(target).resolve()
+                    resolved_root = Path(repo_root).resolve()
+                    if abs_target_path.is_relative_to(resolved_root):
+                        rel_path = abs_target_path.relative_to(resolved_root).as_posix()
+                        row = index.conn.execute(
+                            "SELECT id FROM nodes WHERE LOWER(path) = ?"
+                            " ORDER BY type = 'file' DESC LIMIT 1",
+                            (rel_path.lower(),),
+                        ).fetchone()
+                        if row is not None:
+                            return row["id"]
+                except Exception:
+                    pass
+
             row = index.conn.execute(
                 "SELECT id FROM nodes WHERE type IN ('class','function','method')"
                 " AND (LOWER(name) = ? OR LOWER(path) = ?)"
@@ -473,8 +498,17 @@ def _build_detail_pass(
     outgoing: Dict[str, List[Dict[str, Any]]],
     incoming: Dict[str, List[Dict[str, Any]]],
     raw_nodes: Sequence[str],
+    index: ProjectIndex,
 ) -> tuple[List[ContextNode], SufficiencyMetrics, bool]:
     response_ids = _response_context_ids(detail_level, target_id, context_ids)
+    needed_ids = set(response_ids)
+    if target_id:
+        needed_ids.add(target_id)
+    heavy_symbols = load_symbols(index, ids=needed_ids, exclude_heavy=False)
+    for node_id, heavy_row in heavy_symbols.items():
+        if node_id in symbols:
+            symbols[node_id].update(heavy_row)
+
     source_ids = _source_candidate_ids_for_detail(
         detail_level, include_source, target_id, response_ids,
         outgoing, symbols, raw_nodes,
@@ -540,7 +574,7 @@ def _estimate_node_tokens(
 def _estimate_tokens(text: str) -> int:
     if not text:
         return 0
-    return max(1, math.ceil(len(text) / 4))
+    return max(1, math.ceil(len(text) / 2.7))
 
 
 def _truncate_text(text: str, limit: int) -> str:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import math
 import time
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import Callable, Iterable, TypeVar
 
 from csegraph_core.core.models import BenchmarkResult, BenchmarkStep
+from csegraph_core.core.serializer import to_dict
 
 
 _DEFAULT_QUERY = "Benchmark context retrieval"
@@ -24,6 +26,7 @@ class BenchmarkService:
         query: str = _DEFAULT_QUERY,
         target: str | None = None,
         graph_output_path: str | Path | None = None,
+        expected_nodes: Iterable[str] | None = None,
     ) -> BenchmarkResult:
         repo_root = str(Path(repo).resolve())
         output = str(
@@ -37,8 +40,10 @@ class BenchmarkService:
 
         from csegraph_core.graph.report import ReportService
         from csegraph_core.graph.visual import VisualExportService
-        from csegraph_core.index.services import IndexService
+        from csegraph_core.index.services import IndexService, RefreshService
         from csegraph_core.retrieval.context import ContextService
+
+        expected_node_ids = list(expected_nodes or [])
 
         index_result, elapsed = _time_call(
             lambda: IndexService(self.db_path).index(repo_root, profile=profile)
@@ -57,6 +62,25 @@ class BenchmarkService:
             )
         )
 
+        refresh_result, elapsed = _time_call(
+            lambda: RefreshService(self.db_path).refresh(profile=profile)
+        )
+        steps.append(
+            BenchmarkStep(
+                name="refresh",
+                elapsed_ms=elapsed,
+                stats={
+                    "changed_files": len(refresh_result.changed_files),
+                    "deleted_files": len(refresh_result.deleted_files),
+                    "unchanged_files": len(refresh_result.unchanged_files),
+                    "cache_hits": refresh_result.cache_hits,
+                    "cache_misses": refresh_result.cache_misses,
+                    "symbols": refresh_result.symbols_indexed,
+                    "edges": refresh_result.edges_indexed,
+                },
+            )
+        )
+
         context_result, elapsed = _time_call(
             lambda: ContextService(self.db_path).build_context(
                 task=query,
@@ -65,15 +89,31 @@ class BenchmarkService:
                 include_source="never",
             )
         )
+        context_payload = to_dict(context_result)
+        context_node_ids = {node.id for node in context_result.nodes}
+        expected_node_hits = {
+            node_id: node_id in context_node_ids
+            for node_id in expected_node_ids
+        }
         steps.append(
             BenchmarkStep(
                 name="context",
                 elapsed_ms=elapsed,
                 stats={
                     "nodes": len(context_result.nodes),
+                    "schema_version": context_payload["schema_version"],
+                    "detail_level": context_result.detail_level,
+                    "returned_detail_level": context_result.returned_detail_level,
                     "total_estimated_tokens": context_result.total_estimated_tokens,
                     "sufficient": context_result.sufficiency.sufficient,
                     "target": context_result.target,
+                    "mcp_response_bytes": len(
+                        json.dumps(context_payload, sort_keys=True).encode("utf-8")
+                    ),
+                    "expected_nodes": expected_node_hits,
+                    "missing_expected_nodes": [
+                        node_id for node_id, present in expected_node_hits.items() if not present
+                    ],
                 },
             )
         )
@@ -177,7 +217,7 @@ def _count_raw_tokens(repo_root: Path) -> int:
     for _parser, file_path in registry.iter_files(repo_root):
         try:
             text = file_path.read_text(encoding="utf-8", errors="replace")
-            total += max(1, math.ceil(len(text) / 4))
+            total += max(1, math.ceil(len(text) / 2.7))
         except OSError:
             continue
     return total

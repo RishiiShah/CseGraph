@@ -248,6 +248,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(benchmark)
     benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
     benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
+    benchmark.add_argument(
+        "--expect-node",
+        action="append",
+        default=[],
+        help="Expected context node ID for benchmark quality checks. May be repeated.",
+    )
     _add_json(benchmark)
 
     return parser
@@ -361,6 +367,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             query=args.query,
             target=args.target,
             graph_output_path=_default_graph_output_path(db_path),
+            expected_nodes=args.expect_node,
         )
     raise ValueError(f"Unknown command: {args.command}")
 
@@ -381,10 +388,37 @@ def _repo_arg(args: argparse.Namespace) -> str:
     return str(Path(args.repo_opt or args.repo_arg or ".").resolve())
 
 
+def _assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
+    import tempfile
+    resolved_path = path.resolve()
+    resolved_repo = repo_path.resolve()
+    if resolved_path.is_relative_to(resolved_repo):
+        return
+    temp_dir = Path(tempfile.gettempdir()).resolve()
+    if resolved_path.is_relative_to(temp_dir):
+        return
+    try:
+        home_dir = Path.home().resolve()
+        if resolved_path.is_relative_to(home_dir):
+            return
+    except Exception:
+        pass
+    try:
+        cwd_dir = Path.cwd().resolve()
+        if resolved_path.is_relative_to(cwd_dir):
+            return
+    except Exception:
+        pass
+    raise ValueError(f"{name} path '{path}' must be within repository root, home directory, temporary directory, or CWD.")
+
+
 def _db_arg(args: argparse.Namespace, repo: str) -> str:
+    repo_path = Path(repo).resolve()
     if args.db:
-        return str(Path(args.db).resolve())
-    return str(Path(repo).resolve() / ".csegraph" / "index.db")
+        db_path = Path(args.db).resolve()
+        _assert_safe_path(db_path, repo_path, "Database")
+        return str(db_path)
+    return str(repo_path / ".csegraph" / "index.db")
 
 
 def _default_graph_output_path(db_path: str) -> str:

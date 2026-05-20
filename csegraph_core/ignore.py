@@ -71,8 +71,11 @@ class IgnoreFilter:
     def from_file(cls, path: Path) -> "IgnoreFilter":
         if not path.is_file():
             return cls([])
-        text = path.read_text(encoding="utf-8")
-        return cls.from_lines(text.splitlines())
+        try:
+            text = path.read_text(encoding="utf-8")
+            return cls.from_lines(text.splitlines())
+        except Exception:
+            return cls([])
 
     def is_ignored(self, rel_path: str, *, is_dir: bool = False) -> bool:
         if not self._rules:

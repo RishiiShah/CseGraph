@@ -69,7 +69,7 @@ def _fake_symbols():
 def test_lexical_scores_uses_registry_tokenizer_for_source(patched_registry):
     from csegraph_core.retrieval.scoring import lexical_scores
     symbols = _fake_symbols()
-    lexical_scores("task text", symbols, summaries={})
+    lexical_scores("do_work", symbols, summaries={})
     assert len(patched_registry.calls) > 0
 
 

@@ -188,7 +188,7 @@ def _path_step_from_row(node_id: str, node_rows: Dict[str, Dict[str, Any]]) -> P
         return PathStep(
             node_id=node_id,
             kind="external",
-            name=node_id.split("::")[-1],
+            name=node_id,
             path="",
         )
     ntype = row["type"]
@@ -222,6 +222,13 @@ def _resolve_graph_node(
         if repo_row:
             return repo_row["id"]
 
+    if not repo_root:
+        try:
+            metadata = index.metadata()
+            repo_root = metadata.get("root_dir", "")
+        except Exception:
+            pass
+
     repo_basename = Path(repo_root).name if repo_root else ""
     if repo_basename and node == repo_basename:
         repo_row = index.conn.execute(
@@ -231,13 +238,25 @@ def _resolve_graph_node(
             return repo_row["id"]
 
     if repo_root:
-        resolved_path = str(Path(node).resolve())
-        if resolved_path == str(Path(repo_root).resolve()):
-            repo_row = index.conn.execute(
-                "SELECT id FROM nodes WHERE type = 'repo' LIMIT 1"
-            ).fetchone()
-            if repo_row:
-                return repo_row["id"]
+        try:
+            resolved_path = Path(node).resolve()
+            resolved_root = Path(repo_root).resolve()
+            if resolved_path == resolved_root:
+                repo_row = index.conn.execute(
+                    "SELECT id FROM nodes WHERE type = 'repo' LIMIT 1"
+                ).fetchone()
+                if repo_row:
+                    return repo_row["id"]
+            elif resolved_path.is_relative_to(resolved_root):
+                rel_path = resolved_path.relative_to(resolved_root).as_posix()
+                row = index.conn.execute(
+                    "SELECT id FROM nodes WHERE type = 'file' AND LOWER(path) = ? LIMIT 1",
+                    (rel_path.lower(),),
+                ).fetchone()
+                if row:
+                    return row["id"]
+        except Exception:
+            pass
 
     lowered = node.lower()
     row = index.conn.execute(
@@ -284,7 +303,7 @@ def _node_view_from_row(
         return GraphNodeView(
             id=node_id,
             kind="external",
-            name=node_id.split("::")[-1],
+            name=node_id,
             path="",
         )
     ntype = row["type"]

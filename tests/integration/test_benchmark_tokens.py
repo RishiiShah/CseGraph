@@ -29,8 +29,8 @@ class TestCountRawTokens:
         app_text = (repo / "app.py").read_text(encoding="utf-8")
         helpers_text = (repo / "helpers.py").read_text(encoding="utf-8")
         expected = (
-            max(1, math.ceil(len(app_text) / 4))
-            + max(1, math.ceil(len(helpers_text) / 4))
+            max(1, math.ceil(len(app_text) / 2.7))
+            + max(1, math.ceil(len(helpers_text) / 2.7))
         )
         assert tokens == expected
 
@@ -84,3 +84,38 @@ class TestBenchmarkTokenReduction:
         serialized = json.dumps(payload)
         assert "token_reduction" in serialized
         assert "raw_tokens" in serialized
+
+
+class TestBenchmarkContextQuality:
+    def test_records_context_contract_and_expected_nodes(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "bench.db")
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            query="Explain greet and fmt",
+            target="greet",
+            expected_nodes=[
+                "symbol::app.py::function::greet",
+                "symbol::helpers.py::function::fmt",
+            ],
+        )
+
+        step_names = [s.name for s in result.steps]
+        assert step_names == ["index", "refresh", "context", "graph", "report", "token_reduction"]
+
+        context = next(s for s in result.steps if s.name == "context")
+        assert context.stats["schema_version"] == "csegraph-context-v2"
+        assert context.stats["detail_level"] == "auto"
+        assert context.stats["returned_detail_level"] in {"minimal", "standard"}
+        assert context.stats["mcp_response_bytes"] > 0
+        assert context.stats["expected_nodes"] == {
+            "symbol::app.py::function::greet": True,
+            "symbol::helpers.py::function::fmt": True,
+        }
+        assert context.stats["missing_expected_nodes"] == []
+
+        refresh = next(s for s in result.steps if s.name == "refresh")
+        assert refresh.elapsed_ms >= 0
+        assert refresh.stats["changed_files"] == 0
+        assert refresh.stats["deleted_files"] == 0

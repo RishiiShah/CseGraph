@@ -180,6 +180,10 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
         query="Implement build_report using format_user",
         target="build_report",
         graph_output_path=tmp_path / "graph.html",
+        expected_nodes=[
+            "symbol::main.py::function::build_report",
+            "symbol::utils.py::function::format_user",
+        ],
     )
 
     assert result.command == "benchmark"
@@ -188,7 +192,7 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
     assert result.db_path == str(db_path)
     assert result.graph_output_path == str(tmp_path / "graph.html")
     assert result.total_elapsed_ms >= 0
-    assert [step.name for step in result.steps] == ["index", "context", "graph", "report", "token_reduction"]
+    assert [step.name for step in result.steps] == ["index", "refresh", "context", "graph", "report", "token_reduction"]
     assert result.steps[0].stats["files"] == 2
     assert list(result.steps[0].stats["phases"]) == [
         "discover_parse",
@@ -197,9 +201,11 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
         "write_graph",
         "parse_errors",
     ]
-    assert result.steps[1].stats["target"] == "symbol::main.py::function::build_report"
-    assert result.steps[2].stats["output_size_bytes"] > 0
-    assert result.steps[3].stats["symbols"] == 2
+    assert result.steps[1].stats["changed_files"] == 0
+    assert result.steps[2].stats["target"] == "symbol::main.py::function::build_report"
+    assert result.steps[2].stats["missing_expected_nodes"] == []
+    assert result.steps[3].stats["output_size_bytes"] > 0
+    assert result.steps[4].stats["symbols"] == 2
 
 
 def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_path):

@@ -37,7 +37,12 @@ def sha256_file(path: Path) -> str:
 
 
 def to_repo_relative(path: Path, root_dir: Path) -> str:
-    return path.resolve().relative_to(root_dir.resolve()).as_posix()
+    resolved_path = path.resolve()
+    resolved_root = root_dir.resolve()
+    try:
+        return resolved_path.relative_to(resolved_root).as_posix()
+    except ValueError:
+        raise ValueError(f"Path '{path}' resolves to '{resolved_path}', which is outside repository root '{root_dir}'")
 
 
 class BaseParser(abc.ABC):

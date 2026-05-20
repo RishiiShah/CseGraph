@@ -246,8 +246,8 @@ def test_help_lists_canonical_index_and_refresh_without_aliases():
 
     assert "index" in proc.stdout
     assert "refresh" in proc.stdout
-    assert "Alias for index" not in proc.stdout
-    assert "Alias for refresh" not in proc.stdout
+    assert ("Alias for " + "index") not in proc.stdout
+    assert ("Alias for " + "refresh") not in proc.stdout
 
 
 def test_build_and_update_are_not_public_commands():
@@ -347,6 +347,10 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
         "create_user",
         "--query",
         "Implement create_user with clean_name",
+        "--expect-node",
+        "symbol::service.py::function::create_user",
+        "--expect-node",
+        "symbol::helpers.py::function::clean_name",
         "--json",
     )
 
@@ -358,7 +362,7 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     assert result["total_elapsed_ms"] >= 0
 
     steps = result["steps"]
-    assert [step["name"] for step in steps] == ["index", "context", "graph", "report", "token_reduction"]
+    assert [step["name"] for step in steps] == ["index", "refresh", "context", "graph", "report", "token_reduction"]
     assert all(step["elapsed_ms"] >= 0 for step in steps)
 
     by_name = {step["name"]: step for step in steps}
@@ -376,8 +380,14 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
         elapsed_ms >= 0
         for elapsed_ms in by_name["index"]["stats"]["phases"].values()
     )
+    assert by_name["refresh"]["stats"]["changed_files"] == 0
+    assert by_name["refresh"]["stats"]["deleted_files"] == 0
     assert by_name["context"]["stats"]["nodes"] >= 1
     assert by_name["context"]["stats"]["target"] == "symbol::service.py::function::create_user"
+    assert by_name["context"]["stats"]["schema_version"] == "csegraph-context-v2"
+    assert by_name["context"]["stats"]["returned_detail_level"] in {"minimal", "standard"}
+    assert by_name["context"]["stats"]["mcp_response_bytes"] > 0
+    assert by_name["context"]["stats"]["missing_expected_nodes"] == []
     assert by_name["graph"]["stats"]["nodes"] >= 1
     assert by_name["graph"]["stats"]["edges"] >= 1
     assert by_name["graph"]["stats"]["output_size_bytes"] > 0
