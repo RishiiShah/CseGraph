@@ -143,6 +143,10 @@ _TOOLS: list[Tool] = [
                     "default": "auto",
                     "description": "Context detail level: auto returns minimal if sufficient else standard, minimal is compact routing card with top 5 nodes, standard includes selected source, full includes all explanations.",
                 },
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Hard ceiling on the serialized JSON response size. When exceeded, source_text is dropped first, then explanations, then nodes from the tail. truncated_fields reports what was dropped.",
+                },
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
@@ -187,6 +191,10 @@ _TOOLS: list[Tool] = [
                     "items": {"type": "string"},
                     "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
                 },
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
+                },
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
@@ -222,6 +230,10 @@ _TOOLS: list[Tool] = [
                     "enum": ["minimal", "standard"],
                     "default": "minimal",
                     "description": "minimal returns the name chain + length; standard returns the full PathStep nodes and PathEdge edges.",
+                },
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
                 },
                 "db": {
                     "type": "string",
@@ -330,6 +342,8 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
     _SESSION.record(name)
     if isinstance(result, dict):
         _apply_session_filter(result)
+        max_bytes = arguments.get("max_bytes")
+        _apply_byte_cap(result, max_bytes if isinstance(max_bytes, int) else None)
     return result
 
 
@@ -347,6 +361,115 @@ def _apply_session_filter(result: dict[str, Any]) -> None:
             if not (isinstance(item, dict) and item.get("tool") in called)
         ]
     result["tools_already_called"] = _SESSION.snapshot()
+
+
+def _encoded_size(result: dict[str, Any]) -> int:
+    return len(json.dumps(result, default=str).encode("utf-8"))
+
+
+def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
+    """Enforce a hard ceiling on the serialized response size.
+
+    Drop order (each step re-measures; stops when under budget):
+      1. `source_text` on every node
+      2. `explanation` on every node
+      3. Trim `nodes` list from the tail (assumes ordering = priority)
+      4. Trim `edges` list from the tail
+
+    Annotates the response with `response_bytes`, `byte_cap`, `byte_cap_applied`,
+    and `truncated_fields` so the agent knows what was dropped. Mutates `result`
+    in place.
+
+    Annotation fields are added BEFORE measurement so every size check reflects
+    the final response shape. `response_bytes` is the placeholder initially and
+    is overwritten with the true final size at the end.
+    """
+    truncated: list[str] = []
+    result["truncated_fields"] = truncated
+    result["byte_cap_applied"] = False
+    if isinstance(max_bytes, int) and max_bytes > 0:
+        result["byte_cap"] = max_bytes
+    # Placeholder; we set the final value at the end. Use a value with similar
+    # digit count to the cap so the size measurement stays stable.
+    result["response_bytes"] = max_bytes if (isinstance(max_bytes, int) and max_bytes > 0) else 0
+
+    if not isinstance(max_bytes, int) or max_bytes <= 0:
+        _finalize_response_bytes(result)
+        return
+
+    if _encoded_size(result) <= max_bytes:
+        _finalize_response_bytes(result)
+        return
+
+    nodes = result.get("nodes")
+
+    # Step 1: drop source_text from every node.
+    if isinstance(nodes, list):
+        dropped = False
+        for node in nodes:
+            if isinstance(node, dict) and node.get("source_text") is not None:
+                node.pop("source_text", None)
+                dropped = True
+        if dropped:
+            truncated.append("source_text")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 2: drop explanation from every node.
+    if isinstance(nodes, list):
+        dropped = False
+        for node in nodes:
+            if isinstance(node, dict) and node.get("explanation") is not None:
+                node.pop("explanation", None)
+                dropped = True
+        if dropped:
+            truncated.append("explanation")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 3: trim nodes list (lowest-priority assumed at tail).
+    if isinstance(nodes, list) and nodes:
+        trimmed = False
+        while len(nodes) > 1 and _encoded_size(result) > max_bytes:
+            nodes.pop()
+            trimmed = True
+        if trimmed:
+            truncated.append("nodes")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 4: trim edges list.
+    edges = result.get("edges")
+    if isinstance(edges, list) and edges:
+        trimmed = False
+        while edges and _encoded_size(result) > max_bytes:
+            edges.pop()
+            trimmed = True
+        if trimmed:
+            truncated.append("edges")
+
+    result["byte_cap_applied"] = bool(truncated)
+    _finalize_response_bytes(result)
+
+
+def _finalize_response_bytes(result: dict[str, Any]) -> None:
+    """Converge `response_bytes` to the actual encoded size.
+
+    Setting `response_bytes` may shift the encoded length by a few bytes when
+    the value's digit count differs from the placeholder. A short fixed-point
+    loop converges in 1-2 iterations on every realistic payload.
+    """
+    for _ in range(4):
+        new_size = _encoded_size(result)
+        if result.get("response_bytes") == new_size:
+            return
+        result["response_bytes"] = new_size
 
 
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
