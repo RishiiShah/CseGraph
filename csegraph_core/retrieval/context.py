@@ -145,6 +145,16 @@ class ContextService:
             final_raw_nodes = {node.id for node in nodes if node.raw_code}
             estimated_tokens = sum(node.estimated_tokens for node in nodes)
 
+            # Aggregate confidence tiers for edges among the returned context nodes.
+            confidence_counts: Dict[str, int] = {}
+            selected_ids = {node.id for node in nodes}
+            for nid in selected_ids:
+                for edge in outgoing.get(nid, []):
+                    tgt = edge.get("target_id") or edge.get("target")
+                    if tgt in selected_ids:
+                        tier = edge.get("confidence_tier") or "EXTRACTED"
+                        confidence_counts[tier] = confidence_counts.get(tier, 0) + 1
+
             run_id = index.insert_retrieval_run(
                 query=task,
                 target=target_id,
@@ -197,6 +207,7 @@ class ContextService:
                 next_actions=_next_actions(returned_detail_level, target_id),
                 warnings=_warnings(sufficient),
                 run_id=run_id,
+                confidence_breakdown=confidence_counts,
             )
         finally:
             index.close()

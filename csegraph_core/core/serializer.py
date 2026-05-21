@@ -35,6 +35,7 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         "detail_level": result.detail_level,
         "returned_detail_level": result.returned_detail_level,
         "total_estimated_tokens": result.total_estimated_tokens,
+        "confidence_breakdown": to_dict(getattr(result, "confidence_breakdown", {})),
         "sufficiency": to_dict(result.sufficiency),
         "raw_code_nodes": to_dict(result.raw_code_nodes),
         "next_actions": to_dict(result.next_actions),

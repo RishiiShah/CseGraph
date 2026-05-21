@@ -72,6 +72,8 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
+Note: `csegraph_context` supports both `max_tokens` (a soft budgeting hint used during retrieval to decide how much source material to include) and `max_bytes` (a hard ceiling enforced on the serialized JSON response; when exceeded the server drops `source_text`, then `explanation`, then trims `nodes`/`edges`).
+
 ### Response annotations
 
 Every MCP response carries metadata that agents can use to triage and gate further calls:

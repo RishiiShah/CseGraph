@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,7 +26,7 @@ class MinimalService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def first(self, task: Optional[str] = None) -> MinimalResult:
+    def first(self, task: Optional[str] = None, inferred_intent: Optional[str] = None) -> MinimalResult:
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -39,7 +40,21 @@ class MinimalService:
             languages = _top_languages(index)
 
             summary = _format_summary(totals, languages)
-            intent = _detect_intent(task)
+            # Stale-index warning: if the newest node is older than 24 hours,
+            # prepend a short warning so agents know the index may be out of date.
+            try:
+                row = index.conn.execute("SELECT MAX(updated_at) as m FROM nodes").fetchone()
+                if row and row["m"] is not None:
+                    age = time.time() - float(row["m"])
+                    hours = int(age // 3600)
+                    if hours >= 24:
+                        summary = f"Index is {hours} hours stale; run `csegraph_refresh` to update.\n" + summary
+            except Exception:
+                # Non-fatal: if the query fails for any reason, continue without the warning.
+                pass
+            # Use a cached inferred intent when provided (session-level cache),
+            # otherwise detect from the task text.
+            intent = inferred_intent if inferred_intent is not None else _detect_intent(task)
             suggestions = _suggestions_for_intent(intent, task)
 
             preview = MinimalResult(

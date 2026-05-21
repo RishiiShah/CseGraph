@@ -28,6 +28,7 @@ class BenchmarkService:
         target: str | None = None,
         graph_output_path: str | Path | None = None,
         expected_nodes: Iterable[str] | None = None,
+        workflows: Iterable[dict] | None = None,
     ) -> BenchmarkResult:
         repo_root = str(Path(repo).resolve())
         output = str(
@@ -210,6 +211,44 @@ class BenchmarkService:
                 },
             )
         )
+
+        # Optional custom workflow steps: run arbitrary tools/services and record response sizes.
+        if workflows:
+            from csegraph_core.retrieval.minimal import MinimalService
+            from csegraph_core.graph.queries import GraphQueryService
+
+            for wf in workflows:
+                tool = wf.get("tool")
+                args = wf.get("args", {}) or {}
+                start = time.perf_counter()
+                resp = None
+                try:
+                    if tool == "minimal":
+                        resp = MinimalService(self.db_path).first(**args)
+                    elif tool == "context":
+                        resp = ContextService(self.db_path).build_context(**args)
+                    elif tool == "graph":
+                        resp = VisualExportService(self.db_path).export(args.get("output") or output)
+                    elif tool == "path":
+                        resp = GraphQueryService(self.db_path).shortest_path(**args)
+                    elif tool == "index":
+                        resp = IndexService(self.db_path).index(repo_root, profile=profile)
+                    elif tool == "refresh":
+                        resp = RefreshService(self.db_path).refresh(profile=profile)
+                    else:
+                        # Unsupported custom tool; skip
+                        continue
+                except Exception as exc:
+                    elapsed = _elapsed_ms(start)
+                    steps.append(BenchmarkStep(name=f"workflow:{tool}", elapsed_ms=elapsed, stats={"error": str(exc)}))
+                    continue
+                elapsed = _elapsed_ms(start)
+                try:
+                    payload = to_dict(resp)
+                    resp_bytes = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+                except Exception:
+                    resp_bytes = 0
+                steps.append(BenchmarkStep(name=f"workflow:{tool}", elapsed_ms=elapsed, stats={"mcp_response_bytes": resp_bytes}))
 
         return BenchmarkResult(
             command="benchmark",

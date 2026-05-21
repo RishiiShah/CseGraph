@@ -10,6 +10,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
 
 from csegraph_core.core.models import to_dict
+from csegraph_core.config.profiles import load_profile
 from csegraph_core.server.session import _SESSION
 
 logger = logging.getLogger("csegraph.mcp")
@@ -130,7 +131,7 @@ _TOOLS: list[Tool] = [
                 },
                 "max_tokens": {
                     "type": "integer",
-                    "description": "Approximate max tokens for returned context.",
+                    "description": "Approximate max tokens for returned context. `max_tokens` is a soft budgeting hint used during retrieval to decide how much source material to include; it does not guarantee the serialized response size.",
                 },
                 "explain": {
                     "type": "boolean",
@@ -231,6 +232,11 @@ _TOOLS: list[Tool] = [
                     "default": "minimal",
                     "description": "minimal returns the name chain + length; standard returns the full PathStep nodes and PathEdge edges.",
                 },
+                "relations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
+                },
                 "max_bytes": {
                     "type": "integer",
                     "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
@@ -304,6 +310,13 @@ _PROMPTS: list[Prompt] = [
 ]
 
 
+# Prefixed to every prompt to enforce token-efficiency and escalation rules.
+_TOKEN_EFFICIENCY_PREAMBLE = (
+    "Token-efficiency: Prefer fewer tool calls and smaller payloads. "
+    "Never make more than 3 tool calls in a single agent turn. "
+    "If a minimal routing card is sufficient, prefer it to additional heavy calls."
+)
+
 def _assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
     import tempfile
     resolved_path = path.resolve()
@@ -340,10 +353,25 @@ def _db_path(repo: str, db: str | None = None) -> str:
 def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
     result = _dispatch_tool(name, arguments)
     _SESSION.record(name)
+    # When the minimal tool runs, cache the detected task intent on the session
+    # so downstream calls can route without re-detecting.
+    if name == "csegraph_minimal" and isinstance(result, dict):
+        intent = result.get("task_intent")
+        if intent:
+            _SESSION.inferred_intent = intent
     if isinstance(result, dict):
         _apply_session_filter(result)
-        max_bytes = arguments.get("max_bytes")
-        _apply_byte_cap(result, max_bytes if isinstance(max_bytes, int) else None)
+        provided_max = arguments.get("max_bytes")
+        if isinstance(provided_max, int) and provided_max > 0:
+            effective_max = provided_max
+        else:
+            profile_name = arguments.get("profile") or "medium"
+            try:
+                profile_cfg = load_profile(profile_name)
+                effective_max = getattr(profile_cfg, "max_bytes", None)
+            except Exception:
+                effective_max = None
+        _apply_byte_cap(result, effective_max if isinstance(effective_max, int) and effective_max > 0 else None)
     return result
 
 
@@ -494,7 +522,12 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(MinimalService(db).first(task=arguments.get("task")))
+        return to_dict(
+            MinimalService(db).first(
+                task=arguments.get("task"),
+                inferred_intent=_SESSION.inferred_intent,
+            )
+        )
 
     if name == "csegraph_context":
         from csegraph_core.retrieval.context import ContextService
@@ -536,11 +569,13 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
         detail_level = arguments.get("detail_level", "minimal")
+        relations = arguments.get("relations")
         return to_dict(
             GraphQueryService(db).shortest_path(
                 arguments["source"],
                 arguments["target"],
                 detail_level=detail_level,
+                relations=relations,
             )
         )
 
@@ -576,6 +611,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "If `repo` is missing, ask the user for the absolute repository path.",
                 "Call `csegraph_minimal` with the repo and the user's task (if any).",
                 "Use the returned `next_tool_suggestions` to choose the next call; do not invoke unrelated tools.",
+                "Never make more than 3 tool calls in a single agent turn; prefer choosing one suggested next_tool.",
             ],
             args,
         )
@@ -585,8 +621,9 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             [
                 "If `repo` or `task` is missing, ask for it before calling tools.",
                 "Call `csegraph_context` with repo, task, optional target, detail_level=auto to start efficiently.",
-                "If returned_detail_level is minimal, optionally request standard for deeper context or source code.",
-                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work.",
+                "If returned_detail_level is minimal and sufficiency is met, avoid escalating to `csegraph_graph` or `csegraph_path` unless the task intent requires structural dependency checks.",
+                "If intent='debug' AND minimal returns >=3 key_entities, prefer calling `csegraph_context` with a focused target rather than broad graph traversals.",
+                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work and minimize follow-up tool calls.",
             ],
             args,
         )
@@ -595,6 +632,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             "Review the current work using csegraph before making recommendations.",
             [
                 "Call `csegraph_context` with detail_level=auto to start efficiently (returns minimal if sufficient, standard otherwise).",
+                "Never make more than 3 tool calls in a single agent turn; prefer compact context and a single neighborhood inspection when needed.",
                 "Use `csegraph_graph` for key changed symbols when a neighborhood clarifies blast radius.",
                 "Report findings first, ordered by severity, with file and symbol references.",
             ],
@@ -606,6 +644,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             [
                 "Call `csegraph_refresh` first if the index may be stale.",
                 "Call `csegraph_context` with detail_level=auto for the merge or PR task; request standard only when source is needed.",
+                "Never make more than 3 tool calls in a single agent turn; prefer targeted context and a single structural check when necessary.",
                 "Use `csegraph_path` or `csegraph_graph` for any risky dependency questions.",
                 "Return blockers, residual risks, and verification commands.",
             ],
@@ -628,6 +667,8 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
 def _prompt_text(goal: str, steps: list[str], arguments: dict[str, Any]) -> str:
     args_text = json.dumps(arguments, sort_keys=True)
     lines = [
+        _TOKEN_EFFICIENCY_PREAMBLE,
+        "",
         goal,
         "",
         f"Arguments: {args_text}",

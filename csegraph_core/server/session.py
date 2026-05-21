@@ -14,6 +14,7 @@ from typing import List
 class SessionState:
     def __init__(self) -> None:
         self.tools_called: set[str] = set()
+        self.inferred_intent: str | None = None
 
     def record(self, tool_name: str) -> None:
         if tool_name:
@@ -27,6 +28,7 @@ class SessionState:
 
     def reset(self) -> None:
         self.tools_called.clear()
+        self.inferred_intent = None
 
 
 _SESSION = SessionState()

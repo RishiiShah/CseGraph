@@ -280,6 +280,7 @@ class GraphQueryService:
         source: str,
         target: str,
         detail_level: str = "minimal",
+        relations: Optional[List[str]] = None,
     ) -> PathResult:
         if detail_level not in ("minimal", "standard"):
             raise ValueError(f"detail_level must be 'minimal' or 'standard', got '{detail_level}'")
@@ -292,13 +293,25 @@ class GraphQueryService:
             src = _resolve_graph_node(index, source, repo_root)
             dst = _resolve_graph_node(index, target, repo_root)
 
-            adj: Dict[str, List[Tuple[str, str]]] = {}
-            for row in index.conn.execute("SELECT source, target, relation FROM edges"):
+            # Build adjacency optionally restricted to the requested relations.
+            adj: Dict[str, List[Tuple[str, str, str]]] = {}
+            rel_clause, rel_params = _relation_clause(relations)
+            for row in index.conn.execute(f"SELECT source, target, relation, confidence_tier FROM edges {rel_clause}", rel_params):
                 s, t, r = row["source"], row["target"], row["relation"]
-                adj.setdefault(s, []).append((t, r))
-                adj.setdefault(t, []).append((s, r))
+                try:
+                    tier = row["confidence_tier"] if row["confidence_tier"] else "EXTRACTED"
+                except Exception:
+                    tier = "EXTRACTED"
+                adj.setdefault(s, []).append((t, r, tier))
+                adj.setdefault(t, []).append((s, r, tier))
 
-            prev: Dict[str, Optional[Tuple[str, str]]] = {src: None}
+            # Precompute hub threshold and hub node ids for hub-aware BFS.
+            threshold = _compute_hub_threshold(index, relations)
+            hubs = _hub_node_ids(index, threshold, relations)
+            hubs.discard(src)
+            hubs.discard(dst)
+
+            prev: Dict[str, Optional[Tuple[str, str, str]]] = {src: None}
             queue: deque[str] = deque([src])
             found = False
             while queue:
@@ -306,9 +319,13 @@ class GraphQueryService:
                 if current == dst:
                     found = True
                     break
-                for neighbor, relation in adj.get(current, []):
+                # Hub-aware expansion: do not expand through hub nodes unless they
+                # are the source or the destination.
+                if current in hubs:
+                    continue
+                for neighbor, relation, tier in adj.get(current, []):
                     if neighbor not in prev:
-                        prev[neighbor] = (current, relation)
+                        prev[neighbor] = (current, relation, tier)
                         queue.append(neighbor)
 
             if not found:
@@ -332,9 +349,9 @@ class GraphQueryService:
             node = dst
             while node is not None:
                 path_ids.append(node)
-                entry = prev[node]
+                entry = prev.get(node)
                 if entry is not None:
-                    parent, relation = entry
+                    parent, relation, tier = entry
                     path_edges.append(PathEdge(source=parent, target=node, relation=relation))
                     node = parent
                 else:
@@ -352,6 +369,19 @@ class GraphQueryService:
 
             name_chain = " → ".join(_short_name(nid, node_rows) for nid in path_ids)
             summary = f"{name_chain} ({len(path_edges)} hops)"
+
+            # Compute a confidence breakdown over the edges forming the path.
+            confidence_counts: Dict[str, int] = {}
+            for pe in path_edges:
+                row = index.conn.execute(
+                    "SELECT confidence_tier FROM edges WHERE source = ? AND target = ? AND relation = ? LIMIT 1",
+                    (pe.source, pe.target, pe.relation),
+                ).fetchone()
+                tier = row["confidence_tier"] if row and row["confidence_tier"] else "EXTRACTED"
+                confidence_counts[tier] = confidence_counts.get(tier, 0) + 1
+
+            # Count how many hub nodes were avoided within the path (excluding endpoints).
+            hubs_skipped = sum(1 for nid in path_ids if nid in hubs)
 
             if detail_level == "minimal":
                 minimal_steps = [
@@ -376,6 +406,9 @@ class GraphQueryService:
                     edges=[],
                     detail_level="minimal",
                     summary=summary,
+                    relations_filter=list(relations or []),
+                    hubs_skipped=hubs_skipped,
+                    confidence_breakdown=confidence_counts,
                 )
 
             steps = [_path_step_from_row(nid, node_rows) for nid in path_ids]
@@ -391,6 +424,9 @@ class GraphQueryService:
                 edges=path_edges,
                 detail_level="standard",
                 summary=summary,
+                relations_filter=list(relations or []),
+                hubs_skipped=hubs_skipped,
+                confidence_breakdown=confidence_counts,
             )
         finally:
             index.close()

@@ -18,6 +18,7 @@ class ProfileConfig:
     semantic_threshold: float = 0.50
     semantic_threshold_relaxed: float = 0.0
     confidence_threshold: float = 0.70
+    max_bytes: int = 16384
 
 
 @dataclass
@@ -103,6 +104,7 @@ class ContextResult:
     next_actions: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     run_id: Optional[int] = None
+    confidence_breakdown: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -172,6 +174,9 @@ class PathResult:
     edges: List[PathEdge]
     detail_level: str = "standard"
     summary: str = ""
+    relations_filter: List[str] = field(default_factory=list)
+    hubs_skipped: int = 0
+    confidence_breakdown: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

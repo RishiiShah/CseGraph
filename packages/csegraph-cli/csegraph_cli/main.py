@@ -183,6 +183,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="minimal",
         help="minimal: name chain + length. standard: full nodes/edges.",
     )
+    path.add_argument(
+        "--relations",
+        default=None,
+        help="Comma-separated edge kinds to restrict traversal (e.g. 'calls,imports').",
+    )
     _add_db(path)
     _add_json(path)
 
@@ -329,8 +334,9 @@ def _dispatch(args: argparse.Namespace) -> Any:
         target = args.target or args.target_arg
         if not source or not target:
             raise ValueError("path requires two nodes. Example: csegraph path greet main")
+        relations = [r.strip() for r in args.relations.split(',') if r.strip()] if args.relations else None
         return GraphQueryService(_db_arg(args, str(repo))).shortest_path(
-            source, target, detail_level=args.detail_level
+            source, target, detail_level=args.detail_level, relations=relations
         )
     if args.command == "inspect":
         from csegraph_core.graph.queries import GraphQueryService

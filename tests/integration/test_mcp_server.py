@@ -119,6 +119,7 @@ class TestHandlePrompt:
         assert "/repo" in message.content.text
         assert "fix auth refresh" in message.content.text
         assert "refresh_token" in message.content.text
+        assert "Token-efficiency" in message.content.text
 
     def test_review_prompt_mentions_review_tool_workflow(self):
         result = _handle_prompt("csegraph-review", {"repo": "/repo"})
@@ -127,6 +128,7 @@ class TestHandlePrompt:
         assert "csegraph_context" in text
         assert "detail_level=auto" in text
         assert "csegraph_graph" in text
+        assert "Token-efficiency" in text
 
     def test_pre_merge_prompt_mentions_detail_level_auto(self):
         result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
@@ -134,6 +136,7 @@ class TestHandlePrompt:
 
         assert "csegraph_context" in text
         assert "detail_level=auto" in text
+        assert "Token-efficiency" in text
 
     def test_unknown_prompt_raises(self):
         with pytest.raises(ValueError, match="Unknown prompt"):
