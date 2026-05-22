@@ -10,6 +10,8 @@ from mcp.server.stdio import stdio_server
 from mcp.types import GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
 
 from csegraph_core.core.models import to_dict
+from csegraph_core.config.profiles import load_profile
+from csegraph_core.server.session import _SESSION
 
 logger = logging.getLogger("csegraph.mcp")
 
@@ -69,6 +71,32 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_minimal",
+        description=(
+            "Call this FIRST. Returns a ~150-token routing card: graph summary, top-degree key "
+            "entities, detected task intent, and next-tool suggestions tailored to the task. "
+            "Use this before invoking heavier tools so the agent knows which one to call."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Optional natural-language task. Used for keyword-based next-tool routing.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
         name="csegraph_context",
         description=(
             "Retrieve task-specific context from a csegraph index. "
@@ -103,7 +131,7 @@ _TOOLS: list[Tool] = [
                 },
                 "max_tokens": {
                     "type": "integer",
-                    "description": "Approximate max tokens for returned context.",
+                    "description": "Approximate max tokens for returned context. `max_tokens` is a soft budgeting hint used during retrieval to decide how much source material to include; it does not guarantee the serialized response size.",
                 },
                 "explain": {
                     "type": "boolean",
@@ -115,6 +143,10 @@ _TOOLS: list[Tool] = [
                     "enum": ["auto", "minimal", "standard", "full"],
                     "default": "auto",
                     "description": "Context detail level: auto returns minimal if sufficient else standard, minimal is compact routing card with top 5 nodes, standard includes selected source, full includes all explanations.",
+                },
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Hard ceiling on the serialized JSON response size. When exceeded, source_text is dropped first, then explanations, then nodes from the tail. truncated_fields reports what was dropped.",
                 },
                 "db": {
                     "type": "string",
@@ -128,7 +160,10 @@ _TOOLS: list[Tool] = [
         name="csegraph_graph",
         description=(
             "Inspect the graph neighborhood around a symbol or node. "
-            "Returns nodes and edges within a configurable BFS depth."
+            "Returns nodes and edges within a configurable BFS depth. "
+            "Default detail_level=minimal returns a summary and top-degree nodes; "
+            "use standard for the full node and edge list. "
+            "Pass relations=['calls','imports',...] to restrict traversal to specific edge kinds."
         ),
         inputSchema={
             "type": "object",
@@ -146,6 +181,21 @@ _TOOLS: list[Tool] = [
                     "default": 1,
                     "description": "BFS neighborhood depth.",
                 },
+                "detail_level": {
+                    "type": "string",
+                    "enum": ["minimal", "standard"],
+                    "default": "minimal",
+                    "description": "minimal returns summary + top-degree key nodes; standard returns the full nodes and edges.",
+                },
+                "relations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
+                },
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
+                },
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
@@ -158,7 +208,8 @@ _TOOLS: list[Tool] = [
         name="csegraph_path",
         description=(
             "Find the shortest path between two nodes in the csegraph dependency graph. "
-            "Returns the sequence of nodes and edges connecting them via BFS."
+            "Default detail_level=minimal returns a name-chain summary; "
+            "use standard for the full PathStep and PathEdge sequence."
         ),
         inputSchema={
             "type": "object",
@@ -175,79 +226,27 @@ _TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Absolute path to the repository root.",
                 },
+                "detail_level": {
+                    "type": "string",
+                    "enum": ["minimal", "standard"],
+                    "default": "minimal",
+                    "description": "minimal returns the name chain + length; standard returns the full PathStep nodes and PathEdge edges.",
+                },
+                "relations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
+                },
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
+                },
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
                 },
             },
             "required": ["source", "target", "repo"],
-        },
-    ),
-    Tool(
-        name="csegraph_tree",
-        description=(
-            "Export an interactive HTML file tree visualization of the indexed repository. "
-            "Shows the full hierarchy of folders, files, classes, functions, and methods."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Absolute path to the repository root.",
-                },
-                "output": {
-                    "type": "string",
-                    "description": "Output HTML file path. Default: <repo>/.csegraph/csegraph-tree.html",
-                },
-                "db": {
-                    "type": "string",
-                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
-                },
-            },
-            "required": ["repo"],
-        },
-    ),
-    Tool(
-        name="csegraph_communities",
-        description=(
-            "Detect communities in the csegraph dependency graph using modularity optimization. "
-            "Returns clusters of related files and symbols."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Absolute path to the repository root.",
-                },
-                "db": {
-                    "type": "string",
-                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
-                },
-            },
-            "required": ["repo"],
-        },
-    ),
-    Tool(
-        name="csegraph_report",
-        description=(
-            "Generate a structural report from a csegraph index. "
-            "Includes node/edge counts, god nodes, knowledge gaps, and suggested questions."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Absolute path to the repository root.",
-                },
-                "db": {
-                    "type": "string",
-                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
-                },
-            },
-            "required": ["repo"],
         },
     ),
 ]
@@ -272,6 +271,15 @@ _PROMPTS: list[Prompt] = [
         ],
     ),
     Prompt(
+        name="csegraph-minimal",
+        title="Routing Card (Call First)",
+        description="Run csegraph_minimal first to get a compact summary and next-tool suggestions.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="task", description="Optional task description for keyword routing.", required=False),
+        ],
+    ),
+    Prompt(
         name="csegraph-context",
         title="Retrieve Context",
         description="Retrieve compact graph-backed context for a task and optional target.",
@@ -291,15 +299,6 @@ _PROMPTS: list[Prompt] = [
         ],
     ),
     Prompt(
-        name="csegraph-architecture",
-        title="Map Architecture",
-        description="Build an architecture overview from csegraph report, communities, and graph inspection.",
-        arguments=[
-            PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="focus", description="Optional subsystem or symbol focus.", required=False),
-        ],
-    ),
-    Prompt(
         name="csegraph-pre-merge",
         title="Pre-Merge Check",
         description="Run a pre-merge workflow using csegraph context and structural checks.",
@@ -311,13 +310,197 @@ _PROMPTS: list[Prompt] = [
 ]
 
 
+# Prefixed to every prompt to enforce token-efficiency and escalation rules.
+_TOKEN_EFFICIENCY_PREAMBLE = (
+    "Token-efficiency: Prefer fewer tool calls and smaller payloads. "
+    "Never make more than 3 tool calls in a single agent turn. "
+    "If a minimal routing card is sufficient, prefer it to additional heavy calls."
+)
+
+def _assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
+    import tempfile
+    resolved_path = path.resolve()
+    resolved_repo = repo_path.resolve()
+    if resolved_path.is_relative_to(resolved_repo):
+        return
+    temp_dir = Path(tempfile.gettempdir()).resolve()
+    if resolved_path.is_relative_to(temp_dir):
+        return
+    try:
+        home_dir = Path.home().resolve()
+        if resolved_path.is_relative_to(home_dir):
+            return
+    except Exception:
+        pass
+    try:
+        cwd_dir = Path.cwd().resolve()
+        if resolved_path.is_relative_to(cwd_dir):
+            return
+    except Exception:
+        pass
+    raise ValueError(f"{name} path '{path}' must be within repository root, home directory, temporary directory, or CWD.")
+
+
 def _db_path(repo: str, db: str | None = None) -> str:
+    repo_path = Path(repo).resolve()
     if db:
-        return str(Path(db).resolve())
-    return str(Path(repo).resolve() / ".csegraph" / "index.db")
+        db_path = Path(db).resolve()
+        _assert_safe_path(db_path, repo_path, "Database")
+        return str(db_path)
+    return str(repo_path / ".csegraph" / "index.db")
 
 
 def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
+    result = _dispatch_tool(name, arguments)
+    _SESSION.record(name)
+    # When the minimal tool runs, cache the detected task intent on the session
+    # so downstream calls can route without re-detecting.
+    if name == "csegraph_minimal" and isinstance(result, dict):
+        intent = result.get("task_intent")
+        if intent:
+            _SESSION.inferred_intent = intent
+    if isinstance(result, dict):
+        _apply_session_filter(result)
+        provided_max = arguments.get("max_bytes")
+        if isinstance(provided_max, int) and provided_max > 0:
+            effective_max = provided_max
+        else:
+            profile_name = arguments.get("profile") or "medium"
+            try:
+                profile_cfg = load_profile(profile_name)
+                effective_max = getattr(profile_cfg, "max_bytes", None)
+            except Exception:
+                effective_max = None
+        _apply_byte_cap(result, effective_max if isinstance(effective_max, int) and effective_max > 0 else None)
+    return result
+
+
+def _apply_session_filter(result: dict[str, Any]) -> None:
+    """Drop next-tool suggestions whose tool has already been called this session
+    and annotate the response with the current tools_already_called list.
+    Mutates `result` in place."""
+    called = _SESSION.tools_called
+    for key in ("next_tool_suggestions", "next_actions"):
+        items = result.get(key)
+        if not isinstance(items, list):
+            continue
+        result[key] = [
+            item for item in items
+            if not (isinstance(item, dict) and item.get("tool") in called)
+        ]
+    result["tools_already_called"] = _SESSION.snapshot()
+
+
+def _encoded_size(result: dict[str, Any]) -> int:
+    return len(json.dumps(result, default=str).encode("utf-8"))
+
+
+def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
+    """Enforce a hard ceiling on the serialized response size.
+
+    Drop order (each step re-measures; stops when under budget):
+      1. `source_text` on every node
+      2. `explanation` on every node
+      3. Trim `nodes` list from the tail (assumes ordering = priority)
+      4. Trim `edges` list from the tail
+
+    Annotates the response with `response_bytes`, `byte_cap`, `byte_cap_applied`,
+    and `truncated_fields` so the agent knows what was dropped. Mutates `result`
+    in place.
+
+    Annotation fields are added BEFORE measurement so every size check reflects
+    the final response shape. `response_bytes` is the placeholder initially and
+    is overwritten with the true final size at the end.
+    """
+    truncated: list[str] = []
+    result["truncated_fields"] = truncated
+    result["byte_cap_applied"] = False
+    if isinstance(max_bytes, int) and max_bytes > 0:
+        result["byte_cap"] = max_bytes
+    # Placeholder; we set the final value at the end. Use a value with similar
+    # digit count to the cap so the size measurement stays stable.
+    result["response_bytes"] = max_bytes if (isinstance(max_bytes, int) and max_bytes > 0) else 0
+
+    if not isinstance(max_bytes, int) or max_bytes <= 0:
+        _finalize_response_bytes(result)
+        return
+
+    if _encoded_size(result) <= max_bytes:
+        _finalize_response_bytes(result)
+        return
+
+    nodes = result.get("nodes")
+
+    # Step 1: drop source_text from every node.
+    if isinstance(nodes, list):
+        dropped = False
+        for node in nodes:
+            if isinstance(node, dict) and node.get("source_text") is not None:
+                node.pop("source_text", None)
+                dropped = True
+        if dropped:
+            truncated.append("source_text")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 2: drop explanation from every node.
+    if isinstance(nodes, list):
+        dropped = False
+        for node in nodes:
+            if isinstance(node, dict) and node.get("explanation") is not None:
+                node.pop("explanation", None)
+                dropped = True
+        if dropped:
+            truncated.append("explanation")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 3: trim nodes list (lowest-priority assumed at tail).
+    if isinstance(nodes, list) and nodes:
+        trimmed = False
+        while len(nodes) > 1 and _encoded_size(result) > max_bytes:
+            nodes.pop()
+            trimmed = True
+        if trimmed:
+            truncated.append("nodes")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 4: trim edges list.
+    edges = result.get("edges")
+    if isinstance(edges, list) and edges:
+        trimmed = False
+        while edges and _encoded_size(result) > max_bytes:
+            edges.pop()
+            trimmed = True
+        if trimmed:
+            truncated.append("edges")
+
+    result["byte_cap_applied"] = bool(truncated)
+    _finalize_response_bytes(result)
+
+
+def _finalize_response_bytes(result: dict[str, Any]) -> None:
+    """Converge `response_bytes` to the actual encoded size.
+
+    Setting `response_bytes` may shift the encoded length by a few bytes when
+    the value's digit count differs from the placeholder. A short fixed-point
+    loop converges in 1-2 iterations on every realistic payload.
+    """
+    for _ in range(4):
+        new_size = _encoded_size(result)
+        if result.get("response_bytes") == new_size:
+            return
+        result["response_bytes"] = new_size
+
+
+def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
         from csegraph_core.index.services import IndexService
 
@@ -333,6 +516,18 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
         return to_dict(RefreshService(db).refresh(profile=profile))
+
+    if name == "csegraph_minimal":
+        from csegraph_core.retrieval.minimal import MinimalService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(
+            MinimalService(db).first(
+                task=arguments.get("task"),
+                inferred_intent=_SESSION.inferred_intent,
+            )
+        )
 
     if name == "csegraph_context":
         from csegraph_core.retrieval.context import ContextService
@@ -357,36 +552,32 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
         depth = arguments.get("depth", 1)
-        return to_dict(GraphQueryService(db).neighborhood(arguments["node"], depth=depth))
+        detail_level = arguments.get("detail_level", "minimal")
+        relations = arguments.get("relations")
+        return to_dict(
+            GraphQueryService(db).neighborhood(
+                arguments["node"],
+                depth=depth,
+                detail_level=detail_level,
+                relations=relations,
+            )
+        )
 
     if name == "csegraph_path":
         from csegraph_core.graph.queries import GraphQueryService
 
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(GraphQueryService(db).shortest_path(arguments["source"], arguments["target"]))
-
-    if name == "csegraph_tree":
-        from csegraph_core.graph.tree import TreeExportService
-
-        repo = arguments["repo"]
-        db = _db_path(repo, arguments.get("db"))
-        output = arguments.get("output") or str(Path(db).with_name("csegraph-tree.html"))
-        return to_dict(TreeExportService(db).export(output))
-
-    if name == "csegraph_communities":
-        from csegraph_core.graph.communities import detect_communities
-
-        repo = arguments["repo"]
-        db = _db_path(repo, arguments.get("db"))
-        return to_dict(detect_communities(db))
-
-    if name == "csegraph_report":
-        from csegraph_core.graph.report import ReportService
-
-        repo = arguments["repo"]
-        db = _db_path(repo, arguments.get("db"))
-        return to_dict(ReportService(db).report())
+        detail_level = arguments.get("detail_level", "minimal")
+        relations = arguments.get("relations")
+        return to_dict(
+            GraphQueryService(db).shortest_path(
+                arguments["source"],
+                arguments["target"],
+                detail_level=detail_level,
+                relations=relations,
+            )
+        )
 
     raise ValueError(f"Unknown tool: {name}")
 
@@ -413,14 +604,26 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             ],
             args,
         )
+    elif name == "csegraph-minimal":
+        text = _prompt_text(
+            "Get a compact routing card before invoking heavier tools.",
+            [
+                "If `repo` is missing, ask the user for the absolute repository path.",
+                "Call `csegraph_minimal` with the repo and the user's task (if any).",
+                "Use the returned `next_tool_suggestions` to choose the next call; do not invoke unrelated tools.",
+                "Never make more than 3 tool calls in a single agent turn; prefer choosing one suggested next_tool.",
+            ],
+            args,
+        )
     elif name == "csegraph-context":
         text = _prompt_text(
             "Retrieve graph-backed context for the task, starting with minimal if sufficient.",
             [
                 "If `repo` or `task` is missing, ask for it before calling tools.",
                 "Call `csegraph_context` with repo, task, optional target, detail_level=auto to start efficiently.",
-                "If returned_detail_level is minimal, optionally request standard for deeper context or source code.",
-                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work.",
+                "If returned_detail_level is minimal and sufficiency is met, avoid escalating to `csegraph_graph` or `csegraph_path` unless the task intent requires structural dependency checks.",
+                "If intent='debug' AND minimal returns >=3 key_entities, prefer calling `csegraph_context` with a focused target rather than broad graph traversals.",
+                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work and minimize follow-up tool calls.",
             ],
             args,
         )
@@ -429,20 +632,9 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             "Review the current work using csegraph before making recommendations.",
             [
                 "Call `csegraph_context` with detail_level=auto to start efficiently (returns minimal if sufficient, standard otherwise).",
-                "Call `csegraph_report` to inspect structural risks and knowledge gaps.",
+                "Never make more than 3 tool calls in a single agent turn; prefer compact context and a single neighborhood inspection when needed.",
                 "Use `csegraph_graph` for key changed symbols when a neighborhood clarifies blast radius.",
                 "Report findings first, ordered by severity, with file and symbol references.",
-            ],
-            args,
-        )
-    elif name == "csegraph-architecture":
-        text = _prompt_text(
-            "Map the repository architecture from graph data.",
-            [
-                "Call `csegraph_report` for corpus, node, edge, hotspot, and gap summaries.",
-                "Call `csegraph_communities` to identify dependency clusters.",
-                "Use `csegraph_graph` to inspect important hubs or focused subsystems.",
-                "Summarize components, dependencies, hotspots, and recommended next questions.",
             ],
             args,
         )
@@ -452,7 +644,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             [
                 "Call `csegraph_refresh` first if the index may be stale.",
                 "Call `csegraph_context` with detail_level=auto for the merge or PR task; request standard only when source is needed.",
-                "Call `csegraph_report` for structural risks and knowledge gaps.",
+                "Never make more than 3 tool calls in a single agent turn; prefer targeted context and a single structural check when necessary.",
                 "Use `csegraph_path` or `csegraph_graph` for any risky dependency questions.",
                 "Return blockers, residual risks, and verification commands.",
             ],
@@ -475,6 +667,8 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
 def _prompt_text(goal: str, steps: list[str], arguments: dict[str, Any]) -> str:
     args_text = json.dumps(arguments, sort_keys=True)
     lines = [
+        _TOKEN_EFFICIENCY_PREAMBLE,
+        "",
         goal,
         "",
         f"Arguments: {args_text}",

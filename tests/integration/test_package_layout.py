@@ -6,6 +6,13 @@ import sys
 import tomllib
 
 
+CORE_RUNTIME_DEPENDENCIES = [
+    "mcp>=1.0.0,<2",
+    "watchfiles>=1.0.0,<2",
+    "tomlkit>=0.12.0,<1",
+]
+
+
 CORE_LANGUAGE_DEPENDENCIES = [
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
@@ -54,8 +61,8 @@ def test_v140_package_layout_and_versions():
 
     assert root_project["name"] == "csegraph-core"
     assert root_project["version"] == "1.6.0"
-    assert root_project["dependencies"] == CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"mcp", "watch", "test"}
+    assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
+    assert set(root_project.get("optional-dependencies", {})) == {"test"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
@@ -139,6 +146,88 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
         text=True,
     )
     assert sdk.returncode == 0
+
+
+def test_cli_package_source_install_exposes_base_commands(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    venv = tmp_path / "v"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
+    pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
+    csegraph = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
+
+    subprocess.run(
+        [
+            str(pip),
+            "install",
+            "--quiet",
+            "--no-index",
+            "--no-build-isolation",
+            "--no-deps",
+            "-e",
+            str(repo_root),
+            "-e",
+            str(repo_root / "packages" / "csegraph-cli"),
+        ],
+        check=True,
+        env=_offline_pip_env(),
+    )
+
+    base_commands = [
+        "index",
+        "refresh",
+        "context",
+        "status",
+        "postprocess",
+        "install",
+        "watch",
+        "serve",
+    ]
+    for command in base_commands:
+        proc = subprocess.run(
+            [str(csegraph), command, "--help"],
+            check=True,
+            capture_output=True,
+            env=_offline_pip_env(),
+            text=True,
+        )
+        assert f"usage: csegraph {command}" in proc.stdout
+
+
+def test_core_module_entrypoint_points_to_cli_package(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    venv = tmp_path / "v"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
+    pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
+    python = bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")
+
+    subprocess.run(
+        [
+            str(pip),
+            "install",
+            "--quiet",
+            "--no-index",
+            "--no-build-isolation",
+            "--no-deps",
+            "-e",
+            str(repo_root),
+        ],
+        check=True,
+        env=_offline_pip_env(),
+    )
+
+    proc = subprocess.run(
+        [str(python), "-m", "csegraph_core"],
+        capture_output=True,
+        env=_offline_pip_env(),
+        text=True,
+    )
+
+    assert proc.returncode == 1
+    assert "python -m csegraph_core` is not the CLI" in proc.stderr
+    assert "pip install -e . -e packages/csegraph-cli/" in proc.stderr
+    assert "python -m csegraph_cli <command>" in proc.stderr
 
 
 def test_status_and_postprocess_exports():

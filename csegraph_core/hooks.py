@@ -42,7 +42,8 @@ def find_git_dir(repo: str | Path) -> Path:
         if git.is_file():
             text = git.read_text(encoding="utf-8").strip()
             if text.startswith("gitdir:"):
-                return Path(text.split(":", 1)[1].strip()).resolve()
+                rel_path = Path(text.split(":", 1)[1].strip())
+                return (git.parent / rel_path).resolve()
         parent = p.parent
         if parent == p:
             raise FileNotFoundError(f"No .git directory found from {repo}")
@@ -92,6 +93,14 @@ def uninstall_hooks(repo: str | Path) -> HooksResult:
     removed: List[str] = []
     skipped: List[str] = []
 
+    block_to_remove = f"""\
+{HOOK_MARKER}
+# Auto-refresh csegraph index after git operations.
+# Installed by: csegraph hooks install
+if command -v csegraph >/dev/null 2>&1; then
+    csegraph refresh . --profile small 2>/dev/null &
+fi"""
+
     for name in HOOK_NAMES:
         hook_path = hooks_dir / name
         if not hook_path.exists():
@@ -102,20 +111,16 @@ def uninstall_hooks(repo: str | Path) -> HooksResult:
             skipped.append(name)
             continue
 
-        lines = content.split("\n")
-        filtered: List[str] = []
-        in_csegraph_block = False
-        for line in lines:
-            if HOOK_MARKER in line:
-                in_csegraph_block = True
-                continue
-            if in_csegraph_block:
-                if line.startswith("#") or line.strip().startswith("if ") or line.strip().startswith("csegraph ") or line.strip() == "fi" or line.strip() == "":
-                    continue
-                in_csegraph_block = False
-            filtered.append(line)
+        new_content = content
+        for prefix in ("\n\n", "\n", ""):
+            target = prefix + block_to_remove
+            if target in new_content:
+                new_content = new_content.replace(target, "")
+                break
+        else:
+            new_content = new_content.replace(block_to_remove, "")
 
-        remaining = "\n".join(filtered).strip()
+        remaining = new_content.strip()
         if remaining and remaining != "#!/bin/sh":
             hook_path.write_text(remaining + "\n", encoding="utf-8")
         else:

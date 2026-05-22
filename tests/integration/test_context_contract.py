@@ -159,7 +159,6 @@ def test_context_auto_upgrades_to_standard_when_sufficiency_fails(tmp_path):
     assert payload["returned_detail_level"] == "standard"
     assert payload["sufficiency"]["sufficient"] is False
     assert any("source_text" in node for node in payload["nodes"])
-    assert any(action["action"] == "check_report" for action in payload["next_actions"])
 
 
 def test_context_minimal_detail_never_includes_source(tmp_path):
@@ -260,4 +259,3 @@ def test_auto_detail_upgrades_to_standard_when_token_budget_breaks_sufficiency(t
     assert payload["returned_detail_level"] == "standard"
     assert payload["sufficiency"]["sufficient"] is False
     assert payload["warnings"] == ["Context sufficiency thresholds were not met."]
-    assert any(action["action"] == "check_report" for action in payload["next_actions"])

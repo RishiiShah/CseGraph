@@ -7,6 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from csegraph_core.server.session import _SESSION
+
+
+@pytest.fixture(autouse=True)
+def _reset_mcp_session():
+    """The MCP server keeps a module-level SessionState; reset it before each
+    test so tools_called doesn't leak across the suite."""
+    _SESSION.reset()
+    yield
+    _SESSION.reset()
+
 
 @pytest.fixture()
 def sample_repo(tmp_path: Path) -> Path:

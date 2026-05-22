@@ -61,16 +61,32 @@ Use `--profile small|medium|large` to trade retrieval breadth against speed and 
 
 AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot` to target one client.
 
-| Tool | Description |
-|---|---|
-| `csegraph_index` | Build a repository SQLite graph index. |
-| `csegraph_refresh` | Refresh changed/deleted files in an existing index. |
-| `csegraph_context` | Retrieve compact task-specific context. |
-| `csegraph_graph` | Inspect a graph neighborhood around a node. |
-| `csegraph_path` | Find the shortest path between two nodes. |
-| `csegraph_tree` | Export an interactive HTML file tree. |
-| `csegraph_communities` | Detect dependency graph communities. |
-| `csegraph_report` | Generate a structural report from the index. |
+| Tool | Description | Key args |
+|---|---|---|
+| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile` |
+| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile` |
+| `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. | `repo`, `task` |
+| `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `detail_level`, `max_bytes` |
+| `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes` |
+| `csegraph_path` | Find the shortest path between two nodes. | `repo`, `source`, `target`, `detail_level`, `max_bytes` |
+
+The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
+
+Note: `csegraph_context` supports both `max_tokens` (a soft budgeting hint used during retrieval to decide how much source material to include) and `max_bytes` (a hard ceiling enforced on the serialized JSON response; when exceeded the server drops `source_text`, then `explanation`, then trims `nodes`/`edges`).
+
+### Response annotations
+
+Every MCP response carries metadata that agents can use to triage and gate further calls:
+
+| Field | Where | Meaning |
+|---|---|---|
+| `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
+| `response_bytes` | every response | Exact serialized JSON size in bytes. |
+| `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Drop order: `source_text` → `explanation` → trim `nodes` from the tail → trim `edges` from the tail. |
+| `confidence_breakdown` | `csegraph_graph` | `{"EXTRACTED": N, "INFERRED": M, "AMBIGUOUS": K}` — edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
+| `hubs_skipped` | `csegraph_graph` | Number of high-degree utility nodes BFS refused to expand through. |
+| `relations_filter` | `csegraph_graph` | Echo of the `relations` arg applied to traversal, for transparency. |
+| `next_tool_suggestions`, `next_actions` | `csegraph_minimal`, `csegraph_context` | Routing recommendations, already filtered against `tools_already_called`. |
 
 MCP prompts are workflow templates that clients may expose as slash commands.
 
@@ -78,9 +94,9 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 |---|---|
 | `csegraph-index` | Ask the agent to build the graph with `csegraph_index`. |
 | `csegraph-refresh` | Ask the agent to refresh changed files with `csegraph_refresh`. |
+| `csegraph-minimal` | Call `csegraph_minimal` first for a routing card. |
 | `csegraph-context` | Retrieve task-specific context with `csegraph_context`. |
-| `csegraph-review` | Review changes with context, report, and graph tools. |
-| `csegraph-architecture` | Map architecture from report, communities, and graph data. |
+| `csegraph-review` | Review changes with context and graph tools. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
 
 ## .csegraphignore

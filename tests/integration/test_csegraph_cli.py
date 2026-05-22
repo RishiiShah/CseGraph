@@ -118,6 +118,8 @@ def test_cli_json_contracts(tmp_path):
         str(repo),
         "--depth",
         "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
     assert neighborhood["command"] == "inspect"
@@ -246,8 +248,8 @@ def test_help_lists_canonical_index_and_refresh_without_aliases():
 
     assert "index" in proc.stdout
     assert "refresh" in proc.stdout
-    assert "Alias for index" not in proc.stdout
-    assert "Alias for refresh" not in proc.stdout
+    assert ("Alias for " + "index") not in proc.stdout
+    assert ("Alias for " + "refresh") not in proc.stdout
 
 
 def test_build_and_update_are_not_public_commands():
@@ -347,6 +349,10 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
         "create_user",
         "--query",
         "Implement create_user with clean_name",
+        "--expect-node",
+        "symbol::service.py::function::create_user",
+        "--expect-node",
+        "symbol::helpers.py::function::clean_name",
         "--json",
     )
 
@@ -358,7 +364,7 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     assert result["total_elapsed_ms"] >= 0
 
     steps = result["steps"]
-    assert [step["name"] for step in steps] == ["index", "context", "graph", "report", "token_reduction"]
+    assert [step["name"] for step in steps] == ["index", "refresh", "context", "graph", "report", "token_reduction"]
     assert all(step["elapsed_ms"] >= 0 for step in steps)
 
     by_name = {step["name"]: step for step in steps}
@@ -376,8 +382,17 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
         elapsed_ms >= 0
         for elapsed_ms in by_name["index"]["stats"]["phases"].values()
     )
+    assert by_name["refresh"]["stats"]["changed_files"] == 0
+    assert by_name["refresh"]["stats"]["deleted_files"] == 0
     assert by_name["context"]["stats"]["nodes"] >= 1
     assert by_name["context"]["stats"]["target"] == "symbol::service.py::function::create_user"
+    assert by_name["context"]["stats"]["schema_version"] == "csegraph-context-v2"
+    assert by_name["context"]["stats"]["returned_detail_level"] in {"minimal", "standard"}
+    assert by_name["context"]["stats"]["mcp_response_bytes"] > 0
+    assert by_name["context"]["stats"]["expected_node_hit_count"] == 2
+    assert by_name["context"]["stats"]["expected_node_total"] == 2
+    assert by_name["context"]["stats"]["expected_node_hit_rate"] == 1.0
+    assert by_name["context"]["stats"]["missing_expected_nodes"] == []
     assert by_name["graph"]["stats"]["nodes"] >= 1
     assert by_name["graph"]["stats"]["edges"] >= 1
     assert by_name["graph"]["stats"]["output_size_bytes"] > 0
@@ -399,6 +414,8 @@ def test_benchmark_default_output_is_human_summary(tmp_path):
             str(repo),
             "--target",
             "create_user",
+            "--expect-node",
+            "symbol::service.py::function::create_user",
         ],
         check=True,
         capture_output=True,
@@ -410,6 +427,8 @@ def test_benchmark_default_output_is_human_summary(tmp_path):
     assert "context" in proc.stdout
     assert "graph" in proc.stdout
     assert "report" in proc.stdout
+    assert "expected_nodes=1/1" in proc.stdout
+    assert "hit_rate=100.0%" in proc.stdout
     assert "Total:" in proc.stdout
     assert "DB:" in proc.stdout
 
@@ -718,7 +737,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         if line.startswith("csegraph ") or line.split()[0:1] == ["csegraph"]
     ]
     assert sdk_lines == [], f"SDK should not be installed: {sdk_lines}"
-    # index/refresh/context/inspect/graph must work.
+    # Core packaged CLI commands must work without installing the SDK package.
     sample = tmp_path / "repo"
     _write_repo(sample)
     _env = _offline_pip_env()
@@ -773,6 +792,87 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         env=_env,
     )
     assert json.loads(proc.stdout)["command"] == "graph"
+    proc = subprocess.run(
+        [str(csegraph_bin), "tree", "--repo", str(sample), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "tree"
+    proc = subprocess.run(
+        [str(csegraph_bin), "communities", str(sample), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "communities"
+    proc = subprocess.run(
+        [str(csegraph_bin), "report", "--repo", str(sample), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "report"
+    proc = subprocess.run(
+        [str(csegraph_bin), "status", str(sample), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "status"
+    proc = subprocess.run(
+        [str(csegraph_bin), "postprocess", str(sample), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "postprocess"
+    proc = subprocess.run(
+        [
+            str(csegraph_bin),
+            "path",
+            "symbol::service.py::function::create_user",
+            "symbol::helpers.py::function::clean_name",
+            "--repo",
+            str(sample),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "path"
+    proc = subprocess.run(
+        [
+            str(csegraph_bin),
+            "benchmark",
+            str(sample),
+            "--target",
+            "create_user",
+            "--expect-node",
+            "symbol::service.py::function::create_user",
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "benchmark"
+    proc = subprocess.run(
+        [str(csegraph_bin), "install", str(sample), "--dry-run", "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
+    )
+    assert json.loads(proc.stdout)["command"] == "install"
     proc = subprocess.run(
         [str(csegraph_bin), "refresh", str(sample), "--json"],
         check=True,

@@ -48,6 +48,8 @@ def test_inspect_json_matches_neighborhood_contract(tmp_path):
         str(repo),
         "--depth",
         "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
     assert result["command"] == "inspect"
@@ -349,6 +351,8 @@ def test_inspect_resolves_folder_node(tmp_path):
         str(repo),
         "--depth",
         "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
     assert result["command"] == "inspect"
@@ -403,6 +407,8 @@ def test_inspect_folder_includes_child_contains_edges(tmp_path):
         str(repo),
         "--depth",
         "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
     contains_targets = [

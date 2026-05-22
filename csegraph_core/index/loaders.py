@@ -31,17 +31,35 @@ def load_files(index: ProjectIndex) -> Dict[str, Dict[str, Any]]:
     return load_nodes(index, types=("file",))
 
 
-def load_symbols(index: ProjectIndex) -> Dict[str, Dict[str, Any]]:
-    rows = index.conn.execute(
-        f"""
-        SELECT id, parent_id, type AS kind, name, path AS file_path,
-               language, signature, docstring, start_line, end_line, source_hash, metadata,
-               parent_id AS parent_symbol_id
+def load_symbols(
+    index: ProjectIndex,
+    ids: Optional[Iterable[str]] = None,
+    exclude_heavy: bool = False,
+) -> Dict[str, Dict[str, Any]]:
+    columns = [
+        "id", "parent_id", "type AS kind", "name", "path AS file_path",
+        "language", "start_line", "end_line", "source_hash",
+        "parent_id AS parent_symbol_id"
+    ]
+    if not exclude_heavy:
+        columns.extend(["signature", "docstring", "metadata"])
+
+    query = f"""
+        SELECT {", ".join(columns)}
         FROM nodes
         WHERE type IN ({",".join("?" for _ in SYMBOL_TYPES)})
-        """,
-        SYMBOL_TYPES,
-    )
+    """
+    params = list(SYMBOL_TYPES)
+
+    if ids is not None:
+        ids_list = list(ids)
+        if not ids_list:
+            return {}
+        placeholders = ",".join("?" for _ in ids_list)
+        query += f" AND id IN ({placeholders})"
+        params.extend(ids_list)
+
+    rows = index.conn.execute(query, params)
     return {row["id"]: dict(row) for row in rows}
 
 

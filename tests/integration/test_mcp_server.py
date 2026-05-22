@@ -40,12 +40,10 @@ class TestToolListing:
         assert names == {
             "csegraph_index",
             "csegraph_refresh",
+            "csegraph_minimal",
             "csegraph_context",
             "csegraph_graph",
             "csegraph_path",
-            "csegraph_tree",
-            "csegraph_communities",
-            "csegraph_report",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -76,9 +74,9 @@ class TestPromptListing:
         assert names == {
             "csegraph-index",
             "csegraph-refresh",
+            "csegraph-minimal",
             "csegraph-context",
             "csegraph-review",
-            "csegraph-architecture",
             "csegraph-pre-merge",
         }
 
@@ -121,6 +119,7 @@ class TestHandlePrompt:
         assert "/repo" in message.content.text
         assert "fix auth refresh" in message.content.text
         assert "refresh_token" in message.content.text
+        assert "Token-efficiency" in message.content.text
 
     def test_review_prompt_mentions_review_tool_workflow(self):
         result = _handle_prompt("csegraph-review", {"repo": "/repo"})
@@ -128,8 +127,8 @@ class TestHandlePrompt:
 
         assert "csegraph_context" in text
         assert "detail_level=auto" in text
-        assert "csegraph_report" in text
         assert "csegraph_graph" in text
+        assert "Token-efficiency" in text
 
     def test_pre_merge_prompt_mentions_detail_level_auto(self):
         result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
@@ -137,7 +136,7 @@ class TestHandlePrompt:
 
         assert "csegraph_context" in text
         assert "detail_level=auto" in text
-        assert "csegraph_report" in text
+        assert "Token-efficiency" in text
 
     def test_unknown_prompt_raises(self):
         with pytest.raises(ValueError, match="Unknown prompt"):
@@ -195,16 +194,69 @@ class TestHandleTool:
         assert "nodes" in result
         assert "edges" in result
 
-    def test_report(self, tmp_path):
+    def test_graph_minimal_is_default_and_strips_edges(self, tmp_path):
         repo = _make_repo(tmp_path)
         db = str(tmp_path / "test.db")
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_report", {
+        result = _handle_tool("csegraph_graph", {
+            "node": "greet",
+            "repo": str(repo),
+            "db": db,
+            "depth": 1,
+        })
+        assert result["detail_level"] == "minimal"
+        assert result["summary"]
+        assert result["edges"] == []
+        assert result["total_nodes"] >= 1
+        assert isinstance(result["truncated"], bool)
+
+    def test_graph_standard_returns_full_data(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "test.db")
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
+
+        result = _handle_tool("csegraph_graph", {
+            "node": "greet",
+            "repo": str(repo),
+            "db": db,
+            "depth": 1,
+            "detail_level": "standard",
+        })
+        assert result["detail_level"] == "standard"
+        assert result["truncated"] is False
+        assert result["edges"]
+
+    def test_path_minimal_is_default_with_name_chain(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "test.db")
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
+
+        result = _handle_tool("csegraph_path", {
+            "source": "greet",
+            "target": "fmt",
             "repo": str(repo),
             "db": db,
         })
-        assert result["total_files"] >= 1
+        assert result["detail_level"] == "minimal"
+        assert result["found"] is True
+        assert "→" in result["summary"]
+        assert result["edges"] == []
+        for node in result["nodes"]:
+            assert node["path"] == ""
+            assert node["line_range"] is None
+
+    def test_graph_tool_declares_detail_level_enum(self):
+        graph_tool = next(t for t in _TOOLS if t.name == "csegraph_graph")
+        detail = graph_tool.inputSchema["properties"]["detail_level"]
+        assert detail["enum"] == ["minimal", "standard"]
+        assert detail["default"] == "minimal"
+
+    def test_path_tool_declares_detail_level_enum(self):
+        path_tool = next(t for t in _TOOLS if t.name == "csegraph_path")
+        detail = path_tool.inputSchema["properties"]["detail_level"]
+        assert detail["enum"] == ["minimal", "standard"]
+        assert detail["default"] == "minimal"
 
     def test_path_found(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -216,6 +268,7 @@ class TestHandleTool:
             "target": "fmt",
             "repo": str(repo),
             "db": db,
+            "detail_level": "standard",
         })
         assert result["found"] is True
         assert result["length"] >= 1
@@ -251,7 +304,6 @@ class TestHandleTool:
         for tool_name, args in [
             ("csegraph_context", {"task": "greet", "repo": str(repo), "db": db}),
             ("csegraph_graph", {"node": "greet", "repo": str(repo), "db": db}),
-            ("csegraph_report", {"repo": str(repo), "db": db}),
         ]:
             result = _handle_tool(tool_name, args)
             serialized = json.dumps(result)

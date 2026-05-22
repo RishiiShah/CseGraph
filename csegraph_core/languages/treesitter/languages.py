@@ -86,12 +86,42 @@ def _spec(name: str) -> LanguageSpec:
     return _LANGUAGE_SPECS_BY_NAME[name]
 
 
-def _make_lang_map(spec: LanguageSpec) -> Dict[str, Language]:
-    lang_map: Dict[str, Language] = {}
-    for ext, loader in spec.loaders.items():
-        module = import_module(loader.module)
-        lang_map[ext] = Language(getattr(module, loader.function)())
-    return lang_map
+class LazyLanguageMap(dict):
+    def __init__(self, spec: LanguageSpec) -> None:
+        self.spec = spec
+        self._cache = {}
+
+    def get(self, key, default=None):
+        if key in self._cache:
+            return self._cache[key]
+        if key in self.spec.loaders:
+            loader = self.spec.loaders[key]
+            module = import_module(loader.module)
+            lang = Language(getattr(module, loader.function)())
+            self._cache[key] = lang
+            return lang
+        return default
+
+    def values(self):
+        if not self._cache and self.spec.loaders:
+            first_ext = next(iter(self.spec.loaders.keys()))
+            self.get(first_ext)
+        return self._cache.values()
+
+    def __getitem__(self, key):
+        val = self.get(key)
+        if val is None:
+            raise KeyError(key)
+        return val
+
+    def __contains__(self, key):
+        return key in self.spec.loaders
+
+    def __iter__(self):
+        return iter(self.spec.loaders.keys())
+
+    def __len__(self):
+        return len(self.spec.loaders)
 
 
 def _make_config(name: str) -> LanguageConfig:
@@ -99,7 +129,7 @@ def _make_config(name: str) -> LanguageConfig:
     return LanguageConfig(
         name=spec.name,
         extensions=spec.extensions,
-        lang_map=_make_lang_map(spec),
+        lang_map=LazyLanguageMap(spec),
         class_types=spec.class_types,
         function_types=spec.function_types,
         call_types=spec.call_types,
@@ -590,6 +620,7 @@ _register_specs([
         }),
         extra_excluded_dirs=frozenset({"build", "cmake-build-debug", "cmake-build-release"}),
         test_name_prefixes=("test_", "Test", "TEST"),
+        test_file_suffixes=("_test", "Test", "Tests"),
         extract_imports_fn=_c_extract_imports,
         extract_doc_fn=lambda n, l: "",
     ),

@@ -22,7 +22,7 @@ def watch(
     except ImportError:
         print(
             "csegraph watch requires the 'watchfiles' package.\n"
-            "Install it with: pip install csegraph-core[watch]",
+            "Install or reinstall csegraph-core with its runtime dependencies.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -60,7 +60,7 @@ def watch(
         )
 
         try:
-            result = refresh_svc.refresh(profile=profile)
+            result = refresh_svc.refresh(profile=profile, changed_paths=changed_paths)
             print(
                 f"[{time.strftime('%H:%M:%S')}] Refreshed: "
                 f"{result.files_indexed} files, {result.symbols_indexed} symbols, "

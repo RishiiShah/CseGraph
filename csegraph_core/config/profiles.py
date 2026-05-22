@@ -27,6 +27,7 @@ PROFILES = {
         graph_radius=1,
         context_budget=20,
         raw_code_budget=3,
+        max_bytes=4096,
     ),
     "medium": ProfileConfig(
         name="medium",
@@ -34,6 +35,7 @@ PROFILES = {
         graph_radius=2,
         context_budget=60,
         raw_code_budget=8,
+        max_bytes=16384,
     ),
     "large": ProfileConfig(
         name="large",
@@ -41,6 +43,7 @@ PROFILES = {
         graph_radius=3,
         context_budget=120,
         raw_code_budget=12,
+        max_bytes=65536,
     ),
 }
 

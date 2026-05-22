@@ -74,12 +74,41 @@ def lexical_scores(
             if node_id in symbols:
                 scores[node_id] += score
                 evidence[node_id].append("fts5-bm25")
-    for node_id, row in symbols.items():
+
+    candidates = set()
+    if fts_seed:
+        candidates.update(fts_seed.keys())
+
+    task_tokens_lower = [tok.lower() for tok in task_tokens if tok]
+    if task_tokens_lower:
+        for node_id, row in symbols.items():
+            name_lower = row["name"].lower()
+            file_lower = row["file_path"].lower()
+            sig_lower = (row.get("signature") or "").lower()
+            doc_lower = (row.get("docstring") or "").lower()
+
+            for tok in task_tokens_lower:
+                if (
+                    tok in name_lower
+                    or tok in file_lower
+                    or tok in sig_lower
+                    or tok in doc_lower
+                    or tok in summaries.get(node_id, "").lower()
+                ):
+                    candidates.add(node_id)
+                    break
+
+    for node_id in candidates:
+        row = symbols.get(node_id)
+        if not row:
+            continue
         content_tokens = tokenize_node_content(node_id, row, summaries, registry)
         overlap = task_tokens & content_tokens
         if overlap:
             scores[node_id] += float(len(overlap))
             evidence[node_id].append("lexical-token-overlap")
+
+    for node_id, row in symbols.items():
         if row["name"].lower() in task_lower:
             scores[node_id] += 3.0
             evidence[node_id].append("exact-symbol-name")

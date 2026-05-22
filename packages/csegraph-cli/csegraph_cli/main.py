@@ -114,6 +114,23 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(refresh)
     _add_json(refresh)
 
+    minimal = subparsers.add_parser(
+        "minimal",
+        help="Compact routing card with key entities and next-tool suggestions (call first).",
+    )
+    minimal.add_argument(
+        "--repo",
+        default=None,
+        help="Repository root containing the default .csegraph index.",
+    )
+    minimal.add_argument(
+        "--task",
+        default=None,
+        help="Optional task description for keyword routing.",
+    )
+    _add_db(minimal)
+    _add_json(minimal)
+
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
     context.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
@@ -160,6 +177,17 @@ def _build_parser() -> argparse.ArgumentParser:
     path.add_argument("--source", default=None, help="Source node.")
     path.add_argument("--target", default=None, help="Target node.")
     path.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
+    path.add_argument(
+        "--detail-level",
+        choices=["minimal", "standard"],
+        default="minimal",
+        help="minimal: name chain + length. standard: full nodes/edges.",
+    )
+    path.add_argument(
+        "--relations",
+        default=None,
+        help="Comma-separated edge kinds to restrict traversal (e.g. 'calls,imports').",
+    )
     _add_db(path)
     _add_json(path)
 
@@ -169,6 +197,17 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(inspect)
     inspect.add_argument("--node", default=None, help="Node ID, symbol name, or file path.")
     inspect.add_argument("--depth", type=int, default=1, help="Neighborhood depth.")
+    inspect.add_argument(
+        "--detail-level",
+        choices=["minimal", "standard"],
+        default="minimal",
+        help="minimal: summary + top-degree key nodes. standard: full nodes/edges.",
+    )
+    inspect.add_argument(
+        "--relations",
+        default=None,
+        help="Comma-separated edge kinds to restrict traversal (e.g. 'calls,imports').",
+    )
     _add_json(inspect)
 
     graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
@@ -248,6 +287,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(benchmark)
     benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
     benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
+    benchmark.add_argument(
+        "--expect-node",
+        action="append",
+        default=[],
+        help="Expected context node ID for benchmark quality checks. May be repeated.",
+    )
     _add_json(benchmark)
 
     return parser
@@ -262,6 +307,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.index.services import RefreshService
         repo = _repo_arg(args)
         return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)
+    if args.command == "minimal":
+        from csegraph_core.retrieval.minimal import MinimalService
+        repo = Path(args.repo or ".").resolve()
+        return MinimalService(_db_arg(args, str(repo))).first(task=args.task)
     if args.command == "context":
         from csegraph_core.retrieval.context import ContextService
         repo = Path(args.repo or ".").resolve()
@@ -285,14 +334,27 @@ def _dispatch(args: argparse.Namespace) -> Any:
         target = args.target or args.target_arg
         if not source or not target:
             raise ValueError("path requires two nodes. Example: csegraph path greet main")
-        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(source, target)
+        relations = [r.strip() for r in args.relations.split(',') if r.strip()] if args.relations else None
+        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(
+            source, target, detail_level=args.detail_level, relations=relations
+        )
     if args.command == "inspect":
         from csegraph_core.graph.queries import GraphQueryService
         repo = Path(args.repo or ".").resolve()
         node = args.node or args.node_arg
         if not node:
             raise ValueError("inspect requires a node. Example: csegraph inspect MyClass.method")
-        result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(node, depth=args.depth)
+        relations = (
+            [r.strip() for r in args.relations.split(",") if r.strip()]
+            if args.relations
+            else None
+        )
+        result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(
+            node,
+            depth=args.depth,
+            detail_level=args.detail_level,
+            relations=relations,
+        )
         result.command = "inspect"
         return result
     if args.command == "graph":
@@ -361,6 +423,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             query=args.query,
             target=args.target,
             graph_output_path=_default_graph_output_path(db_path),
+            expected_nodes=args.expect_node,
         )
     raise ValueError(f"Unknown command: {args.command}")
 
@@ -381,10 +444,37 @@ def _repo_arg(args: argparse.Namespace) -> str:
     return str(Path(args.repo_opt or args.repo_arg or ".").resolve())
 
 
+def _assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
+    import tempfile
+    resolved_path = path.resolve()
+    resolved_repo = repo_path.resolve()
+    if resolved_path.is_relative_to(resolved_repo):
+        return
+    temp_dir = Path(tempfile.gettempdir()).resolve()
+    if resolved_path.is_relative_to(temp_dir):
+        return
+    try:
+        home_dir = Path.home().resolve()
+        if resolved_path.is_relative_to(home_dir):
+            return
+    except Exception:
+        pass
+    try:
+        cwd_dir = Path.cwd().resolve()
+        if resolved_path.is_relative_to(cwd_dir):
+            return
+    except Exception:
+        pass
+    raise ValueError(f"{name} path '{path}' must be within repository root, home directory, temporary directory, or CWD.")
+
+
 def _db_arg(args: argparse.Namespace, repo: str) -> str:
+    repo_path = Path(repo).resolve()
     if args.db:
-        return str(Path(args.db).resolve())
-    return str(Path(repo).resolve() / ".csegraph" / "index.db")
+        db_path = Path(args.db).resolve()
+        _assert_safe_path(db_path, repo_path, "Database")
+        return str(db_path)
+    return str(repo_path / ".csegraph" / "index.db")
 
 
 def _default_graph_output_path(db_path: str) -> str:

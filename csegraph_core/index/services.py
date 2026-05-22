@@ -5,11 +5,12 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 from csegraph_core.config.profiles import get_profile
 from csegraph_core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph_core.core.models import IndexResult, RefreshResult
+from csegraph_core.ignore import load_ignore_filter
 from csegraph_core.index.cache import ExtractionCache
 from csegraph_core.index.repository import ProjectIndex, json_dumps
 from csegraph_core.languages.registry import UnsupportedLanguageError, registry
@@ -26,6 +27,7 @@ class _WriteBatch:
     lexical_rows: List[tuple] = field(default_factory=list)
     symbol_by_name: Dict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
     node_to_file_node: Dict[str, str] = field(default_factory=dict)
+    node_kind_by_id: Dict[str, str] = field(default_factory=dict)
 
 
 class IndexService:
@@ -89,7 +91,11 @@ class RefreshService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def refresh(self, profile: str = "small") -> RefreshResult:
+    def refresh(
+        self,
+        profile: str = "small",
+        changed_paths: Optional[Iterable[str | Path]] = None,
+    ) -> RefreshResult:
         config = get_profile(profile)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
         cache = ExtractionCache(cache_path)
@@ -100,25 +106,70 @@ class RefreshService:
             repo_root = Path(metadata["root_dir"]).resolve()
             index.set_metadata(str(repo_root), config.name)
 
-            current_files = {
-                path.resolve().relative_to(repo_root).as_posix(): (parser, path)
-                for parser, path in registry.iter_files(repo_root)
-            }
-            stored = {
-                row["path"]: row["sha256"]
-                for row in index.conn.execute(
-                    "SELECT path, sha256 FROM nodes WHERE type = 'file'",
-                )
-            }
+            if changed_paths is not None:
+                ignore = load_ignore_filter(repo_root)
+                changed_abs_set = set()
+                for p in changed_paths:
+                    try:
+                        resolved_p = Path(p).resolve()
+                        if resolved_p.is_relative_to(repo_root):
+                            changed_abs_set.add(resolved_p)
+                    except Exception:
+                        pass
 
-            deleted = sorted(path for path in stored if path not in current_files)
+                stored = {
+                    row["path"]: row["sha256"]
+                    for row in index.conn.execute(
+                        "SELECT path, sha256 FROM nodes WHERE type = 'file'"
+                    )
+                }
+
+                current_files = {}
+                deleted = []
+                for path in changed_abs_set:
+                    if path.exists() and path.is_file():
+                        rel = path.relative_to(repo_root).as_posix()
+                        if ignore.is_ignored(rel):
+                            if rel in stored:
+                                deleted.append(rel)
+                            continue
+                        try:
+                            parser = registry.for_extension(path.suffix)
+                            current_files[rel] = (parser, path)
+                        except UnsupportedLanguageError:
+                            pass
+
+                for path in changed_abs_set:
+                    if not path.exists():
+                        try:
+                            rel = path.relative_to(repo_root).as_posix()
+                            if rel in stored:
+                                deleted.append(rel)
+                        except Exception:
+                            pass
+            else:
+                current_files = {
+                    path.resolve().relative_to(repo_root).as_posix(): (parser, path)
+                    for parser, path in registry.iter_files(repo_root)
+                }
+                stored = {
+                    row["path"]: row["sha256"]
+                    for row in index.conn.execute(
+                        "SELECT path, sha256 FROM nodes WHERE type = 'file'",
+                    )
+                }
+                deleted = sorted(path for path in stored if path not in current_files)
+
             changed: List[str] = []
             parsed_changed: List[ParsedFile] = []
             for rel_path, (parser, path) in sorted(current_files.items()):
-                parsed = _parse_one_cached(parser, path, repo_root, cache)
-                if stored.get(rel_path) != parsed.sha256:
-                    changed.append(rel_path)
-                    parsed_changed.append(parsed)
+                try:
+                    parsed = _parse_one_cached(parser, path, repo_root, cache)
+                    if stored.get(rel_path) != parsed.sha256:
+                        changed.append(rel_path)
+                        parsed_changed.append(parsed)
+                except ValueError:
+                    pass
 
             if not changed and not deleted:
                 return RefreshResult(
@@ -131,7 +182,7 @@ class RefreshService:
                     edges_indexed=0,
                     cache_hits=cache.hits,
                     cache_misses=cache.misses,
-                    unchanged_files=sorted(current_files),
+                    unchanged_files=sorted(set(stored.keys()) - set(changed) - set(deleted)),
                 )
 
             changed_symbols: List[str] = []
@@ -159,7 +210,7 @@ class RefreshService:
                 edges_indexed=stats["edges"],
                 cache_hits=cache.hits,
                 cache_misses=cache.misses,
-                unchanged_files=sorted(set(current_files) - set(changed)),
+                unchanged_files=sorted(set(stored.keys()) - set(changed) - set(deleted)),
                 changed_files=changed,
                 deleted_files=deleted,
                 changed_symbols=sorted(set(changed_symbols)),
@@ -168,6 +219,44 @@ class RefreshService:
         finally:
             index.close()
             cache.close()
+
+
+def _resolve_cross_file_methods(index: ProjectIndex) -> None:
+    # 1. Update nodes table to link methods to classes across files
+    index.conn.execute(
+        """
+        UPDATE nodes
+        SET parent_id = COALESCE(
+            (
+                SELECT c.id FROM nodes c
+                WHERE c.type = 'class' AND c.name = SUBSTR(nodes.name, 1, INSTR(nodes.name, '.') - 1)
+                ORDER BY (SUBSTR(c.path, 1, INSTR(c.path, '/') - 1) = SUBSTR(nodes.path, 1, INSTR(nodes.path, '/') - 1)) DESC, c.id ASC
+                LIMIT 1
+            ),
+            parent_id
+        )
+        WHERE nodes.type = 'method'
+          AND nodes.parent_id LIKE 'file::%'
+          AND INSTR(nodes.name, '.') > 1
+        """
+    )
+    # 2. Update edges table to point 'contains' source to the class instead of the file
+    index.conn.execute(
+        """
+        UPDATE edges
+        SET source = (
+            SELECT parent_id FROM nodes
+            WHERE nodes.id = edges.target
+        )
+        WHERE edges.relation = 'contains'
+          AND edges.target IN (
+              SELECT id FROM nodes
+              WHERE type = 'method'
+                AND NOT parent_id LIKE 'file::%'
+          )
+          AND edges.source LIKE 'file::%'
+        """
+    )
 
 
 def _write_parsed_files(
@@ -185,6 +274,7 @@ def _write_parsed_files(
     _insert_symbol_nodes(index, parsed_files, now, batch)
     _flush_summary_and_lexical_rows(index, batch)
     _insert_edges(index, parsed_files, structural_edges, batch)
+    _resolve_cross_file_methods(index)
     index.conn.commit()
 
     total_edges = int(index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"])
@@ -254,7 +344,7 @@ def _insert_file_nodes(
 def _load_symbol_lookup(index: ProjectIndex, batch: _WriteBatch) -> None:
     for row in index.conn.execute(
         """
-        SELECT id, name, path FROM nodes
+        SELECT id, name, path, type FROM nodes
         WHERE type IN ('class','function','method')
         """,
     ):
@@ -262,6 +352,7 @@ def _load_symbol_lookup(index: ProjectIndex, batch: _WriteBatch) -> None:
         if "." in row["name"]:
             batch.symbol_by_name[row["name"].split(".")[-1]].append(row["id"])
         batch.node_to_file_node[row["id"]] = file_node_id(row["path"])
+        batch.node_kind_by_id[row["id"]] = row["type"]
 
 
 def _insert_symbol_nodes(
@@ -291,6 +382,7 @@ def _insert_symbol_nodes(
             if "." in symbol.name:
                 batch.symbol_by_name[symbol.name.split(".")[-1]].append(symbol.node_id)
             batch.node_to_file_node[symbol.node_id] = file_node_id(parsed.rel_path)
+            batch.node_kind_by_id[symbol.node_id] = symbol.kind
 
             summary = _symbol_summary(symbol)
             batch.summary_rows.append((symbol.node_id, symbol.source_hash, summary, symbol.kind, now))
@@ -395,13 +487,25 @@ def _insert_edges(
         for symbol in parsed.symbols:
             for attr, relation, meta_key, reverse in _SYMBOL_EDGE_SPECS:
                 for name in getattr(symbol, attr):
-                    target = _pick_call_target(name, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
+                    target = _pick_call_target(
+                        name,
+                        current_file_id,
+                        batch.symbol_by_name,
+                        batch.node_to_file_node,
+                        batch.node_kind_by_id,
+                    )
                     if target and target != symbol.node_id:
                         src, tgt = (target, symbol.node_id) if reverse else (symbol.node_id, target)
                         edge_rows.append(_edge(src, tgt, relation, {meta_key: name}))
             if symbol.is_test:
                 for call in symbol.calls:
-                    target = _pick_call_target(call, current_file_id, batch.symbol_by_name, batch.node_to_file_node)
+                    target = _pick_call_target(
+                        call,
+                        current_file_id,
+                        batch.symbol_by_name,
+                        batch.node_to_file_node,
+                        batch.node_kind_by_id,
+                    )
                     if target and target != symbol.node_id:
                         edge_rows.append(_edge(target, symbol.node_id, "tested_by", {"via": call}))
 
@@ -418,15 +522,22 @@ def _insert_edges(
 def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> List[ParsedFile]:
     results: List[ParsedFile] = []
     for parser, path in file_iter:
-        results.append(_parse_one_cached(parser, path, repo_root, cache))
+        try:
+            results.append(_parse_one_cached(parser, path, repo_root, cache))
+        except ValueError:
+            pass
     return results
 
 
 def _parse_one_cached(parser, path: Path, repo_root: Path, cache: ExtractionCache) -> ParsedFile:
     from csegraph_core.languages.base import sha256_text
-    source = path.read_text(encoding="utf-8")
+    resolved_path = path.resolve()
+    resolved_root = Path(repo_root).resolve()
+    if not resolved_path.is_relative_to(resolved_root):
+        raise ValueError(f"Path '{path}' resolves to '{resolved_path}', which is outside repository root '{resolved_root}'")
+    source = resolved_path.read_text(encoding="utf-8")
     sha = sha256_text(source)
-    rel = path.resolve().relative_to(Path(repo_root).resolve()).as_posix()
+    rel = resolved_path.relative_to(resolved_root).as_posix()
 
     cached = cache.get(rel, sha)
     if cached is not None:
@@ -545,12 +656,16 @@ def _pick_call_target(
     current_file_id: str,
     symbol_by_name: Dict[str, List[str]],
     node_to_file_node: Dict[str, str],
+    node_kind_by_id: Dict[str, str],
 ) -> Optional[str]:
     candidates = symbol_by_name.get(symbol, [])
     if not candidates:
         return None
     for node_id in candidates:
         if node_to_file_node.get(node_id) == current_file_id:
+            return node_id
+    for node_id in candidates:
+        if node_kind_by_id.get(node_id) == "function":
             return node_id
     return candidates[0]
 

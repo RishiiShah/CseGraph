@@ -252,8 +252,8 @@ class TreeSitterParser(BaseParser):
                     parent_class_id, class_name, class_map,
                 )
 
-        if top_level and cfg.method_receiver_field:
-            self._fixup_receiver_methods(symbols, class_map)
+        if top_level:
+            self._fixup_methods(symbols, class_map)
 
     def _extract_class(
         self,
@@ -350,9 +350,9 @@ class TreeSitterParser(BaseParser):
                     parent_class_id = (class_map or {}).get(recv_type)
                     class_name = recv_type
 
-        if parent_class_id:
+        if parent_class_id or class_name:
             kind = "method"
-            display_name = f"{class_name}.{name}"
+            display_name = f"{class_name}.{name}" if class_name else name
         else:
             kind = "function"
             display_name = name
@@ -563,7 +563,7 @@ class TreeSitterParser(BaseParser):
                         return _node_text(type_node)
         return ""
 
-    def _fixup_receiver_methods(
+    def _fixup_methods(
         self, symbols: List[ParsedSymbol], class_map: Dict[str, str],
     ) -> None:
         for sym in symbols:

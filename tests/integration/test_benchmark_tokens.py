@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from csegraph_core.benchmark import BenchmarkService, _count_raw_tokens
+import subprocess
+
+from csegraph_core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -29,8 +31,8 @@ class TestCountRawTokens:
         app_text = (repo / "app.py").read_text(encoding="utf-8")
         helpers_text = (repo / "helpers.py").read_text(encoding="utf-8")
         expected = (
-            max(1, math.ceil(len(app_text) / 4))
-            + max(1, math.ceil(len(helpers_text) / 4))
+            max(1, math.ceil(len(app_text) / 2.7))
+            + max(1, math.ceil(len(helpers_text) / 2.7))
         )
         assert tokens == expected
 
@@ -54,11 +56,24 @@ class TestBenchmarkTokenReduction:
         result = BenchmarkService(db).run(repo, profile="small")
         tr = next(s for s in result.steps if s.name == "token_reduction")
         assert "raw_tokens" in tr.stats
+        assert "diff_tokens" in tr.stats
         assert "context_tokens" in tr.stats
         assert "reduction_percent" in tr.stats
+        assert "naive_to_graph_ratio" in tr.stats
+        assert "diff_to_graph_ratio" in tr.stats
         assert "ratio" in tr.stats
         assert tr.stats["raw_tokens"] > 0
         assert isinstance(tr.stats["reduction_percent"], float)
+        assert isinstance(tr.stats["naive_to_graph_ratio"], float)
+        assert isinstance(tr.stats["diff_to_graph_ratio"], float)
+
+    def test_non_git_repo_reports_zero_diff(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "bench.db")
+        result = BenchmarkService(db).run(repo, profile="small")
+        tr = next(s for s in result.steps if s.name == "token_reduction")
+        assert tr.stats["diff_tokens"] == 0
+        assert tr.stats["diff_to_graph_ratio"] == 0.0
 
     def test_context_tokens_less_than_raw(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -84,3 +99,77 @@ class TestBenchmarkTokenReduction:
         serialized = json.dumps(payload)
         assert "token_reduction" in serialized
         assert "raw_tokens" in serialized
+
+
+class TestCountDiffTokens:
+    def _git(self, repo: Path, *args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+                 "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        )
+
+    def test_non_git_repo_returns_zero(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        assert _count_diff_tokens(repo) == 0
+
+    def test_clean_git_repo_returns_zero(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        self._git(repo, "init", "-q", "-b", "main")
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-q", "-m", "init")
+        assert _count_diff_tokens(repo) == 0
+
+    def test_dirty_git_repo_counts_diff(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        self._git(repo, "init", "-q", "-b", "main")
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-q", "-m", "init")
+        (repo / "app.py").write_text(
+            'from helpers import fmt\n\ndef greet(name: str) -> str:\n    """Say hello loudly."""\n    return fmt(name).upper()\n',
+            encoding="utf-8",
+        )
+        tokens = _count_diff_tokens(repo)
+        assert tokens > 0
+
+
+class TestBenchmarkContextQuality:
+    def test_records_context_contract_and_expected_nodes(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = str(tmp_path / "bench.db")
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            query="Explain greet and fmt",
+            target="greet",
+            expected_nodes=[
+                "symbol::app.py::function::greet",
+                "symbol::helpers.py::function::fmt",
+            ],
+        )
+
+        step_names = [s.name for s in result.steps]
+        assert step_names == ["index", "refresh", "context", "graph", "report", "token_reduction"]
+
+        context = next(s for s in result.steps if s.name == "context")
+        assert context.stats["schema_version"] == "csegraph-context-v2"
+        assert context.stats["detail_level"] == "auto"
+        assert context.stats["returned_detail_level"] in {"minimal", "standard"}
+        assert context.stats["mcp_response_bytes"] > 0
+        assert context.stats["expected_nodes"] == {
+            "symbol::app.py::function::greet": True,
+            "symbol::helpers.py::function::fmt": True,
+        }
+        assert context.stats["expected_node_hit_count"] == 2
+        assert context.stats["expected_node_total"] == 2
+        assert context.stats["expected_node_hit_rate"] == 1.0
+        assert context.stats["missing_expected_nodes"] == []
+
+        refresh = next(s for s in result.steps if s.name == "refresh")
+        assert refresh.elapsed_ms >= 0
+        assert refresh.stats["changed_files"] == 0
+        assert refresh.stats["deleted_files"] == 0

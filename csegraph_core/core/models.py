@@ -18,6 +18,7 @@ class ProfileConfig:
     semantic_threshold: float = 0.50
     semantic_threshold_relaxed: float = 0.0
     confidence_threshold: float = 0.70
+    max_bytes: int = 16384
 
 
 @dataclass
@@ -103,6 +104,7 @@ class ContextResult:
     next_actions: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     run_id: Optional[int] = None
+    confidence_breakdown: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -133,6 +135,14 @@ class GraphResult:
     depth: int
     nodes: List[GraphNodeView]
     edges: List[GraphEdgeView]
+    detail_level: str = "standard"
+    summary: str = ""
+    total_nodes: int = 0
+    total_edges: int = 0
+    truncated: bool = False
+    hubs_skipped: int = 0
+    relations_filter: List[str] = field(default_factory=list)
+    confidence_breakdown: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -162,6 +172,11 @@ class PathResult:
     length: int
     nodes: List[PathStep]
     edges: List[PathEdge]
+    detail_level: str = "standard"
+    summary: str = ""
+    relations_filter: List[str] = field(default_factory=list)
+    hubs_skipped: int = 0
+    confidence_breakdown: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -266,6 +281,35 @@ class McpInstallResult:
     dry_run: bool
     installed: List[McpInstallTarget] = field(default_factory=list)
     skipped: List[McpInstallTarget] = field(default_factory=list)
+
+
+@dataclass
+class KeyEntity:
+    id: str
+    name: str
+    kind: str
+    path: str
+    degree: int
+
+
+@dataclass
+class NextToolSuggestion:
+    tool: str
+    reason: str
+    args: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class MinimalResult:
+    command: str
+    db_path: str
+    repo_root: str
+    summary: str
+    task: Optional[str]
+    task_intent: str
+    key_entities: List[KeyEntity]
+    next_tool_suggestions: List[NextToolSuggestion]
+    estimated_tokens: int
 
 
 def to_dict(value: Any) -> Any:
