@@ -22,6 +22,11 @@ from csegraph_core.core.models import (
     GraphNodeView,
     GraphResult,
     IndexResult,
+    KeyEntity,
+    McpInstallResult,
+    McpInstallTarget,
+    MinimalResult,
+    NextToolSuggestion,
     PathEdge,
     PathResult,
     PathStep,
@@ -38,12 +43,16 @@ from csegraph_core.graph.communities import Community, CommunityResult
 from csegraph_core.hooks import HooksResult
 from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.graph.report import ReportService
+from csegraph_core.graph.tree import TreeExportService
 from csegraph_core.graph.visual import VisualExportService
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.index.services import IndexService, RefreshService
 from csegraph_core.postprocess import PostprocessService
 from csegraph_core.retrieval.constants import VALID_REASONS
+from csegraph_core.mcp_install import McpInstallService
 from csegraph_core.retrieval.context import ContextService
+from csegraph_core.retrieval.minimal import MinimalService
+from csegraph_core.server.session import SessionState
 from csegraph_core.status import StatusService
 
 __all__ = [
@@ -51,9 +60,9 @@ __all__ = [
     "BenchmarkResult",
     "BenchmarkService",
     "BenchmarkStep",
-    "ContextNode",
     "Community",
     "CommunityResult",
+    "ContextNode",
     "ContextResult",
     "ContextService",
     "GraphEdgeView",
@@ -63,6 +72,13 @@ __all__ = [
     "HooksResult",
     "IndexResult",
     "IndexService",
+    "KeyEntity",
+    "McpInstallResult",
+    "McpInstallService",
+    "McpInstallTarget",
+    "MinimalResult",
+    "MinimalService",
+    "NextToolSuggestion",
     "PathEdge",
     "PathResult",
     "PathStep",
@@ -75,10 +91,12 @@ __all__ = [
     "RefreshService",
     "ReportResult",
     "ReportService",
+    "SessionState",
     "StatusResult",
     "StatusService",
     "SufficiencyMetrics",
     "SufficiencyResult",
+    "TreeExportService",
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",

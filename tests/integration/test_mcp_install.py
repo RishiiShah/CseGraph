@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from csegraph_core.mcp_install import McpInstallService
@@ -85,7 +86,7 @@ def test_dry_run_does_not_write_files(tmp_path: Path) -> None:
 
     assert not (repo / ".cursor" / "mcp.json").exists()
     assert result.installed[0].dry_run is True
-    assert result.installed[0].path.endswith(".cursor/mcp.json")
+    assert result.installed[0].path.endswith(os.path.join(".cursor", "mcp.json"))
 
 
 def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:

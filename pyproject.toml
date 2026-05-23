@@ -51,3 +51,4 @@ include = ["csegraph_core*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
+pythonpath = ["."]

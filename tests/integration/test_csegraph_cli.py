@@ -321,7 +321,7 @@ def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
     )
 
     assert result["installed"][0]["platform"] == "cursor"
-    assert result["installed"][0]["path"].endswith(".cursor/mcp.json")
+    assert result["installed"][0]["path"].endswith(os.path.join(".cursor", "mcp.json"))
 
 
 def test_install_codex_dry_run_json_uses_user_config(tmp_path):
@@ -335,7 +335,7 @@ def test_install_codex_dry_run_json_uses_user_config(tmp_path):
     )
 
     assert result["installed"][0]["platform"] == "codex"
-    assert result["installed"][0]["path"].endswith(".codex/config.toml")
+    assert result["installed"][0]["path"].endswith(os.path.join(".codex", "config.toml"))
 
 
 def test_benchmark_json_profiles_core_commands(tmp_path):

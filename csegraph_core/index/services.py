@@ -222,22 +222,36 @@ class RefreshService:
 
 
 def _resolve_cross_file_methods(index: ProjectIndex) -> None:
-    # 1. Update nodes table to link methods to classes across files
+    # 1. Update nodes table to link methods to classes across files.
+    #    Uses a window function instead of a correlated subquery with ORDER BY
+    #    because SQLite ≥3.45 cannot resolve outer-table columns inside
+    #    ORDER BY of a correlated subquery against the same table.
     index.conn.execute(
         """
-        UPDATE nodes
-        SET parent_id = COALESCE(
-            (
-                SELECT c.id FROM nodes c
-                WHERE c.type = 'class' AND c.name = SUBSTR(nodes.name, 1, INSTR(nodes.name, '.') - 1)
-                ORDER BY (SUBSTR(c.path, 1, INSTR(c.path, '/') - 1) = SUBSTR(nodes.path, 1, INSTR(nodes.path, '/') - 1)) DESC, c.id ASC
-                LIMIT 1
-            ),
-            parent_id
+        WITH methods AS (
+            SELECT id, name, path
+            FROM nodes
+            WHERE type = 'method'
+              AND parent_id LIKE 'file::%'
+              AND INSTR(name, '.') > 1
+        ),
+        candidates AS (
+            SELECT
+                m.id AS method_id,
+                c.id AS class_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY m.id
+                    ORDER BY (SUBSTR(c.path, 1, INSTR(c.path, '/') - 1)
+                            = SUBSTR(m.path, 1, INSTR(m.path, '/') - 1)) DESC,
+                             c.id ASC
+                ) AS rn
+            FROM methods m
+            JOIN nodes c ON c.type = 'class'
+                AND c.name = SUBSTR(m.name, 1, INSTR(m.name, '.') - 1)
         )
-        WHERE nodes.type = 'method'
-          AND nodes.parent_id LIKE 'file::%'
-          AND INSTR(nodes.name, '.') > 1
+        UPDATE nodes
+        SET parent_id = (SELECT class_id FROM candidates WHERE method_id = nodes.id AND rn = 1)
+        WHERE id IN (SELECT method_id FROM candidates WHERE rn = 1)
         """
     )
     # 2. Update edges table to point 'contains' source to the class instead of the file
