@@ -75,6 +75,9 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
 | `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS and relation filtering match `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_bytes`, `db` |
 | `csegraph_detect_changes` | Detect changed symbols between current state and a base git ref, score each by review risk (caller count, cross-community edges, test coverage). | `repo`, `base_ref`, `db` |
+| `csegraph_test_gaps` | Analyze test coverage gaps — untested symbols ranked by hotspot score, per-community coverage. | `repo`, `limit`, `db` |
+| `csegraph_review_questions` | Generate targeted review questions from change detection and graph structure. | `repo`, `base_ref`, `db` |
+| `csegraph_review_eval` | Evaluate review intelligence precision/recall against ground-truth known-risky symbols. | `repo`, `ground_truth_ids`, `base_ref`, `risk_threshold`, `db` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
@@ -103,6 +106,9 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-minimal` | Call `csegraph_minimal` first for a routing card. |
 | `csegraph-context` | Retrieve task-specific context with `csegraph_context`. |
 | `csegraph-detect-changes` | Detect changed symbols and score review risk. |
+| `csegraph-test-gaps` | Identify untested symbols and coverage hotspots. |
+| `csegraph-review-questions` | Generate review questions from change detection and graph structure. |
+| `csegraph-review-eval` | Evaluate review intelligence against known-risky symbols. |
 | `csegraph-review` | Review changes with change detection, context, and graph tools. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
 

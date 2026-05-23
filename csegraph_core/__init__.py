@@ -46,6 +46,22 @@ from csegraph_core.graph.change_detection import (
     DiffRegion,
 )
 from csegraph_core.graph.communities import Community, CommunityResult
+from csegraph_core.graph.review_eval import (
+    ReviewEvalResult,
+    ReviewEvalService,
+    RiskLevelMetrics,
+)
+from csegraph_core.graph.review_questions import (
+    ReviewQuestion,
+    ReviewQuestionsResult,
+    ReviewQuestionsService,
+)
+from csegraph_core.graph.test_gaps import (
+    CommunityCoverage,
+    TestGapResult,
+    TestGapService,
+    UntestedSymbol,
+)
 from csegraph_core.hooks import HooksResult
 from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.graph.report import ReportService
@@ -69,6 +85,7 @@ __all__ = [
     "ChangeDetectionResult",
     "ChangeDetectionService",
     "ChangedSymbol",
+    "CommunityCoverage",
     "Community",
     "CommunityResult",
     "ContextNode",
@@ -101,12 +118,21 @@ __all__ = [
     "RefreshService",
     "ReportResult",
     "ReportService",
+    "ReviewEvalResult",
+    "ReviewEvalService",
+    "ReviewQuestion",
+    "ReviewQuestionsResult",
+    "ReviewQuestionsService",
+    "RiskLevelMetrics",
     "SessionState",
     "StatusResult",
     "StatusService",
     "SufficiencyMetrics",
     "SufficiencyResult",
+    "TestGapResult",
+    "TestGapService",
     "TreeExportService",
+    "UntestedSymbol",
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",

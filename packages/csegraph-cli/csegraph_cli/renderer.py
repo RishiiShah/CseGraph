@@ -138,6 +138,91 @@ def render_detect_changes_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_test_gaps_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_symbols", 0)
+    tested = payload.get("tested_count", 0)
+    pct = payload.get("coverage_pct", 0.0)
+    lines = [
+        f"Test coverage: {pct}% ({tested}/{total} symbols tested)",
+        "",
+    ]
+    hotspots = payload.get("hotspots", [])
+    if hotspots:
+        lines.append(f"HOTSPOTS ({len(hotspots)} untested, ranked by risk):")
+        for sym in hotspots:
+            loc = sym["path"]
+            lr = sym.get("line_range")
+            if lr:
+                loc += f":{lr[0]}-{lr[1]}"
+            factors = ", ".join(sym.get("risk_factors", []))
+            suffix = f"  [{factors}]" if factors else ""
+            lines.append(f"  {sym['name']} ({sym['kind']})  {loc}{suffix}")
+        lines.append("")
+    comms = payload.get("community_coverage", [])
+    if comms:
+        lines.append("Community coverage:")
+        for c in comms:
+            hotspot_names = ", ".join(c.get("untested_hotspots", []))
+            suffix = f"  hotspots: {hotspot_names}" if hotspot_names else ""
+            lines.append(
+                f"  [{c['community_id']}] {c['coverage_pct']}% "
+                f"({c['tested_symbols']}/{c['total_symbols']}){suffix}"
+            )
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_review_questions_summary(payload: Dict[str, Any]) -> str:
+    questions = payload.get("questions", [])
+    if not questions:
+        return "No review questions generated.\n"
+    lines = [f"Review questions ({len(questions)}):", ""]
+    for q in questions:
+        lines.append(f"  [P{q['priority']}] {q['question']}")
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_review_eval_summary(payload: Dict[str, Any]) -> str:
+    lines = [
+        f"Review eval: precision={payload.get('overall_precision', 0):.3f} "
+        f"recall={payload.get('overall_recall', 0):.3f} "
+        f"F1={payload.get('overall_f1', 0):.3f}",
+        "",
+    ]
+    for level_key, label in [("high_risk", "HIGH"), ("medium_risk", "MEDIUM"), ("low_risk", "LOW")]:
+        m = payload.get(level_key, {})
+        if not m:
+            continue
+        lines.append(
+            f"  {label}:   P={m.get('precision', 0):.3f} R={m.get('recall', 0):.3f} "
+            f"F1={m.get('f1', 0):.3f}  "
+            f"(TP={m.get('true_positives', 0)}, FP={m.get('false_positives', 0)}, "
+            f"FN={m.get('false_negatives', 0)})"
+        )
+    lines.append("")
+    for sym in payload.get("missed_symbols", []):
+        lines.append(f"  Missed: {sym}")
+    for sym in payload.get("false_alarm_symbols", []):
+        lines.append(f"  False alarm: {sym}")
+    qc = payload.get("question_coverage", 0)
+    lines.append(f"  Question coverage: {qc * 100:.1f}%")
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_communities_summary(payload: Dict[str, Any]) -> str:
     lines = [
         f"Communities: {payload.get('num_communities', 0)} detected  "

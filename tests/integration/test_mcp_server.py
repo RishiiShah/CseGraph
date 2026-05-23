@@ -47,6 +47,9 @@ class TestToolListing:
             "csegraph_graph",
             "csegraph_path",
             "csegraph_detect_changes",
+            "csegraph_test_gaps",
+            "csegraph_review_questions",
+            "csegraph_review_eval",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -80,6 +83,9 @@ class TestPromptListing:
             "csegraph-minimal",
             "csegraph-context",
             "csegraph-detect-changes",
+            "csegraph-test-gaps",
+            "csegraph-review-questions",
+            "csegraph-review-eval",
             "csegraph-review",
             "csegraph-pre-merge",
         }
@@ -131,7 +137,7 @@ class TestHandlePrompt:
 
         assert "csegraph_context" in text
         assert "detail_level=auto" in text
-        assert "csegraph_graph" in text
+        assert "csegraph_review_questions" in text
         assert "Token-efficiency" in text
 
     def test_pre_merge_prompt_mentions_detect_changes(self):
@@ -369,8 +375,8 @@ class TestPromptWorkflows:
         assert "Step 2" in text
         assert "Step 3" in text
         assert "csegraph_detect_changes" in text
+        assert "csegraph_review_questions" in text
         assert "csegraph_context" in text
-        assert "csegraph_graph" in text
         assert "3 tools total" in text
 
     def test_pre_merge_prompt_has_go_nogo(self):
@@ -379,6 +385,7 @@ class TestPromptWorkflows:
         assert "Step 1" in text
         assert "csegraph_refresh" in text
         assert "csegraph_detect_changes" in text
+        assert "csegraph_test_gaps" in text
         assert "GO / NO-GO" in text
         assert "Blockers" in text
         assert "Risks" in text

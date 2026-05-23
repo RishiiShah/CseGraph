@@ -277,6 +277,98 @@ _TOOLS: list[Tool] = [
             "required": ["repo"],
         },
     ),
+    Tool(
+        name="csegraph_test_gaps",
+        description=(
+            "Analyze test coverage gaps in the codebase. Returns untested symbols "
+            "ranked by hotspot score (caller count, cross-community edges), "
+            "per-community coverage percentages, and overall coverage stats."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of untested hotspots to return. Default: 20.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_review_questions",
+        description=(
+            "Generate targeted review questions from change detection and graph "
+            "structure. Runs change detection internally and produces priority-ranked "
+            "questions about test gaps, cross-community blast radius, and caller breakage."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "base_ref": {
+                    "type": "string",
+                    "default": "HEAD~1",
+                    "description": "Git ref to diff against. Default: HEAD~1.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_review_eval",
+        description=(
+            "Evaluate review intelligence against ground-truth known-risky symbols. "
+            "Measures precision, recall, and F1 of risk scoring, and checks whether "
+            "generated review questions address the known issues."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "ground_truth_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of node IDs known to be risky (ground truth).",
+                },
+                "base_ref": {
+                    "type": "string",
+                    "default": "HEAD~1",
+                    "description": "Git ref to diff against. Default: HEAD~1.",
+                },
+                "risk_threshold": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "default": "medium",
+                    "description": "Risk level threshold for detection. Default: medium.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo", "ground_truth_ids"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -323,6 +415,34 @@ _PROMPTS: list[Prompt] = [
         description="Diff against a base ref, map changed lines to graph symbols, and score review risk.",
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-test-gaps",
+        title="Test Coverage Gaps",
+        description="Identify untested symbols and coverage hotspots in the codebase.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="limit", description="Max hotspots to return (default: 20).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-review-questions",
+        title="Generate Review Questions",
+        description="Generate targeted review questions from change detection and graph structure.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-review-eval",
+        title="Evaluate Review Intelligence",
+        description="Measure precision and recall of review intelligence against known-risky symbols.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="ground_truth_ids", description="Comma-separated node IDs known to be risky.", required=True),
             PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
         ],
     ),
@@ -624,6 +744,36 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         base_ref = arguments.get("base_ref", "HEAD~1")
         return to_dict(ChangeDetectionService(db).detect_changes(base_ref=base_ref))
 
+    if name == "csegraph_test_gaps":
+        from csegraph_core.graph.test_gaps import TestGapService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        limit = arguments.get("limit", 20)
+        return to_dict(TestGapService(db).analyze(limit=limit))
+
+    if name == "csegraph_review_questions":
+        from csegraph_core.graph.review_questions import ReviewQuestionsService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        base_ref = arguments.get("base_ref", "HEAD~1")
+        return to_dict(ReviewQuestionsService(db).generate(base_ref=base_ref))
+
+    if name == "csegraph_review_eval":
+        from csegraph_core.graph.review_eval import ReviewEvalService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        base_ref = arguments.get("base_ref", "HEAD~1")
+        ground_truth_ids = arguments["ground_truth_ids"]
+        risk_threshold = arguments.get("risk_threshold", "medium")
+        return to_dict(ReviewEvalService(db).evaluate(
+            ground_truth_ids=ground_truth_ids,
+            base_ref=base_ref,
+            risk_threshold=risk_threshold,
+        ))
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -688,15 +838,50 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             ],
             args,
         )
+    elif name == "csegraph-test-gaps":
+        text = _prompt_text(
+            "Identify untested symbols and coverage hotspots in the codebase.",
+            [
+                "Call `csegraph_test_gaps` with the repo path.",
+                "Report overall coverage percentage and the top untested hotspots.",
+                "For each hotspot, explain why it is high-priority (caller count, cross-community edges).",
+                "If community coverage data is available, highlight communities below 50% coverage.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-review-questions":
+        text = _prompt_text(
+            "Generate targeted review questions from change detection and graph structure.",
+            [
+                "Call `csegraph_review_questions` with the repo path and base_ref.",
+                "Present each question grouped by priority (P1 first, then P2, then P3).",
+                "For each question, note the related symbols and category.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-review-eval":
+        text = _prompt_text(
+            "Evaluate review intelligence precision and recall against known-risky symbols.",
+            [
+                "Call `csegraph_review_eval` with the repo path, ground_truth_ids, base_ref, and risk_threshold.",
+                "Report overall precision, recall, and F1.",
+                "List missed symbols and false alarms.",
+                "Report question coverage percentage.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
     elif name == "csegraph-review":
         text = _prompt_text(
             "Review current changes using change detection, context, and graph inspection.",
             [
                 "Step 1: Call `csegraph_detect_changes` to get the risk-prioritized list of changed symbols.",
-                "Step 2: Call `csegraph_context` with detail_level=auto and a task describing the review focus. If high-risk symbols were detected, pass the highest-risk one as target.",
-                "Step 3 (only for high-risk symbols): Call `csegraph_graph` with depth=1 on at most one high-risk symbol to check blast radius. Use relations=['calls'] to focus on callers.",
+                "Step 2: Call `csegraph_review_questions` to get targeted review questions from graph structure.",
+                "Step 3 (only if needed): Call `csegraph_context` with detail_level=auto and a task describing the review focus. If high-risk symbols were detected, pass the highest-risk one as target.",
                 "Do NOT call more than 3 tools total.",
-                "Output: List findings ordered by severity (blockers first, then warnings, then notes). Each finding must reference a file path and symbol name.",
+                "Output: List findings ordered by severity (blockers first, then warnings, then notes). Each finding must reference a file path and symbol name. Include the generated review questions.",
                 "If confidence_breakdown shows many INFERRED edges, note that some connections are heuristic and may need manual verification.",
             ],
             args,
@@ -707,7 +892,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             [
                 "Step 1: Call `csegraph_refresh` to ensure the index reflects the latest changes.",
                 "Step 2: Call `csegraph_detect_changes` with the base branch to get the risk-prioritized change list.",
-                "Step 3 (only if high-risk symbols detected): Call `csegraph_context` or `csegraph_graph` for the highest-risk symbol to verify dependencies.",
+                "Step 3: Call `csegraph_test_gaps` to check test coverage of changed areas, or `csegraph_review_questions` for targeted review questions.",
                 "Do NOT call more than 3 tools total.",
                 "Output a GO / NO-GO recommendation with:",
                 "  - Blockers: missing tests, broken call chains, unresolved symbols.",

@@ -27,7 +27,10 @@ from csegraph_cli.renderer import (
     render_postprocess_summary,
     render_refresh_summary,
     render_report_markdown,
+    render_review_eval_summary,
+    render_review_questions_summary,
     render_status_summary,
+    render_test_gaps_summary,
     render_visual_export_summary,
 )
 
@@ -58,6 +61,12 @@ def main(argv: list[str] | None = None) -> int:
         print(render_benchmark_summary(payload), end="")
     elif args.command == "detect-changes" and not args.json:
         print(render_detect_changes_summary(payload), end="")
+    elif args.command == "test-gaps" and not args.json:
+        print(render_test_gaps_summary(payload), end="")
+    elif args.command == "review-questions" and not args.json:
+        print(render_review_questions_summary(payload), end="")
+    elif args.command == "review-eval" and not args.json:
+        print(render_review_eval_summary(payload), end="")
     elif args.command == "communities" and not args.json:
         print(render_communities_summary(payload), end="")
     elif args.command == "status" and not args.json:
@@ -297,6 +306,26 @@ def _build_parser() -> argparse.ArgumentParser:
     detect_changes.add_argument("--base-ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1).")
     _add_json(detect_changes)
 
+    test_gaps = subparsers.add_parser("test-gaps", help="Report untested symbols and coverage hotspots.")
+    _add_repo_positional(test_gaps)
+    _add_db(test_gaps)
+    test_gaps.add_argument("--limit", type=int, default=20, help="Max hotspots to show (default: 20).")
+    _add_json(test_gaps)
+
+    review_qs = subparsers.add_parser("review-questions", help="Generate review questions from graph structure.")
+    _add_repo_positional(review_qs)
+    _add_db(review_qs)
+    review_qs.add_argument("--base-ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1).")
+    _add_json(review_qs)
+
+    review_eval = subparsers.add_parser("review-eval", help="Evaluate review intelligence against ground truth.")
+    _add_repo_positional(review_eval)
+    _add_db(review_eval)
+    review_eval.add_argument("--base-ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1).")
+    review_eval.add_argument("--ground-truth", required=True, help="Comma-separated node IDs or path to JSON file.")
+    review_eval.add_argument("--risk-threshold", choices=["high", "medium", "low"], default="medium", help="Detection threshold (default: medium).")
+    _add_json(review_eval)
+
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     _add_repo_positional(benchmark)
     _add_db(benchmark)
@@ -436,6 +465,28 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.graph.change_detection import ChangeDetectionService
         repo = _repo_arg(args)
         return ChangeDetectionService(_db_arg(args, repo)).detect_changes(base_ref=args.base_ref)
+    if args.command == "test-gaps":
+        from csegraph_core.graph.test_gaps import TestGapService
+        repo = _repo_arg(args)
+        return TestGapService(_db_arg(args, repo)).analyze(limit=args.limit)
+    if args.command == "review-questions":
+        from csegraph_core.graph.review_questions import ReviewQuestionsService
+        repo = _repo_arg(args)
+        return ReviewQuestionsService(_db_arg(args, repo)).generate(base_ref=args.base_ref)
+    if args.command == "review-eval":
+        import json as _json
+        from csegraph_core.graph.review_eval import ReviewEvalService
+        repo = _repo_arg(args)
+        gt = args.ground_truth
+        if Path(gt).exists():
+            ground_truth_ids = _json.loads(Path(gt).read_text(encoding="utf-8"))
+        else:
+            ground_truth_ids = [s.strip() for s in gt.split(",") if s.strip()]
+        return ReviewEvalService(_db_arg(args, repo)).evaluate(
+            ground_truth_ids=ground_truth_ids,
+            base_ref=args.base_ref,
+            risk_threshold=args.risk_threshold,
+        )
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)
