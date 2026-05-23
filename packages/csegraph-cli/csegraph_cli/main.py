@@ -118,12 +118,14 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_repo_positional(index)
     _add_db(index)
     _add_profile(index)
+    index.add_argument("--postprocess", choices=["none", "minimal", "full"], default="full", help="Postprocess level after indexing (default: full).")
     _add_json(index)
 
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
     _add_repo_positional(refresh)
     _add_db(refresh)
     _add_profile(refresh)
+    refresh.add_argument("--postprocess", choices=["none", "minimal", "full"], default="full", help="Postprocess level after refresh (default: full).")
     _add_json(refresh)
 
     minimal = subparsers.add_parser(
@@ -296,6 +298,7 @@ def _build_parser() -> argparse.ArgumentParser:
     postprocess.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
     postprocess.add_argument("--repo", dest="repo_opt", help="Repository root.")
     postprocess.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
+    postprocess.add_argument("--level", choices=["none", "minimal", "full"], default="full", help="Postprocess level: none (skip all), minimal (FTS only), full (FTS + communities). Default: full.")
     postprocess.add_argument("--no-fts", action="store_true", help="Skip FTS rebuild.")
     postprocess.add_argument("--no-communities", action="store_true", help="Skip community detection.")
     postprocess.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
@@ -346,12 +349,24 @@ def _build_parser() -> argparse.ArgumentParser:
 def _dispatch(args: argparse.Namespace) -> Any:
     if args.command == "index":
         from csegraph_core.index.services import IndexService
+        from csegraph_core.postprocess import PostprocessService
         repo = _repo_arg(args)
-        return IndexService(_db_arg(args, repo)).index(repo, profile=args.profile)
+        db = _db_arg(args, repo)
+        result = IndexService(db).index(repo, profile=args.profile)
+        pp_level = getattr(args, "postprocess", "full")
+        if pp_level != "none":
+            PostprocessService(db).postprocess(level=pp_level)
+        return result
     if args.command == "refresh":
         from csegraph_core.index.services import RefreshService
+        from csegraph_core.postprocess import PostprocessService
         repo = _repo_arg(args)
-        return RefreshService(_db_arg(args, repo)).refresh(profile=args.profile)
+        db = _db_arg(args, repo)
+        result = RefreshService(db).refresh(profile=args.profile)
+        pp_level = getattr(args, "postprocess", "full")
+        if pp_level != "none" and result.files_indexed > 0:
+            PostprocessService(db).postprocess(level=pp_level)
+        return result
     if args.command == "minimal":
         from csegraph_core.retrieval.minimal import MinimalService
         repo = Path(args.repo or ".").resolve()
@@ -458,6 +473,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.postprocess import PostprocessService
         repo = _repo_arg(args)
         return PostprocessService(_db_arg(args, repo)).postprocess(
+            level=args.level,
             no_fts=args.no_fts,
             no_communities=args.no_communities,
         )

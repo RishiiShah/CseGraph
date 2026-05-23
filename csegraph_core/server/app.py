@@ -39,6 +39,12 @@ _TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
                 },
+                "postprocess_level": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "full"],
+                    "default": "full",
+                    "description": "Postprocess level: none (fastest, parse only), minimal (FTS only), full (FTS + communities).",
+                },
             },
             "required": ["repo"],
         },
@@ -65,6 +71,12 @@ _TOOLS: list[Tool] = [
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+                "postprocess_level": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "full"],
+                    "default": "full",
+                    "description": "Postprocess level: none (fastest), minimal (FTS only), full (FTS + communities).",
                 },
             },
             "required": ["repo"],
@@ -660,19 +672,29 @@ def _finalize_response_bytes(result: dict[str, Any]) -> None:
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
         from csegraph_core.index.services import IndexService
+        from csegraph_core.postprocess import PostprocessService
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(IndexService(db).index(repo, profile=profile))
+        result = IndexService(db).index(repo, profile=profile)
+        pp_level = arguments.get("postprocess_level", "full")
+        if pp_level != "none":
+            PostprocessService(db).postprocess(level=pp_level)
+        return to_dict(result)
 
     if name == "csegraph_refresh":
         from csegraph_core.index.services import RefreshService
+        from csegraph_core.postprocess import PostprocessService
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(RefreshService(db).refresh(profile=profile))
+        result = RefreshService(db).refresh(profile=profile)
+        pp_level = arguments.get("postprocess_level", "full")
+        if pp_level != "none" and result.files_indexed > 0:
+            PostprocessService(db).postprocess(level=pp_level)
+        return to_dict(result)
 
     if name == "csegraph_minimal":
         from csegraph_core.retrieval.minimal import MinimalService

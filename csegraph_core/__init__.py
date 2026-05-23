@@ -69,7 +69,7 @@ from csegraph_core.graph.tree import TreeExportService
 from csegraph_core.graph.visual import VisualExportService
 from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.index.services import IndexService, RefreshService
-from csegraph_core.postprocess import PostprocessService
+from csegraph_core.postprocess import POSTPROCESS_LEVELS, PostprocessService
 from csegraph_core.retrieval.constants import VALID_REASONS
 from csegraph_core.mcp_install import McpInstallService
 from csegraph_core.retrieval.context import ContextService
@@ -109,6 +109,7 @@ __all__ = [
     "PathEdge",
     "PathResult",
     "PathStep",
+    "POSTPROCESS_LEVELS",
     "PostprocessResult",
     "PostprocessService",
     "PROFILES",

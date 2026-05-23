@@ -95,17 +95,20 @@ class RefreshService:
         self,
         profile: str = "small",
         changed_paths: Optional[Iterable[str | Path]] = None,
+        dependents_limit: int = 50,
     ) -> RefreshResult:
         config = get_profile(profile)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
         cache = ExtractionCache(cache_path)
         index = ProjectIndex(self.db_path)
+        timings_ms: Dict[str, float] = {}
         try:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = Path(metadata["root_dir"]).resolve()
             index.set_metadata(str(repo_root), config.name)
 
+            start = time.perf_counter()
             if changed_paths is not None:
                 ignore = load_ignore_filter(repo_root)
                 changed_abs_set = set()
@@ -159,7 +162,9 @@ class RefreshService:
                     )
                 }
                 deleted = sorted(path for path in stored if path not in current_files)
+            timings_ms["detect_changes"] = _elapsed_ms(start)
 
+            start = time.perf_counter()
             changed: List[str] = []
             parsed_changed: List[ParsedFile] = []
             for rel_path, (parser, path) in sorted(current_files.items()):
@@ -170,6 +175,7 @@ class RefreshService:
                         parsed_changed.append(parsed)
                 except ValueError:
                     pass
+            timings_ms["parse_changed"] = _elapsed_ms(start)
 
             if not changed and not deleted:
                 return RefreshResult(
@@ -183,18 +189,56 @@ class RefreshService:
                     cache_hits=cache.hits,
                     cache_misses=cache.misses,
                     unchanged_files=sorted(set(stored.keys()) - set(changed) - set(deleted)),
+                    timings_ms=timings_ms,
                 )
 
+            start = time.perf_counter()
             changed_symbols: List[str] = []
             for rel_path in deleted:
                 changed_symbols.extend(index.delete_file_payload(rel_path, remove_incoming=True))
             for rel_path in changed:
                 changed_symbols.extend(index.delete_file_payload(rel_path, remove_incoming=False))
+            timings_ms["delete_old"] = _elapsed_ms(start)
 
+            start = time.perf_counter()
             stats = _write_parsed_files(index, str(repo_root), parsed_changed)
             index.cleanup_orphan_edges()
             index.cleanup_orphan_folders()
+            timings_ms["write_graph"] = _elapsed_ms(start)
+
             changed_symbols.extend(symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols)
+
+            # --- P5-4: bounded dependent expansion ---
+            start = time.perf_counter()
+            dependents_expanded = 0
+            dependents_cap_hit = False
+            if changed_symbols and dependents_limit > 0:
+                dep_files, cap_hit = _find_dependent_files(
+                    index, changed_symbols, set(changed) | set(deleted), dependents_limit,
+                )
+                dependents_cap_hit = cap_hit
+                if dep_files:
+                    dep_parsed: List[ParsedFile] = []
+                    for rel_path in dep_files:
+                        full = (repo_root / rel_path)
+                        if not full.exists():
+                            continue
+                        try:
+                            parser = registry.for_extension(full.suffix)
+                            parsed = _parse_one_cached(parser, full, repo_root, cache)
+                            dep_parsed.append(parsed)
+                        except (UnsupportedLanguageError, ValueError):
+                            continue
+                    if dep_parsed:
+                        for parsed in dep_parsed:
+                            index.delete_file_payload(parsed.rel_path, remove_incoming=False)
+                        dep_stats = _write_parsed_files(index, str(repo_root), dep_parsed)
+                        index.cleanup_orphan_edges()
+                        dependents_expanded = len(dep_parsed)
+                        stats["symbols"] += dep_stats["symbols"]
+                        stats["edges"] = dep_stats["edges"]
+            timings_ms["dependent_expansion"] = _elapsed_ms(start)
+
             parse_errors = {
                 parsed.rel_path: parsed.parse_error or ""
                 for parsed in parsed_changed
@@ -215,10 +259,51 @@ class RefreshService:
                 deleted_files=deleted,
                 changed_symbols=sorted(set(changed_symbols)),
                 parse_errors=parse_errors,
+                dependents_expanded=dependents_expanded,
+                dependents_cap_hit=dependents_cap_hit,
+                timings_ms=timings_ms,
             )
         finally:
             index.close()
             cache.close()
+
+
+def _find_dependent_files(
+    index: ProjectIndex,
+    changed_symbol_ids: List[str],
+    already_processed: set,
+    limit: int,
+) -> tuple:
+    """Find files containing symbols that directly depend on changed symbols.
+
+    Returns (dep_file_paths, cap_hit) where cap_hit is True if the limit was reached.
+    """
+    if not changed_symbol_ids:
+        return [], False
+
+    placeholders = ",".join("?" for _ in changed_symbol_ids)
+    rows = index.conn.execute(
+        f"""
+        SELECT DISTINCT n.path
+        FROM edges e
+        JOIN nodes n ON n.id = e.source
+        WHERE e.target IN ({placeholders})
+          AND e.relation IN ('calls', 'imports', 'inherits')
+          AND n.type IN ('file', 'class', 'function', 'method', 'test')
+          AND n.path IS NOT NULL
+        LIMIT ?
+        """,
+        (*changed_symbol_ids, limit + 1),
+    ).fetchall()
+
+    dep_paths = []
+    for row in rows:
+        path = row["path"]
+        if path and path not in already_processed:
+            dep_paths.append(path)
+
+    cap_hit = len(rows) > limit
+    return dep_paths[:limit], cap_hit
 
 
 def _resolve_cross_file_methods(index: ProjectIndex) -> None:

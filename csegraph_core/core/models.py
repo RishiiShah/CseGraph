@@ -55,6 +55,9 @@ class RefreshResult:
     deleted_files: List[str] = field(default_factory=list)
     changed_symbols: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    dependents_expanded: int = 0
+    dependents_cap_hit: bool = False
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -105,6 +108,7 @@ class ContextResult:
     warnings: List[str] = field(default_factory=list)
     run_id: Optional[int] = None
     confidence_breakdown: Dict[str, int] = field(default_factory=dict)
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -259,6 +263,8 @@ class PostprocessResult:
     communities_detected: int
     modularity: float = 0.0
     skipped: List[str] = field(default_factory=list)
+    level: str = "full"
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

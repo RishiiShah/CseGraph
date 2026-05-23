@@ -33,14 +33,19 @@ env/bin/pip install -e packages/csegraph-cli/
 ## Base Commands
 
 ```bash
-csegraph index                    # Build the repository index
+csegraph index                    # Build the repository index (auto-postprocess: full)
+csegraph index --postprocess minimal  # Index with FTS only (skip community detection)
+csegraph index --postprocess none     # Index without postprocessing (fastest)
 csegraph refresh                  # Incremental refresh for changed/deleted files
+csegraph refresh --postprocess none   # Refresh without postprocessing
 csegraph context "task"           # Retrieve context (detail_level=auto: minimal if sufficient, else standard)
 csegraph context "task" --detail-level standard  # Request working context with source
 csegraph context "task" --detail-level full --explain  # Full context with explanations
 csegraph context "task" --target symbol --format markdown
 csegraph status --verbose         # Graph health and staleness
-csegraph postprocess              # Rebuild FTS and communities without re-parsing
+csegraph postprocess              # Rebuild FTS and communities without re-parsing (level: full)
+csegraph postprocess --level minimal  # FTS only, skip community detection
+csegraph postprocess --level none     # Skip all postprocessing
 csegraph inspect symbol --depth 1 # Graph neighborhood
 csegraph path source target       # Shortest path between nodes
 csegraph graph                    # Generate interactive HTML graph
@@ -68,12 +73,12 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 
 | Tool | Description | Key args |
 |---|---|---|
-| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db` |
-| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db` |
+| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db`, `postprocess_level` |
+| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db`, `postprocess_level` |
 | `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. | `repo`, `task`, `db` |
 | `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `profile`, `detail_level`, `include_source`, `max_tokens`, `max_bytes`, `explain`, `db` |
 | `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
-| `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS and relation filtering match `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_bytes`, `db` |
+| `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS via SQLite recursive CTE with relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
 | `csegraph_detect_changes` | Detect changed symbols between current state and a base git ref, score each by review risk (caller count, cross-community edges, test coverage). | `repo`, `base_ref`, `db` |
 | `csegraph_test_gaps` | Analyze test coverage gaps — untested symbols ranked by hotspot score, per-community coverage. | `repo`, `limit`, `db` |
 | `csegraph_review_questions` | Generate targeted review questions from change detection and graph structure. | `repo`, `base_ref`, `db` |
@@ -166,7 +171,7 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-pytest                              # Full test suite (417 tests)
+pytest                              # Full test suite (510 tests)
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet
