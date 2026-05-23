@@ -63,12 +63,12 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 
 | Tool | Description | Key args |
 |---|---|---|
-| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile` |
-| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile` |
-| `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. | `repo`, `task` |
-| `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `detail_level`, `max_bytes` |
-| `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes` |
-| `csegraph_path` | Find the shortest path between two nodes. | `repo`, `source`, `target`, `detail_level`, `max_bytes` |
+| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db` |
+| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db` |
+| `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. | `repo`, `task`, `db` |
+| `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `profile`, `detail_level`, `include_source`, `max_tokens`, `max_bytes`, `explain`, `db` |
+| `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
+| `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS and relation filtering match `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_bytes`, `db` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
@@ -83,9 +83,9 @@ Every MCP response carries metadata that agents can use to triage and gate furth
 | `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
 | `response_bytes` | every response | Exact serialized JSON size in bytes. |
 | `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Drop order: `source_text` → `explanation` → trim `nodes` from the tail → trim `edges` from the tail. |
-| `confidence_breakdown` | `csegraph_graph` | `{"EXTRACTED": N, "INFERRED": M, "AMBIGUOUS": K}` — edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
-| `hubs_skipped` | `csegraph_graph` | Number of high-degree utility nodes BFS refused to expand through. |
-| `relations_filter` | `csegraph_graph` | Echo of the `relations` arg applied to traversal, for transparency. |
+| `confidence_breakdown` | `csegraph_graph`, `csegraph_path`, `csegraph_context` | `{"EXTRACTED": N, "INFERRED": M, "AMBIGUOUS": K}` — edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
+| `hubs_skipped` | `csegraph_graph`, `csegraph_path` | Number of high-degree utility nodes BFS refused to expand through. |
+| `relations_filter` | `csegraph_graph`, `csegraph_path` | Echo of the `relations` arg applied to traversal, for transparency. |
 | `next_tool_suggestions`, `next_actions` | `csegraph_minimal`, `csegraph_context` | Routing recommendations, already filtered against `tools_already_called`. |
 
 MCP prompts are workflow templates that clients may expose as slash commands.
@@ -106,18 +106,30 @@ Place a `.csegraphignore` file in the repository root to exclude files and direc
 ## SDK
 
 ```python
-from csegraph import BenchmarkService, ContextService, GraphQueryService, IndexService, RefreshService
+from csegraph import (
+    BenchmarkService, ContextService, GraphQueryService,
+    IndexService, MinimalService, RefreshService,
+    StatusService, ReportService, PostprocessService,
+)
 
 IndexService(".csegraph/index.db").index(".", profile="medium")
 RefreshService(".csegraph/index.db").refresh(profile="medium")
 
+# Routing card (call first — ~150 tokens)
+routing = MinimalService(".csegraph/index.db").build_minimal(task="fix auth bug")
+
+# Task-specific context
 context = ContextService(".csegraph/index.db").build_context(
     task="fix auth token refresh bug",
     target="refresh_token",
     profile="medium",
 )
 
+# Graph inspection
 graph = GraphQueryService(".csegraph/index.db").neighborhood("refresh_token", depth=1)
+
+# Other services
+status = StatusService(".csegraph/index.db").status()
 benchmark = BenchmarkService(".csegraph/index.db").run(".", target="refresh_token")
 ```
 
@@ -141,7 +153,10 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-env/bin/python -m pytest tests/ -q
-env/bin/python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
-env/bin/python -m csegraph_cli --help
+pytest                              # Full test suite (417 tests)
+pytest tests/unit/                  # Unit tests only
+pytest tests/integration/           # Integration tests only
+pytest -x -q                        # Stop on first failure, quiet
+python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
+csegraph --help
 ```
