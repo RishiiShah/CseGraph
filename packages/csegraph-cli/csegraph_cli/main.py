@@ -264,6 +264,11 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_json(watch, suppress=True)
 
     serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
+    serve.add_argument(
+        "--tools",
+        default=None,
+        help="Comma-separated list of tool names to expose (e.g. 'csegraph_minimal,csegraph_context'). Default: all tools.",
+    )
     _add_json(serve, suppress=True)
 
     status = subparsers.add_parser("status", help="Show graph health and staleness info.")
@@ -400,7 +405,8 @@ def _dispatch(args: argparse.Namespace) -> Any:
     if args.command == "serve":
         import asyncio
         from csegraph_core.server import run_stdio
-        asyncio.run(run_stdio())
+        allowed = [t.strip() for t in args.tools.split(",") if t.strip()] if args.tools else None
+        asyncio.run(run_stdio(allowed_tools=allowed))
         return None
     if args.command == "status":
         from csegraph_core.status import StatusService

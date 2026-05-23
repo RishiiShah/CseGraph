@@ -586,67 +586,76 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
     args = arguments or {}
     if name == "csegraph-index":
         text = _prompt_text(
-            "Build or rebuild the repository index.",
+            "Build or rebuild the csegraph repository index.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_index` with the repo path and optional profile.",
-                "Summarize files, symbols, edges, cache stats, and parse errors.",
+                "Call `csegraph_index` with the repo path and profile (default medium).",
+                "Report: files indexed, symbols, edges, cache hits/misses, parse errors.",
+                "If parse errors > 0, list them so the user can fix syntax before relying on the graph.",
             ],
             args,
         )
     elif name == "csegraph-refresh":
         text = _prompt_text(
-            "Refresh changed and deleted files in the existing index.",
+            "Incrementally refresh the csegraph index for changed and deleted files.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_refresh` with the repo path and optional profile.",
-                "Summarize changed, deleted, unchanged files, cache stats, and parse errors.",
+                "Call `csegraph_refresh` with the repo path and profile (default medium).",
+                "Report: changed files re-indexed, deleted files removed, unchanged files kept.",
+                "If parse errors appear on changed files, flag them.",
             ],
             args,
         )
     elif name == "csegraph-minimal":
         text = _prompt_text(
-            "Get a compact routing card before invoking heavier tools.",
+            "Get a compact routing card (~150 tokens) before invoking heavier tools.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
                 "Call `csegraph_minimal` with the repo and the user's task (if any).",
-                "Use the returned `next_tool_suggestions` to choose the next call; do not invoke unrelated tools.",
-                "Never make more than 3 tool calls in a single agent turn; prefer choosing one suggested next_tool.",
+                "If the routing card includes a stale-index warning, call `csegraph_refresh` before proceeding.",
+                "Read the `next_tool_suggestions` array. Call exactly one suggested tool — do not invoke tools not in the suggestions.",
+                "If suggestions are empty or the routing card says the graph is sufficient, stop — no further tool calls needed.",
             ],
             args,
         )
     elif name == "csegraph-context":
         text = _prompt_text(
-            "Retrieve graph-backed context for the task, starting with minimal if sufficient.",
+            "Retrieve task-specific context, starting minimal and escalating only when needed.",
             [
-                "If `repo` or `task` is missing, ask for it before calling tools.",
-                "Call `csegraph_context` with repo, task, optional target, detail_level=auto to start efficiently.",
-                "If returned_detail_level is minimal and sufficiency is met, avoid escalating to `csegraph_graph` or `csegraph_path` unless the task intent requires structural dependency checks.",
-                "If intent='debug' AND minimal returns >=3 key_entities, prefer calling `csegraph_context` with a focused target rather than broad graph traversals.",
-                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work and minimize follow-up tool calls.",
+                "Step 1: Call `csegraph_minimal` first to get the routing card (skip if already called this session).",
+                "Step 2: Call `csegraph_context` with detail_level=auto. Auto returns minimal if sufficient, standard otherwise.",
+                "Step 3 (only if needed): If returned_detail_level=minimal and you need source code, re-call with detail_level=standard and a focused target.",
+                "Step 4 (only if needed): If a structural dependency question remains, call `csegraph_graph` for one key symbol with depth=1.",
+                "Stop after at most 3 tool calls total. Use the returned sufficiency metrics to decide whether more context is needed.",
+                "Do NOT call `csegraph_graph` or `csegraph_path` unless the task specifically requires structural/dependency information.",
             ],
             args,
         )
     elif name == "csegraph-review":
         text = _prompt_text(
-            "Review the current work using csegraph before making recommendations.",
+            "Review current changes using csegraph context and graph inspection.",
             [
-                "Call `csegraph_context` with detail_level=auto to start efficiently (returns minimal if sufficient, standard otherwise).",
-                "Never make more than 3 tool calls in a single agent turn; prefer compact context and a single neighborhood inspection when needed.",
-                "Use `csegraph_graph` for key changed symbols when a neighborhood clarifies blast radius.",
-                "Report findings first, ordered by severity, with file and symbol references.",
+                "Step 1: Call `csegraph_minimal` to get the routing card and key entities.",
+                "Step 2: Call `csegraph_context` with detail_level=auto and a task describing the review focus. If the user specified changed files or symbols, pass the most important one as target.",
+                "Step 3 (only for high-risk symbols): Call `csegraph_graph` with depth=1 on at most one changed symbol to check blast radius. Use relations=['calls'] to focus on callers.",
+                "Do NOT call more than 3 tools total.",
+                "Output: List findings ordered by severity (blockers first, then warnings, then notes). Each finding must reference a file path and symbol name.",
+                "If confidence_breakdown shows many INFERRED edges, note that some connections are heuristic and may need manual verification.",
             ],
             args,
         )
     elif name == "csegraph-pre-merge":
         text = _prompt_text(
-            "Run a pre-merge context and risk checklist.",
+            "Run a pre-merge checklist using csegraph context and structural checks.",
             [
-                "Call `csegraph_refresh` first if the index may be stale.",
-                "Call `csegraph_context` with detail_level=auto for the merge or PR task; request standard only when source is needed.",
-                "Never make more than 3 tool calls in a single agent turn; prefer targeted context and a single structural check when necessary.",
-                "Use `csegraph_path` or `csegraph_graph` for any risky dependency questions.",
-                "Return blockers, residual risks, and verification commands.",
+                "Step 1: Call `csegraph_refresh` to ensure the index reflects the latest changes.",
+                "Step 2: Call `csegraph_context` with detail_level=auto for the merge/PR description.",
+                "Step 3 (only if risky dependencies detected): Call `csegraph_path` or `csegraph_graph` for the single highest-risk symbol to verify the dependency chain.",
+                "Do NOT call more than 3 tools total.",
+                "Output a GO / NO-GO recommendation with:",
+                "  - Blockers: missing tests, broken call chains, unresolved symbols.",
+                "  - Risks: high-degree symbols modified, cross-community edges, INFERRED-confidence connections.",
+                "  - Verification: specific test commands or manual checks the reviewer should run.",
             ],
             args,
         )
@@ -679,12 +688,23 @@ def _prompt_text(goal: str, steps: list[str], arguments: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def create_server() -> Server:
+ALL_TOOL_NAMES = [t.name for t in _TOOLS]
+
+
+def create_server(*, allowed_tools: list[str] | None = None) -> Server:
+    if allowed_tools is not None:
+        unknown = set(allowed_tools) - {t.name for t in _TOOLS}
+        if unknown:
+            raise ValueError(f"Unknown tool names in --tools filter: {sorted(unknown)}")
+        tools = [t for t in _TOOLS if t.name in allowed_tools]
+    else:
+        tools = list(_TOOLS)
+
     server = Server("csegraph")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
-        return _TOOLS
+        return tools
 
     @server.list_prompts()
     async def list_prompts() -> list[Prompt]:
@@ -710,9 +730,12 @@ def create_server() -> Server:
     return server
 
 
-async def run_stdio() -> None:
+async def run_stdio(*, allowed_tools: list[str] | None = None) -> None:
     import sys
-    print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
-    server = create_server()
+    server = create_server(allowed_tools=allowed_tools)
+    if allowed_tools:
+        print(f"csegraph MCP server running on stdio — exposing {len(allowed_tools)} tools", file=sys.stderr, flush=True)
+    else:
+        print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())

@@ -12,6 +12,7 @@ import pytest
 from pathlib import Path
 
 from csegraph_core.server.app import (
+    ALL_TOOL_NAMES,
     create_server,
     _handle_prompt,
     _handle_tool,
@@ -315,3 +316,60 @@ class TestServerCreation:
         server = create_server()
         assert server is not None
         assert server.name == "csegraph"
+
+    def test_create_server_with_tool_filter(self):
+        server = create_server(allowed_tools=["csegraph_minimal", "csegraph_context"])
+        assert server is not None
+
+    def test_create_server_rejects_unknown_tools(self):
+        with pytest.raises(ValueError, match="Unknown tool names"):
+            create_server(allowed_tools=["csegraph_minimal", "csegraph_fake"])
+
+    def test_all_tool_names_matches_tools_list(self):
+        assert ALL_TOOL_NAMES == [t.name for t in _TOOLS]
+
+
+class TestPromptWorkflows:
+    def test_review_prompt_has_step_structure(self):
+        result = _handle_prompt("csegraph-review", {"repo": "/repo"})
+        text = result.messages[0].content.text
+        assert "Step 1" in text
+        assert "Step 2" in text
+        assert "Step 3" in text
+        assert "csegraph_minimal" in text
+        assert "csegraph_context" in text
+        assert "csegraph_graph" in text
+        assert "3 tools total" in text
+
+    def test_pre_merge_prompt_has_go_nogo(self):
+        result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
+        text = result.messages[0].content.text
+        assert "Step 1" in text
+        assert "csegraph_refresh" in text
+        assert "GO / NO-GO" in text
+        assert "Blockers" in text
+        assert "Risks" in text
+        assert "Verification" in text
+
+    def test_context_prompt_enforces_escalation_pattern(self):
+        result = _handle_prompt("csegraph-context", {"repo": "/repo", "task": "fix bug"})
+        text = result.messages[0].content.text
+        assert "Step 1" in text
+        assert "csegraph_minimal" in text
+        assert "detail_level=auto" in text
+        assert "3 tool calls total" in text
+
+    def test_minimal_prompt_respects_suggestions(self):
+        result = _handle_prompt("csegraph-minimal", {"repo": "/repo"})
+        text = result.messages[0].content.text
+        assert "next_tool_suggestions" in text
+        assert "stale-index warning" in text
+
+    def test_all_prompts_include_token_efficiency_preamble(self):
+        for prompt in _PROMPTS:
+            args = {"repo": "/repo"}
+            if any(a.name == "task" and a.required for a in prompt.arguments):
+                args["task"] = "test task"
+            result = _handle_prompt(prompt.name, args)
+            text = result.messages[0].content.text
+            assert "Token-efficiency" in text, f"{prompt.name} missing preamble"
