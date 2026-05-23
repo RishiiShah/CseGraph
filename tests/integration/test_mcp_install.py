@@ -110,3 +110,108 @@ def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:
     assert 'args = ["serve"]' in text
     assert result.installed[0].platform == "codex"
 
+
+# --- Instruction files ---
+
+
+def test_instructions_creates_all_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo).install(platform="cursor", instructions=True, dry_run=False)
+
+    instruction_targets = [t for t in result.installed if t.platform == "instructions"]
+    created_names = {Path(t.path).name for t in instruction_targets}
+    assert {"CLAUDE.md", "AGENTS.md", "GEMINI.md", "CODEX.md"} == created_names
+
+    for name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md", "CODEX.md"):
+        content = (repo / name).read_text(encoding="utf-8")
+        assert "csegraph_minimal" in content
+        assert "csegraph_context" in content
+
+
+def test_instructions_skips_if_already_present(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "CLAUDE.md").write_text("# My Project\nUse csegraph for context.\n", encoding="utf-8")
+
+    result = McpInstallService(repo).install(platform="cursor", instructions=True, dry_run=False)
+
+    claude_targets = [t for t in result.skipped if Path(t.path).name == "CLAUDE.md"]
+    assert len(claude_targets) == 1
+    assert claude_targets[0].reason == "already contains csegraph guidance"
+    content = (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    assert content == "# My Project\nUse csegraph for context.\n"
+
+
+def test_instructions_appends_to_existing_without_csegraph(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "AGENTS.md").write_text("# Agent Rules\nBe helpful.\n", encoding="utf-8")
+
+    result = McpInstallService(repo).install(platform="cursor", instructions=True, dry_run=False)
+
+    agents_targets = [t for t in result.installed if Path(t.path).name == "AGENTS.md"]
+    assert len(agents_targets) == 1
+    assert agents_targets[0].action == "updated"
+    content = (repo / "AGENTS.md").read_text(encoding="utf-8")
+    assert content.startswith("# Agent Rules\nBe helpful.")
+    assert "csegraph_minimal" in content
+
+
+def test_instructions_dry_run_does_not_write(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo).install(platform="cursor", instructions=True, dry_run=True)
+
+    instruction_targets = [t for t in result.installed if t.platform == "instructions"]
+    assert len(instruction_targets) == 4
+    assert all(t.dry_run is True for t in instruction_targets)
+    for name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md", "CODEX.md"):
+        assert not (repo / name).exists()
+
+
+# --- Agent hooks ---
+
+
+def test_hooks_creates_claude_settings(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo).install(platform="cursor", hooks=True, dry_run=False)
+
+    hook_targets = [t for t in result.installed if t.platform.startswith("hooks:")]
+    assert len(hook_targets) >= 1
+    assert hook_targets[0].platform == "hooks:claude-code"
+
+    settings = json.loads((repo / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert "hooks" in settings
+    assert "PostToolUse" in settings["hooks"]
+    assert "PreToolUse" in settings["hooks"]
+
+
+def test_hooks_preserves_existing_claude_settings(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    settings_path = repo / ".claude" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(json.dumps({"permissions": {"allow": ["Read"]}}), encoding="utf-8")
+
+    McpInstallService(repo).install(platform="cursor", hooks=True, dry_run=False)
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert settings["permissions"]["allow"] == ["Read"]
+    assert "hooks" in settings
+
+
+def test_hooks_dry_run_does_not_write(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo).install(platform="cursor", hooks=True, dry_run=True)
+
+    hook_targets = [t for t in result.installed if t.platform.startswith("hooks:")]
+    assert len(hook_targets) >= 1
+    assert all(t.dry_run is True for t in hook_targets)
+    assert not (repo / ".claude" / "settings.json").exists()
+

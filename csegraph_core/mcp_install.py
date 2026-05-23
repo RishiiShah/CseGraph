@@ -26,6 +26,53 @@ _PROJECT_JSON_TARGETS = {
 
 _PLATFORMS = {"auto", "codex", *_PROJECT_JSON_TARGETS}
 
+_INSTRUCTION_BODY = """\
+# CseGraph — Agent Instructions
+
+This repository has a csegraph index. Use csegraph MCP tools for code context
+instead of broad file reads or grep scans.
+
+## Workflow
+
+1. Call `csegraph_minimal` first to get a routing card with key entities and
+   next-tool suggestions.
+2. Follow the `next_tool_suggestions` — call exactly one suggested tool.
+3. Use `csegraph_context` with `detail_level=auto` for task-specific context.
+4. Escalate to `csegraph_graph` or `csegraph_path` only for structural
+   dependency questions.
+5. Never make more than 3 csegraph tool calls in a single turn.
+6. If the routing card warns about a stale index, call `csegraph_refresh` first.
+"""
+
+_INSTRUCTION_FILES = {
+    "CLAUDE.md": _INSTRUCTION_BODY,
+    "AGENTS.md": _INSTRUCTION_BODY,
+    "GEMINI.md": _INSTRUCTION_BODY,
+    "CODEX.md": _INSTRUCTION_BODY,
+}
+
+_HOOK_CONFIGS: dict[str, dict[str, Any]] = {
+    "claude-code": {
+        "path": Path(".claude") / "settings.json",
+        "build": lambda cmd: {
+            "hooks": {
+                "PostToolUse": [
+                    {
+                        "matcher": "Edit|Write",
+                        "hooks": [{"type": "command", "command": f"{cmd} refresh . --profile small 2>$null"}],
+                    }
+                ],
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": f"{cmd} status 2>$null || true"}],
+                    }
+                ],
+            }
+        },
+    },
+}
+
 
 class McpInstallService:
     def __init__(
@@ -39,7 +86,14 @@ class McpInstallService:
         self.command = command
         self.home = Path(home).resolve() if home is not None else Path.home()
 
-    def install(self, *, platform: Platform = "auto", dry_run: bool = False) -> McpInstallResult:
+    def install(
+        self,
+        *,
+        platform: Platform = "auto",
+        dry_run: bool = False,
+        instructions: bool = False,
+        hooks: bool = False,
+    ) -> McpInstallResult:
         if platform not in _PLATFORMS:
             raise ValueError(f"Unsupported MCP install platform: {platform}")
 
@@ -56,13 +110,16 @@ class McpInstallService:
             self._install_project_json("claude-code", dry_run, result, force=True)
             for candidate in ("cursor", "gemini-cli", "kiro", "copilot"):
                 self._install_project_json(candidate, dry_run, result, force=False)
-            return result
-
-        if platform == "codex":
+        elif platform == "codex":
             self._install_codex(dry_run, result)
-            return result
+        else:
+            self._install_project_json(platform, dry_run, result, force=True)
 
-        self._install_project_json(platform, dry_run, result, force=True)
+        if instructions:
+            self._install_instructions(dry_run, result)
+        if hooks:
+            self._install_agent_hooks(dry_run, result)
+
         return result
 
     def _install_project_json(
@@ -136,6 +193,65 @@ class McpInstallService:
                 dry_run=dry_run,
             )
         )
+
+    def _install_instructions(self, dry_run: bool, result: McpInstallResult) -> None:
+        for filename, body in _INSTRUCTION_FILES.items():
+            path = self.repo / filename
+            if path.exists():
+                existing = path.read_text(encoding="utf-8")
+                if "csegraph" in existing.lower():
+                    result.skipped.append(
+                        McpInstallTarget(
+                            platform="instructions",
+                            path=str(path),
+                            scope="project",
+                            action="skipped",
+                            dry_run=dry_run,
+                            reason="already contains csegraph guidance",
+                        )
+                    )
+                    continue
+                action = "updated"
+                new_content = existing.rstrip() + "\n\n" + body
+            else:
+                action = "created"
+                new_content = body
+
+            if not dry_run:
+                path.write_text(new_content, encoding="utf-8")
+
+            result.installed.append(
+                McpInstallTarget(
+                    platform="instructions",
+                    path=str(path),
+                    scope="project",
+                    action=action,
+                    dry_run=dry_run,
+                )
+            )
+
+    def _install_agent_hooks(self, dry_run: bool, result: McpInstallResult) -> None:
+        for platform_name, cfg in _HOOK_CONFIGS.items():
+            path = self.repo / cfg["path"]
+            action = "updated" if path.exists() else "created"
+
+            if not dry_run:
+                data = _read_json_object(path)
+                hook_data = cfg["build"](self.command)
+                for key, value in hook_data.items():
+                    data[key] = value
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            result.installed.append(
+                McpInstallTarget(
+                    platform=f"hooks:{platform_name}",
+                    path=str(path),
+                    scope="project",
+                    action=action,
+                    dry_run=dry_run,
+                )
+            )
 
     def _server_entry(self, *, vscode_style: bool) -> dict[str, Any]:
         entry: dict[str, Any] = {

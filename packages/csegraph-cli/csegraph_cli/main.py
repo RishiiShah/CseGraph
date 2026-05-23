@@ -249,6 +249,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Executable command used by MCP clients to launch csegraph.",
     )
     install.add_argument("--dry-run", action="store_true", help="Show planned writes without modifying files.")
+    install.add_argument("--instructions", action="store_true", help="Generate platform instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md).")
+    install.add_argument("--hooks", action="store_true", help="Install agent hooks for auto-refresh and status checks.")
     _add_json(install)
 
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
@@ -392,6 +394,8 @@ def _dispatch(args: argparse.Namespace) -> Any:
         return McpInstallService(repo, command=args.server_command).install(
             platform=args.platform,
             dry_run=args.dry_run,
+            instructions=args.instructions,
+            hooks=args.hooks,
         )
     if args.command == "report":
         from csegraph_core.graph.report import ReportService

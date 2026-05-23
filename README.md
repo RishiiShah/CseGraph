@@ -50,16 +50,20 @@ csegraph report --json            # Structural report
 csegraph hooks install            # Install git auto-refresh hooks
 csegraph watch                    # Auto-refresh on file changes
 csegraph benchmark --target symbol
-csegraph serve                    # Start MCP stdio server
+csegraph serve                    # Start MCP stdio server (all tools)
+csegraph serve --tools csegraph_minimal,csegraph_context  # Expose only selected tools
 csegraph install                  # Configure local MCP client files
 csegraph install --platform cursor --dry-run --json
+csegraph install --instructions   # Generate CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md
+csegraph install --hooks          # Install agent hooks (auto-refresh, status checks)
+csegraph install --instructions --hooks  # Full agent onboarding
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
 
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
 
-AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot` to target one client.
+AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot` to target one client. Add `--instructions` to generate platform instruction files that tell agents to use csegraph first. Add `--hooks` to install agent hooks for automatic index refresh after file edits.
 
 | Tool | Description | Key args |
 |---|---|---|
