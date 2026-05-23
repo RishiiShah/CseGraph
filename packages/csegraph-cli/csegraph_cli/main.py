@@ -18,6 +18,7 @@ from csegraph_cli.renderer import (
     render_communities_summary,
     render_context_markdown,
     render_benchmark_summary,
+    render_detect_changes_summary,
     render_hooks_summary,
     render_install_summary,
     render_index_summary,
@@ -55,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_visual_export_summary(payload), end="")
     elif args.command == "benchmark" and not args.json:
         print(render_benchmark_summary(payload), end="")
+    elif args.command == "detect-changes" and not args.json:
+        print(render_detect_changes_summary(payload), end="")
     elif args.command == "communities" and not args.json:
         print(render_communities_summary(payload), end="")
     elif args.command == "status" and not args.json:
@@ -288,6 +291,12 @@ def _build_parser() -> argparse.ArgumentParser:
     postprocess.add_argument("--no-communities", action="store_true", help="Skip community detection.")
     postprocess.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
+    detect_changes = subparsers.add_parser("detect-changes", help="Detect changed symbols and score review risk.")
+    _add_repo_positional(detect_changes)
+    _add_db(detect_changes)
+    detect_changes.add_argument("--base-ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1).")
+    _add_json(detect_changes)
+
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     _add_repo_positional(benchmark)
     _add_db(benchmark)
@@ -423,6 +432,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
             no_fts=args.no_fts,
             no_communities=args.no_communities,
         )
+    if args.command == "detect-changes":
+        from csegraph_core.graph.change_detection import ChangeDetectionService
+        repo = _repo_arg(args)
+        return ChangeDetectionService(_db_arg(args, repo)).detect_changes(base_ref=args.base_ref)
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)

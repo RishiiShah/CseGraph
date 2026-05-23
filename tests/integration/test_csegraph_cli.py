@@ -707,6 +707,84 @@ def test_cli_help_lists_only_product_commands():
     assert removed_command not in proc.stdout
 
 
+def _init_git_repo(repo: Path) -> None:
+    subprocess.run(["git", "-C", str(repo), "init"], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@test.com"], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], capture_output=True, check=True)
+
+
+def test_detect_changes_json(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    (repo / "core.py").write_text(
+        "def target():\n    pass\n\ndef caller():\n    target()\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+
+    (repo / "core.py").write_text(
+        "def target():\n    return 42\n\ndef caller():\n    target()\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True)
+
+    run_cli("index", str(repo), "--json")
+    result = run_cli("detect-changes", str(repo), "--base-ref", "HEAD~1", "--json")
+
+    assert result["command"] == "detect-changes"
+    assert result["base_ref"] == "HEAD~1"
+    assert "core.py" in result["changed_files"]
+    assert result["total_changed_symbols"] >= 1
+    all_syms = result["high_risk"] + result["medium_risk"] + result["low_risk"]
+    names = {s["name"] for s in all_syms}
+    assert "target" in names
+
+
+def test_detect_changes_human_output(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    (repo / "mod.py").write_text("def leaf():\n    pass\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+
+    (repo / "mod.py").write_text("def leaf():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True)
+
+    run_cli("index", str(repo), "--json")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "csegraph_cli", "detect-changes", str(repo), "--base-ref", "HEAD~1"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "Changed symbols:" in proc.stdout
+    assert "file(s)" in proc.stdout
+
+
+def test_detect_changes_no_changes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+
+    run_cli("index", str(repo), "--json")
+    result = run_cli("detect-changes", str(repo), "--base-ref", "HEAD", "--json")
+
+    assert result["total_changed_symbols"] == 0
+    assert result["high_risk"] == []
+
+
 def test_install_matrix_cli_works_without_sdk(tmp_path):
     """CLI should run with root csegraph-core + csegraph-cli, no SDK package."""
     repo_root = Path(__file__).resolve().parents[2]

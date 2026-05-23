@@ -8,6 +8,7 @@ against a real (temporary) csegraph index.
 from __future__ import annotations
 
 import json
+import subprocess
 import pytest
 from pathlib import Path
 
@@ -45,6 +46,7 @@ class TestToolListing:
             "csegraph_context",
             "csegraph_graph",
             "csegraph_path",
+            "csegraph_detect_changes",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -77,6 +79,7 @@ class TestPromptListing:
             "csegraph-refresh",
             "csegraph-minimal",
             "csegraph-context",
+            "csegraph-detect-changes",
             "csegraph-review",
             "csegraph-pre-merge",
         }
@@ -131,12 +134,12 @@ class TestHandlePrompt:
         assert "csegraph_graph" in text
         assert "Token-efficiency" in text
 
-    def test_pre_merge_prompt_mentions_detail_level_auto(self):
+    def test_pre_merge_prompt_mentions_detect_changes(self):
         result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
         text = result.messages[0].content.text
 
-        assert "csegraph_context" in text
-        assert "detail_level=auto" in text
+        assert "csegraph_detect_changes" in text
+        assert "csegraph_refresh" in text
         assert "Token-efficiency" in text
 
     def test_unknown_prompt_raises(self):
@@ -297,6 +300,35 @@ class TestHandleTool:
         with pytest.raises(ValueError, match="Unknown tool"):
             _handle_tool("csegraph_nope", {})
 
+    def test_detect_changes(self, tmp_path):
+        repo = tmp_path / "dcrepo"
+        repo.mkdir()
+        subprocess.run(["git", "-C", str(repo), "init"], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@t.com"], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "T"], capture_output=True, check=True)
+
+        (repo / "mod.py").write_text("def fn():\n    pass\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], capture_output=True, check=True)
+
+        (repo / "mod.py").write_text("def fn():\n    return 1\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-m", "mod"], capture_output=True, check=True)
+
+        db = str(tmp_path / "dc.db")
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
+
+        result = _handle_tool("csegraph_detect_changes", {
+            "repo": str(repo),
+            "db": db,
+            "base_ref": "HEAD~1",
+        })
+        assert result["command"] == "detect-changes"
+        assert result["total_changed_symbols"] >= 1
+        assert isinstance(result["high_risk"], list)
+        assert isinstance(result["medium_risk"], list)
+        assert isinstance(result["low_risk"], list)
+
     def test_result_is_json_serializable(self, tmp_path):
         repo = _make_repo(tmp_path)
         db = str(tmp_path / "test.db")
@@ -336,7 +368,7 @@ class TestPromptWorkflows:
         assert "Step 1" in text
         assert "Step 2" in text
         assert "Step 3" in text
-        assert "csegraph_minimal" in text
+        assert "csegraph_detect_changes" in text
         assert "csegraph_context" in text
         assert "csegraph_graph" in text
         assert "3 tools total" in text
@@ -346,6 +378,7 @@ class TestPromptWorkflows:
         text = result.messages[0].content.text
         assert "Step 1" in text
         assert "csegraph_refresh" in text
+        assert "csegraph_detect_changes" in text
         assert "GO / NO-GO" in text
         assert "Blockers" in text
         assert "Risks" in text
@@ -364,6 +397,14 @@ class TestPromptWorkflows:
         text = result.messages[0].content.text
         assert "next_tool_suggestions" in text
         assert "stale-index warning" in text
+
+    def test_detect_changes_prompt_has_step_structure(self):
+        result = _handle_prompt("csegraph-detect-changes", {"repo": "/repo"})
+        text = result.messages[0].content.text
+        assert "Step 1" in text
+        assert "csegraph_detect_changes" in text
+        assert "high_risk" in text
+        assert "2 tools total" in text
 
     def test_all_prompts_include_token_efficiency_preamble(self):
         for prompt in _PROMPTS:

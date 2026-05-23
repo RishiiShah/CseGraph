@@ -110,6 +110,34 @@ def render_benchmark_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_detect_changes_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_changed_symbols", 0)
+    files = len(payload.get("changed_files", []))
+    communities = payload.get("communities_affected", 0)
+    lines = [
+        f"Changed symbols: {total} across {files} file(s), {communities} community/ies affected",
+        "",
+    ]
+    for level, label in [("high_risk", "HIGH"), ("medium_risk", "MEDIUM"), ("low_risk", "LOW")]:
+        symbols = payload.get(level, [])
+        if not symbols:
+            continue
+        lines.append(f"  {label} ({len(symbols)}):")
+        for sym in symbols:
+            loc = f"{sym['path']}"
+            lr = sym.get("line_range")
+            if lr:
+                loc += f":{lr[0]}-{lr[1]}"
+            factors = ", ".join(sym.get("risk_factors", []))
+            lines.append(f"    {sym['name']} ({sym['kind']})  {loc}  [{factors}]")
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_communities_summary(payload: Dict[str, Any]) -> str:
     lines = [
         f"Communities: {payload.get('num_communities', 0)} detected  "

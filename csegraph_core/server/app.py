@@ -249,6 +249,34 @@ _TOOLS: list[Tool] = [
             "required": ["source", "target", "repo"],
         },
     ),
+    Tool(
+        name="csegraph_detect_changes",
+        description=(
+            "Detect changed symbols between the current state and a base git ref, "
+            "then score each by review risk (caller count, cross-community edges, "
+            "test coverage). Returns prioritized high/medium/low lists so the agent "
+            "knows where to focus review effort."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "base_ref": {
+                    "type": "string",
+                    "default": "HEAD~1",
+                    "description": "Git ref to diff against (branch, tag, or commit). Default: HEAD~1.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -287,6 +315,15 @@ _PROMPTS: list[Prompt] = [
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Natural-language coding task.", required=True),
             PromptArgument(name="target", description="Optional symbol, node ID, or file path.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-detect-changes",
+        title="Detect Changes and Score Risk",
+        description="Diff against a base ref, map changed lines to graph symbols, and score review risk.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
         ],
     ),
     Prompt(
@@ -579,6 +616,14 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             )
         )
 
+    if name == "csegraph_detect_changes":
+        from csegraph_core.graph.change_detection import ChangeDetectionService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        base_ref = arguments.get("base_ref", "HEAD~1")
+        return to_dict(ChangeDetectionService(db).detect_changes(base_ref=base_ref))
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -631,13 +676,25 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             ],
             args,
         )
+    elif name == "csegraph-detect-changes":
+        text = _prompt_text(
+            "Detect changed symbols and score review risk using the csegraph dependency graph.",
+            [
+                "Step 1: Call `csegraph_detect_changes` with the repo and base_ref (default HEAD~1).",
+                "Step 2: Focus review on the `high_risk` symbols first — they have the most callers and least test coverage.",
+                "Step 3 (only for high-risk symbols): Call `csegraph_graph` with depth=1 on at most one high-risk symbol to see its full blast radius.",
+                "Do NOT call more than 2 tools total.",
+                "Output: Summarize the risk breakdown (high/medium/low counts), then list each high-risk symbol with its risk factors.",
+            ],
+            args,
+        )
     elif name == "csegraph-review":
         text = _prompt_text(
-            "Review current changes using csegraph context and graph inspection.",
+            "Review current changes using change detection, context, and graph inspection.",
             [
-                "Step 1: Call `csegraph_minimal` to get the routing card and key entities.",
-                "Step 2: Call `csegraph_context` with detail_level=auto and a task describing the review focus. If the user specified changed files or symbols, pass the most important one as target.",
-                "Step 3 (only for high-risk symbols): Call `csegraph_graph` with depth=1 on at most one changed symbol to check blast radius. Use relations=['calls'] to focus on callers.",
+                "Step 1: Call `csegraph_detect_changes` to get the risk-prioritized list of changed symbols.",
+                "Step 2: Call `csegraph_context` with detail_level=auto and a task describing the review focus. If high-risk symbols were detected, pass the highest-risk one as target.",
+                "Step 3 (only for high-risk symbols): Call `csegraph_graph` with depth=1 on at most one high-risk symbol to check blast radius. Use relations=['calls'] to focus on callers.",
                 "Do NOT call more than 3 tools total.",
                 "Output: List findings ordered by severity (blockers first, then warnings, then notes). Each finding must reference a file path and symbol name.",
                 "If confidence_breakdown shows many INFERRED edges, note that some connections are heuristic and may need manual verification.",
@@ -646,11 +703,11 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
         )
     elif name == "csegraph-pre-merge":
         text = _prompt_text(
-            "Run a pre-merge checklist using csegraph context and structural checks.",
+            "Run a pre-merge checklist using change detection, context, and structural checks.",
             [
                 "Step 1: Call `csegraph_refresh` to ensure the index reflects the latest changes.",
-                "Step 2: Call `csegraph_context` with detail_level=auto for the merge/PR description.",
-                "Step 3 (only if risky dependencies detected): Call `csegraph_path` or `csegraph_graph` for the single highest-risk symbol to verify the dependency chain.",
+                "Step 2: Call `csegraph_detect_changes` with the base branch to get the risk-prioritized change list.",
+                "Step 3 (only if high-risk symbols detected): Call `csegraph_context` or `csegraph_graph` for the highest-risk symbol to verify dependencies.",
                 "Do NOT call more than 3 tools total.",
                 "Output a GO / NO-GO recommendation with:",
                 "  - Blockers: missing tests, broken call chains, unresolved symbols.",
