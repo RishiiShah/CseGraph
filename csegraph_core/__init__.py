@@ -39,6 +39,12 @@ from csegraph_core.core.models import (
     to_dict,
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
+from csegraph_core.graph.change_detection import (
+    ChangeDetectionResult,
+    ChangeDetectionService,
+    ChangedSymbol,
+    DiffRegion,
+)
 from csegraph_core.graph.communities import Community, CommunityResult
 from csegraph_core.hooks import HooksResult
 from csegraph_core.graph.queries import GraphQueryService
@@ -60,11 +66,15 @@ __all__ = [
     "BenchmarkResult",
     "BenchmarkService",
     "BenchmarkStep",
+    "ChangeDetectionResult",
+    "ChangeDetectionService",
+    "ChangedSymbol",
     "Community",
     "CommunityResult",
     "ContextNode",
     "ContextResult",
     "ContextService",
+    "DiffRegion",
     "GraphEdgeView",
     "GraphNodeView",
     "GraphQueryService",
