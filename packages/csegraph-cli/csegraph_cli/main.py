@@ -18,6 +18,7 @@ from csegraph_cli.renderer import (
     render_architecture_summary,
     render_communities_summary,
     render_export_summary,
+    render_flows_summary,
     render_context_markdown,
     render_benchmark_summary,
     render_detect_changes_summary,
@@ -73,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_review_eval_summary(payload), end="")
     elif args.command == "export" and not args.json:
         print(render_export_summary(payload), end="")
+    elif args.command == "flows" and not args.json:
+        print(render_flows_summary(payload), end="")
     elif args.command == "architecture" and not args.json:
         print(render_architecture_summary(payload), end="")
     elif args.command == "resolvers" and not args.json:
@@ -260,6 +263,14 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(architecture)
     architecture.add_argument("--limit", type=int, default=20, help="Max community summaries (default: 20).")
     _add_json(architecture)
+
+    flows = subparsers.add_parser("flows", help="Trace execution flows from entry points through the call graph.")
+    _add_repo_positional(flows)
+    _add_db(flows)
+    flows.add_argument("--entry-point", default=None, help="Trace from a specific function or symbol instead of auto-detecting entry points.")
+    flows.add_argument("--max-depth", type=int, default=10, help="Maximum BFS depth for flow tracing (default: 10).")
+    flows.add_argument("--limit", type=int, default=20, help="Maximum number of flows to return (default: 20).")
+    _add_json(flows)
 
     resolvers = subparsers.add_parser("resolvers", help="Run resolver passes to add inferred edges (transitive tests, imports, TS aliases).")
     _add_repo_positional(resolvers)
@@ -483,6 +494,14 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.graph.architecture import ArchitectureService
         repo = _repo_arg(args)
         return ArchitectureService(_db_arg(args, repo)).overview(limit=args.limit)
+    if args.command == "flows":
+        from csegraph_core.graph.flows import FlowService
+        repo = _repo_arg(args)
+        return FlowService(_db_arg(args, repo)).trace(
+            entry_point=args.entry_point,
+            max_depth=args.max_depth,
+            limit=args.limit,
+        )
     if args.command == "resolvers":
         from csegraph_core.graph.resolvers import ResolverService
         repo = _repo_arg(args)

@@ -52,6 +52,7 @@ class TestToolListing:
             "csegraph_review_eval",
             "csegraph_vulnerabilities",
             "csegraph_architecture",
+            "csegraph_flows",
             "csegraph_resolvers",
             "csegraph_export",
         }
@@ -93,6 +94,7 @@ class TestPromptListing:
             "csegraph-review",
             "csegraph-export",
             "csegraph-architecture",
+            "csegraph-flows",
             "csegraph-resolvers",
             "csegraph-pre-merge",
             "csegraph-vulnerabilities",

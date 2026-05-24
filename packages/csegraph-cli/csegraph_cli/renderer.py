@@ -487,6 +487,58 @@ def render_vulnerabilities_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_flows_summary(payload: Dict[str, Any]) -> str:
+    total_ep = payload.get("total_entry_points", 0)
+    total_flows = payload.get("total_flows", 0)
+    lines = [
+        f"Flow tracing: {total_flows} flows from {total_ep} entry points",
+        "",
+    ]
+    for flow in payload.get("flows", []):
+        ep = flow.get("entry_point", {})
+        loc = ep.get("path", "")
+        lr = ep.get("line_range")
+        if lr:
+            loc += f":{lr[0]}-{lr[1]}"
+        reason = ep.get("detection_reason", "")
+        crit = flow.get("criticality", 0)
+        crit_bar = _criticality_bar(crit)
+        lines.append(
+            f"  {ep.get('name', '?')} ({ep.get('kind', '?')})  {loc}"
+        )
+        lines.append(
+            f"    {crit_bar} criticality={crit:.2f}  "
+            f"depth={flow.get('depth', 0)}  "
+            f"nodes={flow.get('node_count', 0)}  "
+            f"files={flow.get('file_count', 0)}  "
+            f"[{reason}]"
+        )
+        factors = flow.get("criticality_factors", [])
+        if factors:
+            lines.append(f"    Factors: {', '.join(factors)}")
+        tested = "yes" if flow.get("has_test_coverage") else "no"
+        lines.append(f"    Test coverage: {tested}")
+        steps = flow.get("steps", [])
+        if steps:
+            shown = steps[:5]
+            step_names = ", ".join(
+                f"{s['name']}(d={s['depth']})" for s in shown
+            )
+            suffix = f" ... +{len(steps) - 5} more" if len(steps) > 5 else ""
+            lines.append(f"    Calls: {step_names}{suffix}")
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _criticality_bar(value: float) -> str:
+    filled = round(value * 5)
+    return "[" + "#" * filled + "." * (5 - filled) + "]"
+
+
 def render_resolvers_summary(payload: Dict[str, Any]) -> str:
     total = payload.get("total_edges_added", 0)
     lines = [

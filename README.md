@@ -57,6 +57,9 @@ csegraph watch                    # Auto-refresh on file changes
 csegraph detect-changes --base-ref main  # Risk-scored changed symbols
 csegraph vulnerabilities              # Scan for security vulnerabilities
 csegraph vulnerabilities --limit 10   # Limit results per severity level
+csegraph flows                        # Trace execution flows from auto-detected entry points
+csegraph flows --entry-point main     # Trace from a specific entry point
+csegraph flows --limit 10 --max-depth 8  # Limit flows and trace depth
 csegraph resolvers                    # Run resolver passes (transitive tests, imports, TS aliases)
 csegraph architecture                 # Community summaries and architecture overview
 csegraph architecture --limit 5       # Limit number of community summaries
@@ -93,6 +96,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_review_eval` | Evaluate review intelligence precision/recall against ground-truth known-risky symbols. | `repo`, `ground_truth_ids`, `base_ref`, `risk_threshold`, `db` |
 | `csegraph_vulnerabilities` | Scan for security vulnerabilities — dangerous calls, untested security code, hardcoded secrets, high-exposure sinks. | `repo`, `limit`, `db` |
 | `csegraph_architecture` | Community summaries and architecture overview — auto-labeled communities, key symbols, coupling analysis. | `repo`, `limit`, `db` |
+| `csegraph_flows` | Trace execution flows from entry points through the call graph, ranked by criticality (file spread, depth, cross-community, test gaps, security). | `repo`, `entry_point`, `max_depth`, `limit`, `db` |
 | `csegraph_resolvers` | Run resolver passes to add inferred edges — transitive test coverage, Python import fallback, TypeScript alias resolution. Idempotent. | `repo`, `db` |
 | `csegraph_export` | Export graph to GraphML (Neo4j/Gephi/yEd), Obsidian vault (linked markdown notes), or portable JSON. | `repo`, `format`, `output`, `db` |
 
@@ -128,6 +132,7 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-review-eval` | Evaluate review intelligence against known-risky symbols. |
 | `csegraph-review` | Review changes with change detection, context, and graph tools. |
 | `csegraph-vulnerabilities` | Scan the codebase for security vulnerabilities using the dependency graph. |
+| `csegraph-flows` | Trace execution flows from entry points, ranked by criticality. |
 | `csegraph-resolvers` | Run resolver passes to add inferred edges (transitive tests, imports, TS aliases). |
 | `csegraph-export` | Export the graph to GraphML, Obsidian vault, or portable JSON. |
 | `csegraph-architecture` | Generate community summaries and architecture overview with coupling analysis. |
@@ -187,7 +192,7 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-pytest                              # Full test suite (578 tests)
+pytest                              # Full test suite (599 tests)
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet

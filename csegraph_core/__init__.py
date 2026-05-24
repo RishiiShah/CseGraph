@@ -45,6 +45,7 @@ from csegraph_core.core.models import (
 from csegraph_core.cse.metrics import SufficiencyMetrics
 from csegraph_core.graph.architecture import ArchitectureService
 from csegraph_core.graph.exports import EXPORT_FORMATS, ExportService
+from csegraph_core.graph.flows import Flow, FlowEntry, FlowResult, FlowService, FlowStep
 from csegraph_core.graph.resolvers import ResolverResult, ResolverService, ResolverStats
 from csegraph_core.graph.change_detection import (
     ChangeDetectionResult,
@@ -104,6 +105,11 @@ __all__ = [
     "EXPORT_FORMATS",
     "ExportResult",
     "ExportService",
+    "Flow",
+    "FlowEntry",
+    "FlowResult",
+    "FlowService",
+    "FlowStep",
     "CommunityCoverage",
     "Community",
     "CommunityResult",

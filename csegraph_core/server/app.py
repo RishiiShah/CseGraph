@@ -437,6 +437,44 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_flows",
+        description=(
+            "Trace execution flows from entry points through the call graph. "
+            "Auto-detects entry points (functions with no callers, conventional names like main/handler/serve) "
+            "and traces forward through CALLS edges with BFS. Returns flows ranked by criticality "
+            "(file spread, depth, cross-community, test coverage gaps, security sensitivity). "
+            "Use entry_point to trace from a specific function."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "entry_point": {
+                    "type": "string",
+                    "description": "Optional: trace from a specific function/symbol instead of auto-detecting entry points.",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Maximum BFS depth for flow tracing. Default: 10.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of flows to return. Default: 20.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
         name="csegraph_resolvers",
         description=(
             "Run resolver passes to add inferred edges to the graph: transitive test coverage "
@@ -584,6 +622,15 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="limit", description="Max vulnerabilities per severity (default: 50).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-flows",
+        title="Trace Execution Flows",
+        description="Trace execution flows from entry points through the call graph, ranked by criticality.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="entry_point", description="Optional specific entry point to trace from.", required=False),
         ],
     ),
     Prompt(
@@ -958,6 +1005,17 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         limit = arguments.get("limit", 20)
         return to_dict(ArchitectureService(db).overview(limit=limit))
 
+    if name == "csegraph_flows":
+        from csegraph_core.graph.flows import FlowService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(FlowService(db).trace(
+            entry_point=arguments.get("entry_point"),
+            max_depth=arguments.get("max_depth", 10),
+            limit=arguments.get("limit", 20),
+        ))
+
     if name == "csegraph_resolvers":
         from csegraph_core.graph.resolvers import ResolverService
 
@@ -1085,6 +1143,19 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "Report findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW, INFO).",
                 "For each vulnerability, explain the category, affected symbol, evidence, and recommended fix.",
                 "If critical or high findings exist, recommend immediate action items.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-flows":
+        text = _prompt_text(
+            "Trace execution flows from entry points through the call graph.",
+            [
+                "Call `csegraph_flows` with the repo path.",
+                "If the user asks about a specific function, pass it as entry_point.",
+                "Report flows sorted by criticality — higher criticality means more files, deeper chains, less test coverage.",
+                "For each high-criticality flow, explain the entry point, what it reaches, and which factors raised the score.",
+                "Highlight flows that touch security-sensitive code or cross multiple communities.",
                 "Do NOT call more than 1 tool.",
             ],
             args,
