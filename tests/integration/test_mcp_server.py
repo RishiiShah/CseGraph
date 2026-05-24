@@ -55,6 +55,7 @@ class TestToolListing:
             "csegraph_flows",
             "csegraph_resolvers",
             "csegraph_export",
+            "csegraph_registry",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -98,6 +99,7 @@ class TestPromptListing:
             "csegraph-resolvers",
             "csegraph-pre-merge",
             "csegraph-vulnerabilities",
+            "csegraph-registry",
         }
 
     def test_prompts_have_metadata(self):

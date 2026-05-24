@@ -368,6 +368,43 @@ class ArchitectureResult:
     warnings: List[str] = field(default_factory=list)
 
 
+@dataclass
+class RegistryEntry:
+    alias: str
+    root: str
+    db: str
+    profile: str = "medium"
+    added_at: Optional[str] = None
+
+
+@dataclass
+class RegistryResult:
+    command: str
+    entries: List["RegistryEntry"] = field(default_factory=list)
+    action: Optional[str] = None
+    alias: Optional[str] = None
+    message: Optional[str] = None
+
+
+@dataclass
+class DaemonEntry:
+    alias: str
+    root: str
+    pid: Optional[int] = None
+    status: str = "stopped"
+    last_refresh: Optional[str] = None
+    error: Optional[str] = None
+
+
+@dataclass
+class DaemonResult:
+    command: str
+    running: bool = False
+    entries: List["DaemonEntry"] = field(default_factory=list)
+    pid_file: Optional[str] = None
+    message: Optional[str] = None
+
+
 def to_dict(value: Any) -> Any:
     from csegraph_core.core.serializer import to_dict as serialize
 

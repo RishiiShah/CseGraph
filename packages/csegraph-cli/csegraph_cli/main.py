@@ -17,6 +17,7 @@ from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
     render_architecture_summary,
     render_communities_summary,
+    render_daemon_summary,
     render_export_summary,
     render_flows_summary,
     render_context_markdown,
@@ -29,6 +30,7 @@ from csegraph_cli.renderer import (
     render_path_summary,
     render_postprocess_summary,
     render_refresh_summary,
+    render_registry_summary,
     render_report_markdown,
     render_resolvers_summary,
     render_review_eval_summary,
@@ -92,6 +94,10 @@ def main(argv: list[str] | None = None) -> int:
         print(render_vulnerabilities_summary(payload), end="")
     elif args.command == "install" and not args.json:
         print(render_install_summary(payload), end="")
+    elif args.command == "registry" and not args.json:
+        print(render_registry_summary(payload), end="")
+    elif args.command == "daemon" and not args.json:
+        print(render_daemon_summary(payload), end="")
     elif args.command == "path" and not args.json:
         print(render_path_summary(payload), end="")
     elif args.json:
@@ -390,6 +396,45 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_json(benchmark)
 
+    # -- registry --
+    registry = subparsers.add_parser("registry", help="Manage the multi-repo registry (~/.csegraph/registry.json).")
+    reg_sub = registry.add_subparsers(dest="registry_command", required=True)
+
+    reg_register = reg_sub.add_parser("register", help="Register a repository.")
+    reg_register.add_argument("repo_arg", nargs="?", help="Repository root to register.")
+    reg_register.add_argument("--repo", dest="repo_opt", help="Repository root to register.")
+    reg_register.add_argument("--alias", default=None, help="Short alias (default: directory name).")
+    reg_register.add_argument("--db", default=None, help="SQLite database path.")
+    _add_profile(reg_register)
+    _add_json(reg_register)
+
+    reg_unregister = reg_sub.add_parser("unregister", help="Remove a repository from the registry.")
+    reg_unregister.add_argument("alias", help="Alias of the repo to remove.")
+    _add_json(reg_unregister)
+
+    reg_list = reg_sub.add_parser("list", help="List all registered repositories.")
+    _add_json(reg_list)
+
+    reg_status = reg_sub.add_parser("status", help="Show detailed status for a registered repo.")
+    reg_status.add_argument("alias", help="Alias of the repo to inspect.")
+    _add_json(reg_status)
+
+    # -- daemon --
+    daemon = subparsers.add_parser("daemon", help="Manage multi-repo watch daemon processes.")
+    daemon_sub = daemon.add_subparsers(dest="daemon_command", required=True)
+
+    daemon_start = daemon_sub.add_parser("start", help="Start watch processes for registered repos.")
+    daemon_start.add_argument("--alias", action="append", default=None, help="Restrict to specific alias(es). May be repeated.")
+    daemon_start.add_argument("--profile", default=None, help="Override watch profile for all repos.")
+    _add_json(daemon_start)
+
+    daemon_stop = daemon_sub.add_parser("stop", help="Stop watch processes.")
+    daemon_stop.add_argument("--alias", action="append", default=None, help="Restrict to specific alias(es). May be repeated.")
+    _add_json(daemon_stop)
+
+    daemon_status = daemon_sub.add_parser("status", help="Show status of watch processes.")
+    _add_json(daemon_status)
+
     return parser
 
 
@@ -596,6 +641,37 @@ def _dispatch(args: argparse.Namespace) -> Any:
             graph_output_path=_default_graph_output_path(db_path),
             expected_nodes=args.expect_node,
         )
+    if args.command == "registry":
+        from csegraph_core.registry import RegistryService
+        svc = RegistryService()
+        if args.registry_command == "register":
+            repo = _repo_arg(args)
+            return svc.register(
+                repo,
+                alias=args.alias,
+                profile=args.profile,
+                db=args.db,
+            )
+        if args.registry_command == "unregister":
+            return svc.unregister(args.alias)
+        if args.registry_command == "list":
+            return svc.list()
+        if args.registry_command == "status":
+            return svc.status(args.alias)
+        raise ValueError(f"Unknown registry subcommand: {args.registry_command}")
+    if args.command == "daemon":
+        from csegraph_core.daemon import DaemonService
+        svc = DaemonService()
+        if args.daemon_command == "start":
+            return svc.start(
+                aliases=args.alias,
+                profile=args.profile,
+            )
+        if args.daemon_command == "stop":
+            return svc.stop(aliases=args.alias)
+        if args.daemon_command == "status":
+            return svc.status()
+        raise ValueError(f"Unknown daemon subcommand: {args.daemon_command}")
     raise ValueError(f"Unknown command: {args.command}")
 
 

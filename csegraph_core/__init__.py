@@ -21,6 +21,8 @@ from csegraph_core.core.models import (
     ContextNode,
     ContextResult,
     CouplingPair,
+    DaemonEntry,
+    DaemonResult,
     ExportResult,
     GraphEdgeView,
     GraphNodeView,
@@ -36,6 +38,8 @@ from csegraph_core.core.models import (
     PathStep,
     PostprocessResult,
     RefreshResult,
+    RegistryEntry,
+    RegistryResult,
     ReportResult,
     StatusResult,
     SufficiencyResult,
@@ -88,6 +92,8 @@ from csegraph_core.mcp_install import McpInstallService
 from csegraph_core.retrieval.context import ContextService
 from csegraph_core.retrieval.minimal import MinimalService
 from csegraph_core.server.session import SessionState
+from csegraph_core.daemon import DaemonService
+from csegraph_core.registry import RegistryService
 from csegraph_core.status import StatusService
 
 __all__ = [
@@ -116,6 +122,9 @@ __all__ = [
     "ContextNode",
     "ContextResult",
     "ContextService",
+    "DaemonEntry",
+    "DaemonResult",
+    "DaemonService",
     "DiffRegion",
     "GraphEdgeView",
     "GraphNodeView",
@@ -142,6 +151,9 @@ __all__ = [
     "ProjectIndex",
     "RefreshResult",
     "RefreshService",
+    "RegistryEntry",
+    "RegistryResult",
+    "RegistryService",
     "ReportResult",
     "ReportService",
     "ResolverResult",

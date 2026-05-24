@@ -529,6 +529,38 @@ _TOOLS: list[Tool] = [
             "required": ["repo"],
         },
     ),
+    Tool(
+        name="csegraph_registry",
+        description=(
+            "Manage the multi-repo registry. Register, unregister, list, "
+            "or check status of tracked repositories."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["register", "unregister", "list", "status"],
+                    "description": "Registry action to perform.",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root (required for register).",
+                },
+                "alias": {
+                    "type": "string",
+                    "description": "Short alias for the repo. Default: directory name.",
+                },
+                "profile": {
+                    "type": "string",
+                    "enum": ["small", "medium", "large"],
+                    "default": "medium",
+                    "description": "Retrieval profile (used for register).",
+                },
+            },
+            "required": ["action"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -667,6 +699,16 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Optional merge or PR description.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-registry",
+        title="Multi-Repo Registry",
+        description="Register, list, or check status of tracked repositories in the multi-repo registry.",
+        arguments=[
+            PromptArgument(name="action", description="register, unregister, list, or status.", required=True),
+            PromptArgument(name="repo", description="Absolute repository path (for register).", required=False),
+            PromptArgument(name="alias", description="Repo alias (for register/unregister/status).", required=False),
         ],
     ),
 ]
@@ -1036,6 +1078,34 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             output = str(db_p.with_name(suffix_map.get(fmt, "csegraph-export")))
         return to_dict(ExportService(db).export(output, fmt=fmt))
 
+    if name == "csegraph_registry":
+        from csegraph_core.registry import RegistryService
+
+        svc = RegistryService()
+        action = arguments["action"]
+        if action == "register":
+            repo = arguments.get("repo")
+            if not repo:
+                raise ValueError("repo is required for register action")
+            return to_dict(svc.register(
+                repo,
+                alias=arguments.get("alias"),
+                profile=arguments.get("profile", "medium"),
+            ))
+        if action == "unregister":
+            alias = arguments.get("alias")
+            if not alias:
+                raise ValueError("alias is required for unregister action")
+            return to_dict(svc.unregister(alias))
+        if action == "list":
+            return to_dict(svc.list())
+        if action == "status":
+            alias = arguments.get("alias")
+            if not alias:
+                raise ValueError("alias is required for status action")
+            return to_dict(svc.status(alias))
+        raise ValueError(f"Unknown registry action: {action}")
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -1222,6 +1292,19 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "  - Blockers: missing tests, broken call chains, unresolved symbols.",
                 "  - Risks: high-degree symbols modified, cross-community edges, INFERRED-confidence connections.",
                 "  - Verification: specific test commands or manual checks the reviewer should run.",
+            ],
+            args,
+        )
+    elif name == "csegraph-registry":
+        text = _prompt_text(
+            "Manage the multi-repo registry for tracking multiple codebases.",
+            [
+                "Determine the user's intent: register a new repo, unregister, list all repos, or check a repo's status.",
+                "Call `csegraph_registry` with the appropriate action parameter.",
+                "For register: ask the user for the repo path if not provided. Alias defaults to directory name.",
+                "For status: show index health (nodes, edges, staleness) for the named repo.",
+                "For list: show all registered repos with their aliases and root paths.",
+                "Do NOT call more than 1 tool.",
             ],
             args,
         )

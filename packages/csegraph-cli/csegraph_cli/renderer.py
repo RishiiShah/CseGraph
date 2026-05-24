@@ -731,3 +731,41 @@ def _benchmark_stats(stats: Dict[str, Any]) -> str:
     )
     parts = [f"{key}={stats[key]}" for key in preferred if key in stats]
     return ", ".join(parts)
+
+
+def render_registry_summary(payload: Dict[str, Any]) -> str:
+    action = payload.get("action", "")
+    entries = payload.get("entries", [])
+    message = payload.get("message", "")
+
+    if action in ("registered", "updated", "unregistered"):
+        lines = [message]
+        for e in entries:
+            lines.append(f"  Alias:   {e['alias']}")
+            lines.append(f"  Root:    {e['root']}")
+            lines.append(f"  DB:      {e['db']}")
+            lines.append(f"  Profile: {e['profile']}")
+        return "\n".join(lines) + "\n"
+
+    if action == "status":
+        lines = [message]
+        return "\n".join(lines) + "\n"
+
+    lines = [message, ""]
+    if not entries:
+        lines.append("  (no repos registered)")
+    for e in entries:
+        lines.append(f"  {e['alias']:<20} {e['root']}")
+        lines.append(f"  {'':20} db={e['db']}  profile={e['profile']}")
+    return "\n".join(lines) + "\n"
+
+
+def render_daemon_summary(payload: Dict[str, Any]) -> str:
+    message = payload.get("message", "")
+    entries = payload.get("entries", [])
+    lines = [message, ""]
+    for e in entries:
+        pid_str = f"pid={e['pid']}" if e.get("pid") else ""
+        err_str = f"  error: {e['error']}" if e.get("error") else ""
+        lines.append(f"  {e['alias']:<20} [{e['status']}] {e['root']}  {pid_str}{err_str}")
+    return "\n".join(lines) + "\n"

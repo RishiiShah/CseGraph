@@ -76,6 +76,14 @@ csegraph install --platform vscode    # Write .vscode/ settings, tasks, extensio
 csegraph install --instructions   # Generate CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md
 csegraph install --hooks          # Install agent hooks (auto-refresh, status checks)
 csegraph install --instructions --hooks  # Full agent onboarding
+csegraph registry register /path/to/repo --alias myapp  # Register a repo
+csegraph registry list            # List all registered repos
+csegraph registry status myapp    # Check index health for a registered repo
+csegraph registry unregister myapp  # Remove a repo from the registry
+csegraph daemon start             # Start watchers for all registered repos
+csegraph daemon start --alias myapp  # Start watcher for one repo
+csegraph daemon status            # Show running watchers
+csegraph daemon stop              # Stop all watchers
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
@@ -101,6 +109,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_flows` | Trace execution flows from entry points through the call graph, ranked by criticality (file spread, depth, cross-community, test gaps, security). | `repo`, `entry_point`, `max_depth`, `limit`, `db` |
 | `csegraph_resolvers` | Run resolver passes to add inferred edges — transitive test coverage, Python import fallback, TypeScript alias resolution. Idempotent. | `repo`, `db` |
 | `csegraph_export` | Export graph to GraphML (Neo4j/Gephi/yEd), Obsidian vault (linked markdown notes), or portable JSON. | `repo`, `format`, `output`, `db` |
+| `csegraph_registry` | Manage the multi-repo registry — register, unregister, list, or check status of tracked repositories. | `action`, `repo`, `alias`, `profile` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
@@ -139,6 +148,7 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-export` | Export the graph to GraphML, Obsidian vault, or portable JSON. |
 | `csegraph-architecture` | Generate community summaries and architecture overview with coupling analysis. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
+| `csegraph-registry` | Register, list, or check status of tracked repos in the multi-repo registry. |
 
 ## .csegraphignore
 
@@ -194,7 +204,7 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-pytest                              # Full test suite (599 tests)
+pytest                              # Full test suite (638 tests)
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet
