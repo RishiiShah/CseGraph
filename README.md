@@ -17,7 +17,7 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 | `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
 | `csegraph-cli` | `packages/csegraph-cli/` | CLI with indexing, refresh, retrieval, graph inspection, reports, maintenance commands, and MCP stdio serving. |
-| `csegraph-vscode` | `packages/csegraph-vscode/` | VS Code extension: commands, status bar, auto-refresh on save, right-click inspect. |
+| `csegraph-vscode` | `packages/csegraph-vscode/` | VS Code extension: commands, status bar, auto-refresh on save, right-click inspect. See [extension README](packages/csegraph-vscode/README.md) for CLI discovery and troubleshooting. |
 
 Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 

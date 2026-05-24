@@ -301,6 +301,7 @@ function getCliCommand() {
     const configured = config.get("command", "csegraph");
     if (configured !== "csegraph") {
         resolvedCli = configured;
+        outputChannel.appendLine(`[cli] using configured command: ${resolvedCli}`);
         return resolvedCli;
     }
     const root = getWorkspaceRoot();
@@ -315,12 +316,15 @@ function getCliCommand() {
                 : path.join(root, dir, "bin", "csegraph");
             if (fs.existsSync(bin)) {
                 resolvedCli = `"${bin}"`;
+                outputChannel.appendLine(`[cli] auto-discovered: ${resolvedCli}`);
                 return resolvedCli;
             }
         }
     }
-    resolvedCli = "csegraph";
-    return resolvedCli;
+    // Don't cache the fallback — retry discovery on every call so that
+    // workspace folders or venvs created after activation are picked up.
+    outputChannel.appendLine(`[cli] csegraph not found in venv (root=${root ?? "none"}), falling back to PATH`);
+    return "csegraph";
 }
 function getWordAtCursor(editor) {
     const position = editor.selection.active;

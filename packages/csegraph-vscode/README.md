@@ -84,9 +84,34 @@ When enabled (default), saving a supported file (`.py`, `.ts`, `.tsx`, `.js`, `.
 
 The extension resolves the CLI in this order:
 
-1. `csegraph.command` setting (if changed from default)
-2. Local virtualenv: `venv/`, `.venv/`, `env/`, `.env/` in the workspace root
-3. System `csegraph` on PATH
+1. **`csegraph.command` setting** — if you changed it from the default `csegraph`, that value is used as-is.
+2. **Local virtualenv** — checks `venv/`, `.venv/`, `env/`, `.env/` inside the workspace root for `Scripts/csegraph.exe` (Windows) or `bin/csegraph` (Unix).
+3. **System PATH** — falls back to bare `csegraph`.
+
+Steps 2 and 3 are re-evaluated on every command until a virtualenv binary is found, so creating a venv after the extension activates will be picked up automatically.
+
+### Troubleshooting: `'csegraph' is not recognized`
+
+If commands fail with `'csegraph' is not recognized as an internal or external command`, the extension could not find the CLI. Common causes:
+
+| Cause | Fix |
+|-------|-----|
+| **Venv has a non-standard name** (e.g. `.conda/`, `myenv/`) | Rename it to one of the auto-discovered names (`venv/`, `.venv/`, `env/`, `.env/`), or set `csegraph.command` to the full path. |
+| **VS Code workspace root ≠ repo root** | Auto-discovery looks in the first workspace folder. If you opened a parent directory, the venv won't be found. Open the folder that contains the venv directly, or set `csegraph.command`. |
+| **Installed globally but not on VS Code's PATH** | VS Code inherits the system PATH at launch time. If you installed `csegraph` after opening VS Code, restart VS Code. On Windows, VS Code launched from the Start Menu may not see conda/venv activations from your terminal. |
+| **Installed in a conda environment** | Conda environments are not auto-discovered. Set `csegraph.command` to the full path (e.g. `C:\Users\you\miniconda3\envs\myenv\Scripts\csegraph.exe`). |
+
+**Quick fix** — find the path and set it explicitly:
+
+```bash
+# In your terminal where csegraph works:
+where csegraph        # Windows
+which csegraph        # macOS / Linux
+```
+
+Then in VS Code Settings (`Ctrl+,`), set **csegraph.command** to the full path returned above.
+
+**Diagnostics** — open the CseGraph output panel (`View → Output → CseGraph`) to see `[cli]` log lines showing which discovery step was used or why discovery failed.
 
 ## License
 
