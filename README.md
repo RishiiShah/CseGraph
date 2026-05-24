@@ -17,6 +17,7 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 | `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
 | `csegraph-cli` | `packages/csegraph-cli/` | CLI with indexing, refresh, retrieval, graph inspection, reports, maintenance commands, and MCP stdio serving. |
+| `csegraph-vscode` | `packages/csegraph-vscode/` | VS Code extension: commands, status bar, auto-refresh on save, right-click inspect. |
 
 Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 
@@ -71,6 +72,7 @@ csegraph serve                    # Start MCP stdio server (all tools)
 csegraph serve --tools csegraph_minimal,csegraph_context  # Expose only selected tools
 csegraph install                  # Configure local MCP client files
 csegraph install --platform cursor --dry-run --json
+csegraph install --platform vscode    # Write .vscode/ settings, tasks, extension recommendation
 csegraph install --instructions   # Generate CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md
 csegraph install --hooks          # Install agent hooks (auto-refresh, status checks)
 csegraph install --instructions --hooks  # Full agent onboarding
@@ -80,7 +82,7 @@ By default, the index is stored at `<repo>/.csegraph/index.db`.
 
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
 
-AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot` to target one client. Add `--instructions` to generate platform instruction files that tell agents to use csegraph first. Add `--hooks` to install agent hooks for automatic index refresh after file edits.
+AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot|vscode` to target one client. Use `--platform vscode` to write VS Code settings, tasks, and extension recommendations for the csegraph-vscode extension. Add `--instructions` to generate platform instruction files that tell agents to use csegraph first. Add `--hooks` to install agent hooks for automatic index refresh after file edits.
 
 | Tool | Description | Key args |
 |---|---|---|

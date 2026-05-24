@@ -293,7 +293,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_repo_positional(install)
     install.add_argument(
         "--platform",
-        choices=["auto", "codex", "cursor", "claude-code", "gemini-cli", "kiro", "copilot"],
+        choices=["auto", "codex", "cursor", "claude-code", "gemini-cli", "kiro", "copilot", "vscode"],
         default="auto",
         help="MCP client platform to configure.",
     )

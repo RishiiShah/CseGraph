@@ -14,6 +14,7 @@ Platform = Literal[
     "gemini-cli",
     "kiro",
     "copilot",
+    "vscode",
 ]
 
 _PROJECT_JSON_TARGETS = {
@@ -24,7 +25,7 @@ _PROJECT_JSON_TARGETS = {
     "copilot": (Path(".vscode") / "mcp.json", "servers", True),
 }
 
-_PLATFORMS = {"auto", "codex", *_PROJECT_JSON_TARGETS}
+_PLATFORMS = {"auto", "codex", "vscode", *_PROJECT_JSON_TARGETS}
 
 _INSTRUCTION_BODY = """\
 # CseGraph — Agent Instructions
@@ -74,6 +75,29 @@ _HOOK_CONFIGS: dict[str, dict[str, Any]] = {
 }
 
 
+_VSCODE_TASKS = [
+    {
+        "label": "csegraph: Build Index",
+        "type": "shell",
+        "command": "csegraph index",
+        "group": "build",
+        "problemMatcher": [],
+    },
+    {
+        "label": "csegraph: Refresh",
+        "type": "shell",
+        "command": "csegraph refresh",
+        "problemMatcher": [],
+    },
+    {
+        "label": "csegraph: Status",
+        "type": "shell",
+        "command": "csegraph status --verbose",
+        "problemMatcher": [],
+    },
+]
+
+
 class McpInstallService:
     def __init__(
         self,
@@ -112,6 +136,8 @@ class McpInstallService:
                 self._install_project_json(candidate, dry_run, result, force=False)
         elif platform == "codex":
             self._install_codex(dry_run, result)
+        elif platform == "vscode":
+            self._install_vscode(dry_run, result)
         else:
             self._install_project_json(platform, dry_run, result, force=True)
 
@@ -190,6 +216,74 @@ class McpInstallService:
                 path=str(path),
                 scope="user",
                 action=action,
+                dry_run=dry_run,
+            )
+        )
+
+    def _install_vscode(self, dry_run: bool, result: McpInstallResult) -> None:
+        settings_path = self.repo / ".vscode" / "settings.json"
+        action = "updated" if settings_path.exists() else "created"
+        if not dry_run:
+            data = _read_json_object(settings_path)
+            data["csegraph.command"] = self.command
+            data["csegraph.autoRefresh"] = True
+            data["csegraph.statusBar"] = True
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text(
+                json.dumps(data, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        result.installed.append(
+            McpInstallTarget(
+                platform="vscode",
+                path=str(settings_path),
+                scope="project",
+                action=action,
+                dry_run=dry_run,
+            )
+        )
+
+        tasks_path = self.repo / ".vscode" / "tasks.json"
+        tasks_action = "updated" if tasks_path.exists() else "created"
+        if not dry_run:
+            tasks_data = _read_json_object(tasks_path)
+            tasks_data.setdefault("version", "2.0.0")
+            tasks_list = tasks_data.setdefault("tasks", [])
+            existing_labels = {t.get("label") for t in tasks_list if isinstance(t, dict)}
+            for task in _VSCODE_TASKS:
+                if task["label"] not in existing_labels:
+                    tasks_list.append(task)
+            tasks_path.write_text(
+                json.dumps(tasks_data, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        result.installed.append(
+            McpInstallTarget(
+                platform="vscode",
+                path=str(tasks_path),
+                scope="project",
+                action=tasks_action,
+                dry_run=dry_run,
+            )
+        )
+
+        recs_path = self.repo / ".vscode" / "extensions.json"
+        recs_action = "updated" if recs_path.exists() else "created"
+        if not dry_run:
+            recs_data = _read_json_object(recs_path)
+            recs = recs_data.setdefault("recommendations", [])
+            if "csegraph.csegraph-vscode" not in recs:
+                recs.append("csegraph.csegraph-vscode")
+            recs_path.write_text(
+                json.dumps(recs_data, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        result.installed.append(
+            McpInstallTarget(
+                platform="vscode",
+                path=str(recs_path),
+                scope="project",
+                action=recs_action,
                 dry_run=dry_run,
             )
         )
