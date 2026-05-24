@@ -436,6 +436,38 @@ _TOOLS: list[Tool] = [
             "required": ["repo"],
         },
     ),
+    Tool(
+        name="csegraph_export",
+        description=(
+            "Export the csegraph index to GraphML, Obsidian vault, or portable JSON. "
+            "GraphML can be opened in Neo4j, Gephi, or yEd. Obsidian creates a vault of "
+            "linked markdown notes. JSON produces a portable graph dump."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "Output path (file for graphml/json, directory for obsidian). Default: beside the index DB.",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["graphml", "obsidian", "json"],
+                    "default": "graphml",
+                    "description": "Export format. Default: graphml.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -529,6 +561,16 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="limit", description="Max vulnerabilities per severity (default: 50).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-export",
+        title="Export Graph",
+        description="Export the csegraph index to GraphML, Obsidian vault, or portable JSON.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="format", description="graphml, obsidian, or json (default: graphml).", required=False),
+            PromptArgument(name="output", description="Output file or directory path.", required=False),
         ],
     ),
     Prompt(
@@ -885,6 +927,19 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         limit = arguments.get("limit", 20)
         return to_dict(ArchitectureService(db).overview(limit=limit))
 
+    if name == "csegraph_export":
+        from csegraph_core.graph.exports import ExportService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        fmt = arguments.get("format", "graphml")
+        output = arguments.get("output")
+        if not output:
+            db_p = Path(db).resolve()
+            suffix_map = {"graphml": "csegraph-graph.graphml", "json": "csegraph-export.json", "obsidian": "csegraph-vault"}
+            output = str(db_p.with_name(suffix_map.get(fmt, "csegraph-export")))
+        return to_dict(ExportService(db).export(output, fmt=fmt))
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -992,6 +1047,18 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "Report findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW, INFO).",
                 "For each vulnerability, explain the category, affected symbol, evidence, and recommended fix.",
                 "If critical or high findings exist, recommend immediate action items.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-export":
+        text = _prompt_text(
+            "Export the csegraph index to an external format for browsing or visualization.",
+            [
+                "Call `csegraph_export` with the repo path and desired format (graphml, obsidian, or json).",
+                "Report the output path and the number of nodes/edges exported.",
+                "For obsidian, mention that the vault can be opened directly in Obsidian for linked browsing.",
+                "For graphml, mention that the file can be imported into Neo4j, Gephi, or yEd.",
                 "Do NOT call more than 1 tool.",
             ],
             args,

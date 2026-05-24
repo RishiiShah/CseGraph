@@ -17,6 +17,7 @@ from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
     render_architecture_summary,
     render_communities_summary,
+    render_export_summary,
     render_context_markdown,
     render_benchmark_summary,
     render_detect_changes_summary,
@@ -69,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_review_questions_summary(payload), end="")
     elif args.command == "review-eval" and not args.json:
         print(render_review_eval_summary(payload), end="")
+    elif args.command == "export" and not args.json:
+        print(render_export_summary(payload), end="")
     elif args.command == "architecture" and not args.json:
         print(render_architecture_summary(payload), end="")
     elif args.command == "communities" and not args.json:
@@ -241,6 +244,13 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(tree)
     tree.add_argument("--output", "-o", default=None, help="Output HTML file path (default: beside the SQLite index DB).")
     _add_json(tree)
+
+    export = subparsers.add_parser("export", help="Export graph to GraphML, Obsidian vault, or JSON.")
+    _add_repo_positional(export)
+    _add_db(export)
+    export.add_argument("--format", dest="export_format", choices=["graphml", "obsidian", "json"], default="graphml", help="Export format (default: graphml).")
+    export.add_argument("--output", "-o", default=None, help="Output path (file for graphml/json, directory for obsidian).")
+    _add_json(export)
 
     architecture = subparsers.add_parser("architecture", help="Community summaries and architecture overview.")
     _add_repo_positional(architecture)
@@ -447,6 +457,20 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db_path = _db_arg(args, str(repo))
         output = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
         return TreeExportService(db_path).export(output)
+    if args.command == "export":
+        from csegraph_core.graph.exports import ExportService
+        repo = _repo_arg(args)
+        db_path = _db_arg(args, repo)
+        fmt = args.export_format
+        if args.output:
+            out = args.output
+        elif fmt == "obsidian":
+            out = str(Path(db_path).resolve().with_name("csegraph-vault"))
+        elif fmt == "json":
+            out = str(Path(db_path).resolve().with_name("csegraph-export.json"))
+        else:
+            out = str(Path(db_path).resolve().with_name("csegraph-graph.graphml"))
+        return ExportService(db_path).export(out, fmt=fmt)
     if args.command == "architecture":
         from csegraph_core.graph.architecture import ArchitectureService
         repo = _repo_arg(args)

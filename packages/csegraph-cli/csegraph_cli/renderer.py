@@ -223,6 +223,21 @@ def render_review_eval_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_export_summary(payload: Dict[str, Any]) -> str:
+    fmt = payload.get("format", "unknown")
+    out = payload.get("output_path", "")
+    nodes = payload.get("total_nodes", 0)
+    edges = payload.get("total_edges", 0)
+    files = payload.get("files_written", 0)
+    lines = [
+        f"Exported {fmt}: {nodes:,} nodes, {edges:,} edges",
+        f"  Output: {out}",
+        f"  Files written: {files}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def render_architecture_summary(payload: Dict[str, Any]) -> str:
     num = payload.get("num_communities", 0)
     lines = [

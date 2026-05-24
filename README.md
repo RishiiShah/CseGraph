@@ -59,6 +59,9 @@ csegraph vulnerabilities              # Scan for security vulnerabilities
 csegraph vulnerabilities --limit 10   # Limit results per severity level
 csegraph architecture                 # Community summaries and architecture overview
 csegraph architecture --limit 5       # Limit number of community summaries
+csegraph export                       # Export graph as GraphML (default)
+csegraph export --format obsidian     # Export as Obsidian vault of linked notes
+csegraph export --format json -o out.json  # Portable JSON graph dump
 csegraph benchmark --target symbol
 csegraph serve                    # Start MCP stdio server (all tools)
 csegraph serve --tools csegraph_minimal,csegraph_context  # Expose only selected tools
@@ -89,6 +92,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_review_eval` | Evaluate review intelligence precision/recall against ground-truth known-risky symbols. | `repo`, `ground_truth_ids`, `base_ref`, `risk_threshold`, `db` |
 | `csegraph_vulnerabilities` | Scan for security vulnerabilities — dangerous calls, untested security code, hardcoded secrets, high-exposure sinks. | `repo`, `limit`, `db` |
 | `csegraph_architecture` | Community summaries and architecture overview — auto-labeled communities, key symbols, coupling analysis. | `repo`, `limit`, `db` |
+| `csegraph_export` | Export graph to GraphML (Neo4j/Gephi/yEd), Obsidian vault (linked markdown notes), or portable JSON. | `repo`, `format`, `output`, `db` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
@@ -122,6 +126,7 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-review-eval` | Evaluate review intelligence against known-risky symbols. |
 | `csegraph-review` | Review changes with change detection, context, and graph tools. |
 | `csegraph-vulnerabilities` | Scan the codebase for security vulnerabilities using the dependency graph. |
+| `csegraph-export` | Export the graph to GraphML, Obsidian vault, or portable JSON. |
 | `csegraph-architecture` | Generate community summaries and architecture overview with coupling analysis. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
 
@@ -179,7 +184,7 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-pytest                              # Full test suite (559 tests)
+pytest                              # Full test suite (579 tests)
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet

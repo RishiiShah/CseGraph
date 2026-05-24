@@ -319,6 +319,18 @@ class MinimalResult:
 
 
 @dataclass
+class ExportResult:
+    command: str
+    db_path: str
+    repo_root: str
+    output_path: str
+    format: str
+    total_nodes: int
+    total_edges: int
+    files_written: int
+
+
+@dataclass
 class CommunitySummary:
     community_id: int
     label: str

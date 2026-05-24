@@ -21,6 +21,7 @@ from csegraph_core.core.models import (
     ContextNode,
     ContextResult,
     CouplingPair,
+    ExportResult,
     GraphEdgeView,
     GraphNodeView,
     GraphResult,
@@ -43,6 +44,7 @@ from csegraph_core.core.models import (
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
 from csegraph_core.graph.architecture import ArchitectureService
+from csegraph_core.graph.exports import EXPORT_FORMATS, ExportService
 from csegraph_core.graph.change_detection import (
     ChangeDetectionResult,
     ChangeDetectionService,
@@ -98,6 +100,9 @@ __all__ = [
     "ChangedSymbol",
     "CommunitySummary",
     "CouplingPair",
+    "EXPORT_FORMATS",
+    "ExportResult",
+    "ExportService",
     "CommunityCoverage",
     "Community",
     "CommunityResult",
