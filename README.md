@@ -67,6 +67,10 @@ csegraph architecture --limit 5       # Limit number of community summaries
 csegraph export                       # Export graph as GraphML (default)
 csegraph export --format obsidian     # Export as Obsidian vault of linked notes
 csegraph export --format json -o out.json  # Portable JSON graph dump
+csegraph embeddings compute           # Embed all symbols (requires sentence-transformers)
+csegraph embeddings search "auth login" --top-k 5  # Semantic search (hybrid with FTS)
+csegraph embeddings status            # Show embedding cache stats
+csegraph embeddings clear             # Clear embedding cache
 csegraph benchmark --target symbol
 csegraph serve                    # Start MCP stdio server (all tools)
 csegraph serve --tools csegraph_minimal,csegraph_context  # Expose only selected tools
@@ -109,6 +113,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_flows` | Trace execution flows from entry points through the call graph, ranked by criticality (file spread, depth, cross-community, test gaps, security). | `repo`, `entry_point`, `max_depth`, `limit`, `db` |
 | `csegraph_resolvers` | Run resolver passes to add inferred edges — transitive test coverage, Python import fallback, TypeScript alias resolution. Idempotent. | `repo`, `db` |
 | `csegraph_export` | Export graph to GraphML (Neo4j/Gephi/yEd), Obsidian vault (linked markdown notes), or portable JSON. | `repo`, `format`, `output`, `db` |
+| `csegraph_embeddings` | Compute or search code embeddings. Local sentence-transformers by default, optional OpenAI-compatible endpoint. Hybrid search fuses embeddings with FTS via Reciprocal Rank Fusion. | `action`, `repo`, `query`, `top_k`, `hybrid`, `model`, `provider`, `endpoint`, `db` |
 | `csegraph_registry` | Manage the multi-repo registry — register, unregister, list, or check status of tracked repositories. | `action`, `repo`, `alias`, `profile` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
@@ -148,6 +153,7 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-export` | Export the graph to GraphML, Obsidian vault, or portable JSON. |
 | `csegraph-architecture` | Generate community summaries and architecture overview with coupling analysis. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
+| `csegraph-embeddings` | Compute or search code embeddings for semantic similarity search. |
 | `csegraph-registry` | Register, list, or check status of tracked repos in the multi-repo registry. |
 
 ## .csegraphignore
@@ -204,7 +210,7 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-pytest                              # Full test suite (638 tests)
+pytest                              # Full test suite (666 tests)
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet

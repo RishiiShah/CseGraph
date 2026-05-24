@@ -55,6 +55,7 @@ class TestToolListing:
             "csegraph_flows",
             "csegraph_resolvers",
             "csegraph_export",
+            "csegraph_embeddings",
             "csegraph_registry",
         }
 
@@ -99,6 +100,7 @@ class TestPromptListing:
             "csegraph-resolvers",
             "csegraph-pre-merge",
             "csegraph-vulnerabilities",
+            "csegraph-embeddings",
             "csegraph-registry",
         }
 

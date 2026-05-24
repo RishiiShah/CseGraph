@@ -23,6 +23,8 @@ from csegraph_core.core.models import (
     CouplingPair,
     DaemonEntry,
     DaemonResult,
+    EmbeddingResult,
+    EmbeddingSearchHit,
     ExportResult,
     GraphEdgeView,
     GraphNodeView,
@@ -48,6 +50,7 @@ from csegraph_core.core.models import (
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
 from csegraph_core.graph.architecture import ArchitectureService
+from csegraph_core.graph.embeddings import EMBEDDING_PROVIDERS, EmbeddingService
 from csegraph_core.graph.exports import EXPORT_FORMATS, ExportService
 from csegraph_core.graph.flows import Flow, FlowEntry, FlowResult, FlowService, FlowStep
 from csegraph_core.graph.resolvers import ResolverResult, ResolverService, ResolverStats
@@ -108,6 +111,10 @@ __all__ = [
     "ChangedSymbol",
     "CommunitySummary",
     "CouplingPair",
+    "EMBEDDING_PROVIDERS",
+    "EmbeddingResult",
+    "EmbeddingSearchHit",
+    "EmbeddingService",
     "EXPORT_FORMATS",
     "ExportResult",
     "ExportService",

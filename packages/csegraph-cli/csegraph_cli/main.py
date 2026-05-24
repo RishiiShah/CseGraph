@@ -18,6 +18,7 @@ from csegraph_cli.renderer import (
     render_architecture_summary,
     render_communities_summary,
     render_daemon_summary,
+    render_embeddings_summary,
     render_export_summary,
     render_flows_summary,
     render_context_markdown,
@@ -98,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_registry_summary(payload), end="")
     elif args.command == "daemon" and not args.json:
         print(render_daemon_summary(payload), end="")
+    elif args.command == "embeddings" and not args.json:
+        print(render_embeddings_summary(payload), end="")
     elif args.command == "path" and not args.json:
         print(render_path_summary(payload), end="")
     elif args.json:
@@ -382,6 +385,43 @@ def _build_parser() -> argparse.ArgumentParser:
     vulns.add_argument("--limit", type=int, default=50, help="Max vulnerabilities per severity (default: 50).")
     _add_json(vulns)
 
+    # -- embeddings --
+    embeddings = subparsers.add_parser("embeddings", help="Compute, search, or manage code embeddings (optional, local-first).")
+    emb_sub = embeddings.add_subparsers(dest="embeddings_command", required=True)
+
+    emb_compute = emb_sub.add_parser("compute", help="Compute embeddings for symbol nodes.")
+    _add_repo_positional(emb_compute)
+    _add_db(emb_compute)
+    emb_compute.add_argument("--model", default=None, help="Embedding model name (default: all-MiniLM-L6-v2 for local).")
+    emb_compute.add_argument("--provider", choices=["local", "openai-compatible"], default="local", help="Embedding provider (default: local).")
+    emb_compute.add_argument("--endpoint", default=None, help="OpenAI-compatible API endpoint URL.")
+    _add_json(emb_compute)
+
+    emb_search = emb_sub.add_parser("search", help="Semantic search over embedded symbols.")
+    _add_repo_positional(emb_search)
+    _add_db(emb_search)
+    emb_search.add_argument("query", help="Natural-language search query.")
+    emb_search.add_argument("--top-k", type=int, default=10, help="Number of results (default: 10).")
+    emb_search.add_argument("--no-hybrid", action="store_true", help="Disable hybrid FTS fusion; use embedding-only search.")
+    emb_search.add_argument("--model", default=None, help="Embedding model name.")
+    emb_search.add_argument("--provider", choices=["local", "openai-compatible"], default="local", help="Embedding provider.")
+    emb_search.add_argument("--endpoint", default=None, help="OpenAI-compatible API endpoint URL.")
+    _add_json(emb_search)
+
+    emb_status = emb_sub.add_parser("status", help="Show embedding cache statistics.")
+    _add_repo_positional(emb_status)
+    _add_db(emb_status)
+    emb_status.add_argument("--model", default=None, help="Embedding model name.")
+    emb_status.add_argument("--provider", choices=["local", "openai-compatible"], default="local", help="Embedding provider.")
+    _add_json(emb_status)
+
+    emb_clear = emb_sub.add_parser("clear", help="Clear the embedding cache for the current provider/model.")
+    _add_repo_positional(emb_clear)
+    _add_db(emb_clear)
+    emb_clear.add_argument("--model", default=None, help="Embedding model name.")
+    emb_clear.add_argument("--provider", choices=["local", "openai-compatible"], default="local", help="Embedding provider.")
+    _add_json(emb_clear)
+
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     _add_repo_positional(benchmark)
     _add_db(benchmark)
@@ -629,6 +669,29 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.graph.vulnerabilities import VulnerabilityService
         repo = _repo_arg(args)
         return VulnerabilityService(_db_arg(args, repo)).scan(limit=args.limit)
+    if args.command == "embeddings":
+        from csegraph_core.graph.embeddings import EmbeddingService
+        repo = _repo_arg(args)
+        db = _db_arg(args, repo)
+        svc = EmbeddingService(
+            db,
+            model=getattr(args, "model", None),
+            provider=getattr(args, "provider", "local"),
+            endpoint=getattr(args, "endpoint", None),
+        )
+        if args.embeddings_command == "compute":
+            return svc.compute()
+        if args.embeddings_command == "search":
+            return svc.search(
+                args.query,
+                top_k=args.top_k,
+                hybrid=not args.no_hybrid,
+            )
+        if args.embeddings_command == "status":
+            return svc.status()
+        if args.embeddings_command == "clear":
+            return svc.clear()
+        raise ValueError(f"Unknown embeddings subcommand: {args.embeddings_command}")
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)

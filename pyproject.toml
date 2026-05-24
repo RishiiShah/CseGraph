@@ -39,6 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=9.0.3"]
+embeddings = ["sentence-transformers>=2.0"]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"

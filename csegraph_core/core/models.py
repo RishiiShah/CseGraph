@@ -405,6 +405,33 @@ class DaemonResult:
     message: Optional[str] = None
 
 
+@dataclass
+class EmbeddingSearchHit:
+    node_id: str
+    name: str
+    kind: str
+    path: str
+    score: float
+    source: str = "embedding"
+
+
+@dataclass
+class EmbeddingResult:
+    command: str
+    db_path: str
+    repo_root: str
+    action: str
+    model: str
+    provider: str
+    nodes_embedded: int = 0
+    nodes_skipped: int = 0
+    nodes_cached: int = 0
+    query: str = ""
+    top_k: int = 0
+    hits: List["EmbeddingSearchHit"] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+
 def to_dict(value: Any) -> Any:
     from csegraph_core.core.serializer import to_dict as serialize
 

@@ -62,7 +62,7 @@ def test_v140_package_layout_and_versions():
     assert root_project["name"] == "csegraph-core"
     assert root_project["version"] == "1.6.0"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"test"}
+    assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"

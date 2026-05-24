@@ -223,6 +223,48 @@ def render_review_eval_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_embeddings_summary(payload: Dict[str, Any]) -> str:
+    action = payload.get("action", "")
+    model = payload.get("model", "")
+    lines: List[str] = []
+
+    if action == "compute":
+        embedded = payload.get("nodes_embedded", 0)
+        cached = payload.get("nodes_cached", 0)
+        skipped = payload.get("nodes_skipped", 0)
+        lines.append(f"Embeddings compute: {embedded} embedded, {cached} cached, {skipped} skipped")
+        lines.append(f"  Model: {model}")
+    elif action == "search":
+        query = payload.get("query", "")
+        hits = payload.get("hits", [])
+        lines.append(f"Embedding search: \"{query}\" ({len(hits)} results)")
+        lines.append(f"  Model: {model}")
+        lines.append("")
+        for i, hit in enumerate(hits, 1):
+            loc = hit["path"]
+            lines.append(f"  {i}. {hit['name']} ({hit['kind']})  {loc}  score={hit['score']:.4f}  [{hit['source']}]")
+    elif action == "status":
+        embedded = payload.get("nodes_embedded", 0)
+        stale = payload.get("nodes_skipped", 0)
+        lines.append(f"Embedding cache: {embedded} vectors")
+        lines.append(f"  Model: {model}")
+        if stale:
+            lines.append(f"  Stale: {stale}")
+    elif action == "clear":
+        deleted = payload.get("nodes_embedded", 0)
+        lines.append(f"Embedding cache cleared: {deleted} vectors removed")
+        lines.append(f"  Model: {model}")
+    else:
+        lines.append(f"Embeddings: {action}")
+
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_export_summary(payload: Dict[str, Any]) -> str:
     fmt = payload.get("format", "unknown")
     out = payload.get("output_path", "")

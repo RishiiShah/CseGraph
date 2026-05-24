@@ -530,6 +530,63 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_embeddings",
+        description=(
+            "Compute or search code embeddings. Actions: 'compute' embeds all symbol nodes "
+            "into the embedding cache (local sentence-transformers by default, optional "
+            "OpenAI-compatible endpoint). 'search' performs semantic similarity search over "
+            "cached embeddings, optionally fused with FTS via Reciprocal Rank Fusion. "
+            "'status' reports cache statistics. 'clear' removes cached vectors."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["compute", "search", "status", "clear"],
+                    "description": "Embedding action to perform.",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search query (required for search action).",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Number of search results to return. Default: 10.",
+                },
+                "hybrid": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Fuse embedding results with FTS via RRF. Default: true.",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Embedding model name. Default: all-MiniLM-L6-v2 for local.",
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": ["local", "openai-compatible"],
+                    "default": "local",
+                    "description": "Embedding provider. Default: local (sentence-transformers).",
+                },
+                "endpoint": {
+                    "type": "string",
+                    "description": "OpenAI-compatible API endpoint URL (required for openai-compatible provider).",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["action", "repo"],
+        },
+    ),
+    Tool(
         name="csegraph_registry",
         description=(
             "Manage the multi-repo registry. Register, unregister, list, "
@@ -699,6 +756,16 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Optional merge or PR description.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-embeddings",
+        title="Code Embeddings",
+        description="Compute or search code embeddings for semantic similarity search.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="action", description="compute, search, status, or clear.", required=True),
+            PromptArgument(name="query", description="Search query (for search action).", required=False),
         ],
     ),
     Prompt(
@@ -1078,6 +1145,35 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             output = str(db_p.with_name(suffix_map.get(fmt, "csegraph-export")))
         return to_dict(ExportService(db).export(output, fmt=fmt))
 
+    if name == "csegraph_embeddings":
+        from csegraph_core.graph.embeddings import EmbeddingService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        action = arguments["action"]
+        svc = EmbeddingService(
+            db,
+            model=arguments.get("model"),
+            provider=arguments.get("provider", "local"),
+            endpoint=arguments.get("endpoint"),
+        )
+        if action == "compute":
+            return to_dict(svc.compute())
+        if action == "search":
+            query = arguments.get("query")
+            if not query:
+                raise ValueError("query is required for search action")
+            return to_dict(svc.search(
+                query,
+                top_k=arguments.get("top_k", 10),
+                hybrid=arguments.get("hybrid", True),
+            ))
+        if action == "status":
+            return to_dict(svc.status())
+        if action == "clear":
+            return to_dict(svc.clear())
+        raise ValueError(f"Unknown embeddings action: {action}")
+
     if name == "csegraph_registry":
         from csegraph_core.registry import RegistryService
 
@@ -1292,6 +1388,21 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "  - Blockers: missing tests, broken call chains, unresolved symbols.",
                 "  - Risks: high-degree symbols modified, cross-community edges, INFERRED-confidence connections.",
                 "  - Verification: specific test commands or manual checks the reviewer should run.",
+            ],
+            args,
+        )
+    elif name == "csegraph-embeddings":
+        text = _prompt_text(
+            "Compute or search code embeddings for semantic similarity search.",
+            [
+                "Determine the user's intent: compute embeddings, search, check status, or clear cache.",
+                "For compute: Call `csegraph_embeddings` with action='compute'. Reports embedded/cached/skipped counts.",
+                "For search: Call `csegraph_embeddings` with action='search' and the user's query. hybrid=true (default) fuses with FTS.",
+                "For status: Call `csegraph_embeddings` with action='status'. Reports cache size and stale count.",
+                "For clear: Call `csegraph_embeddings` with action='clear'. Removes cached vectors for the current model.",
+                "If embeddings have not been computed yet, suggest running compute first.",
+                "Local provider (default) requires sentence-transformers; openai-compatible requires --endpoint.",
+                "Do NOT call more than 1 tool.",
             ],
             args,
         )
