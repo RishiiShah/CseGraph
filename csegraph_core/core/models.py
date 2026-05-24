@@ -263,6 +263,7 @@ class PostprocessResult:
     communities_detected: int
     modularity: float = 0.0
     skipped: List[str] = field(default_factory=list)
+    resolvers_edges_added: int = 0
     level: str = "full"
     timings_ms: Dict[str, float] = field(default_factory=dict)
 

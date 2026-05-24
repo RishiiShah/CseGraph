@@ -437,6 +437,29 @@ _TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="csegraph_resolvers",
+        description=(
+            "Run resolver passes to add inferred edges to the graph: transitive test coverage "
+            "(BFS from test functions through call chains), Python import resolution (retry unresolved "
+            "imports via __init__.py and suffix matching), and TypeScript alias resolution (tsconfig.json paths). "
+            "Idempotent — safe to run multiple times."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
         name="csegraph_export",
         description=(
             "Export the csegraph index to GraphML, Obsidian vault, or portable JSON. "
@@ -561,6 +584,14 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="limit", description="Max vulnerabilities per severity (default: 50).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-resolvers",
+        title="Run Resolver Passes",
+        description="Run framework resolver passes to add inferred edges (transitive tests, imports, TS aliases).",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
         ],
     ),
     Prompt(
@@ -927,6 +958,13 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         limit = arguments.get("limit", 20)
         return to_dict(ArchitectureService(db).overview(limit=limit))
 
+    if name == "csegraph_resolvers":
+        from csegraph_core.graph.resolvers import ResolverService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(ResolverService(db).run_all())
+
     if name == "csegraph_export":
         from csegraph_core.graph.exports import ExportService
 
@@ -1047,6 +1085,19 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "Report findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW, INFO).",
                 "For each vulnerability, explain the category, affected symbol, evidence, and recommended fix.",
                 "If critical or high findings exist, recommend immediate action items.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-resolvers":
+        text = _prompt_text(
+            "Run resolver passes to enrich the graph with inferred edges.",
+            [
+                "Call `csegraph_resolvers` with the repo path.",
+                "Report the total inferred edges added and per-resolver breakdown.",
+                "Transitive test edges extend test coverage tracking beyond direct calls.",
+                "Python import resolver retries unresolved imports via __init__.py and suffix matching.",
+                "TypeScript alias resolver uses tsconfig.json paths to resolve aliased imports.",
                 "Do NOT call more than 1 tool.",
             ],
             args,

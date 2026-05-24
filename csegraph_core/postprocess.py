@@ -44,7 +44,7 @@ class PostprocessService:
                     repo_root=meta["root_dir"],
                     fts_entries=0,
                     communities_detected=0,
-                    skipped=["fts", "communities"],
+                    skipped=["fts", "resolvers", "communities"],
                     level="none",
                 )
             finally:
@@ -76,6 +76,17 @@ class PostprocessService:
                 fts_entries = _rebuild_fts(index, repo_root)
                 timings["fts_rebuild_ms"] = _elapsed_ms(start)
 
+            resolvers_edges_added = 0
+            skip_resolvers = level in ("none", "minimal")
+            if skip_resolvers:
+                skipped.append("resolvers")
+            else:
+                start = time.perf_counter()
+                from csegraph_core.graph.resolvers import ResolverService
+                resolver_result = ResolverService(self.db_path).run_all()
+                resolvers_edges_added = resolver_result.total_edges_added
+                timings["resolvers_ms"] = _elapsed_ms(start)
+
             if skip_communities:
                 skipped.append("communities")
             else:
@@ -93,6 +104,7 @@ class PostprocessService:
                 fts_entries=fts_entries,
                 communities_detected=communities_detected,
                 modularity=modularity,
+                resolvers_edges_added=resolvers_edges_added,
                 skipped=skipped,
                 level=level,
                 timings_ms=timings,

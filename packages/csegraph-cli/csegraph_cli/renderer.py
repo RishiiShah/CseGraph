@@ -351,6 +351,8 @@ def render_postprocess_summary(payload: Dict[str, Any]) -> str:
     parts = []
     if "fts" not in payload.get("skipped", []):
         parts.append(f"{payload.get('fts_entries', 0):,} FTS entries")
+    if "resolvers" not in payload.get("skipped", []):
+        parts.append(f"{payload.get('resolvers_edges_added', 0)} inferred edges")
     if "communities" not in payload.get("skipped", []):
         parts.append(f"{payload.get('communities_detected', 0)} communities")
     if not parts:
@@ -478,6 +480,22 @@ def render_vulnerabilities_summary(payload: Dict[str, Any]) -> str:
             if evidence:
                 lines.append(f"      Evidence: {evidence}")
         lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_resolvers_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_edges_added", 0)
+    lines = [
+        f"Resolver passes: {total} inferred edges added",
+        "",
+    ]
+    for r in payload.get("resolvers_run", []):
+        lines.append(f"  {r['name']}: +{r['edges_added']} edges ({r['edges_skipped']} skipped)")
+    lines.append("")
     for warning in payload.get("warnings", []):
         lines.append(f"WARNING: {warning}")
     if payload.get("warnings"):

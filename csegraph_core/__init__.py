@@ -45,6 +45,7 @@ from csegraph_core.core.models import (
 from csegraph_core.cse.metrics import SufficiencyMetrics
 from csegraph_core.graph.architecture import ArchitectureService
 from csegraph_core.graph.exports import EXPORT_FORMATS, ExportService
+from csegraph_core.graph.resolvers import ResolverResult, ResolverService, ResolverStats
 from csegraph_core.graph.change_detection import (
     ChangeDetectionResult,
     ChangeDetectionService,
@@ -137,6 +138,9 @@ __all__ = [
     "RefreshService",
     "ReportResult",
     "ReportService",
+    "ResolverResult",
+    "ResolverService",
+    "ResolverStats",
     "ReviewEvalResult",
     "ReviewEvalService",
     "ReviewQuestion",
