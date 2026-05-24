@@ -215,3 +215,106 @@ def test_hooks_dry_run_does_not_write(tmp_path: Path) -> None:
     assert all(t.dry_run is True for t in hook_targets)
     assert not (repo / ".claude" / "settings.json").exists()
 
+
+# --- VS Code platform ---
+
+
+def test_vscode_install_creates_three_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo, command="csegraph").install(
+        platform="vscode", dry_run=False,
+    )
+
+    vscode_targets = [t for t in result.installed if t.platform == "vscode"]
+    assert len(vscode_targets) == 3
+
+    settings = _read_json(repo / ".vscode" / "settings.json")
+    assert settings["csegraph.command"] == "csegraph"
+    assert settings["csegraph.autoRefresh"] is True
+    assert settings["csegraph.statusBar"] is True
+
+    tasks = _read_json(repo / ".vscode" / "tasks.json")
+    assert tasks["version"] == "2.0.0"
+    labels = {t["label"] for t in tasks["tasks"]}
+    assert labels == {"csegraph: Build Index", "csegraph: Refresh", "csegraph: Status"}
+
+    extensions = _read_json(repo / ".vscode" / "extensions.json")
+    assert "csegraph.csegraph-vscode" in extensions["recommendations"]
+
+
+def test_vscode_install_merges_with_existing_settings(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    settings_path = repo / ".vscode" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps({"editor.fontSize": 14, "python.linting.enabled": True}),
+        encoding="utf-8",
+    )
+
+    McpInstallService(repo, command="my-csegraph").install(
+        platform="vscode", dry_run=False,
+    )
+
+    data = _read_json(settings_path)
+    assert data["editor.fontSize"] == 14
+    assert data["python.linting.enabled"] is True
+    assert data["csegraph.command"] == "my-csegraph"
+    assert data["csegraph.autoRefresh"] is True
+
+
+def test_vscode_install_merges_tasks_without_duplicating(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    tasks_path = repo / ".vscode" / "tasks.json"
+    tasks_path.parent.mkdir(parents=True)
+    tasks_path.write_text(
+        json.dumps({
+            "version": "2.0.0",
+            "tasks": [
+                {"label": "csegraph: Build Index", "type": "shell", "command": "old"},
+                {"label": "my-task", "type": "shell", "command": "echo hi"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    McpInstallService(repo).install(platform="vscode", dry_run=False)
+
+    data = _read_json(tasks_path)
+    labels = [t["label"] for t in data["tasks"]]
+    assert labels.count("csegraph: Build Index") == 1
+    assert "my-task" in labels
+    assert "csegraph: Refresh" in labels
+    assert "csegraph: Status" in labels
+
+
+def test_vscode_install_does_not_duplicate_extension_recommendation(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    ext_path = repo / ".vscode" / "extensions.json"
+    ext_path.parent.mkdir(parents=True)
+    ext_path.write_text(
+        json.dumps({"recommendations": ["csegraph.csegraph-vscode", "ms-python.python"]}),
+        encoding="utf-8",
+    )
+
+    McpInstallService(repo).install(platform="vscode", dry_run=False)
+
+    data = _read_json(ext_path)
+    assert data["recommendations"].count("csegraph.csegraph-vscode") == 1
+    assert "ms-python.python" in data["recommendations"]
+
+
+def test_vscode_dry_run_does_not_write_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo).install(platform="vscode", dry_run=True)
+
+    vscode_targets = [t for t in result.installed if t.platform == "vscode"]
+    assert len(vscode_targets) == 3
+    assert all(t.dry_run is True for t in vscode_targets)
+    assert not (repo / ".vscode" / "settings.json").exists()
+    assert not (repo / ".vscode" / "tasks.json").exists()
+    assert not (repo / ".vscode" / "extensions.json").exists()
+
