@@ -32,6 +32,7 @@ from csegraph_cli.renderer import (
     render_status_summary,
     render_test_gaps_summary,
     render_visual_export_summary,
+    render_vulnerabilities_summary,
 )
 
 
@@ -75,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_postprocess_summary(payload), end="")
     elif args.command == "hooks" and not args.json:
         print(render_hooks_summary(payload), end="")
+    elif args.command == "vulnerabilities" and not args.json:
+        print(render_vulnerabilities_summary(payload), end="")
     elif args.command == "install" and not args.json:
         print(render_install_summary(payload), end="")
     elif args.command == "path" and not args.json:
@@ -329,6 +332,12 @@ def _build_parser() -> argparse.ArgumentParser:
     review_eval.add_argument("--risk-threshold", choices=["high", "medium", "low"], default="medium", help="Detection threshold (default: medium).")
     _add_json(review_eval)
 
+    vulns = subparsers.add_parser("vulnerabilities", help="Scan for security vulnerabilities using the dependency graph.")
+    _add_repo_positional(vulns)
+    _add_db(vulns)
+    vulns.add_argument("--limit", type=int, default=50, help="Max vulnerabilities per severity (default: 50).")
+    _add_json(vulns)
+
     benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
     _add_repo_positional(benchmark)
     _add_db(benchmark)
@@ -503,6 +512,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
             base_ref=args.base_ref,
             risk_threshold=args.risk_threshold,
         )
+    if args.command == "vulnerabilities":
+        from csegraph_core.graph.vulnerabilities import VulnerabilityService
+        repo = _repo_arg(args)
+        return VulnerabilityService(_db_arg(args, repo)).scan(limit=args.limit)
     if args.command == "benchmark":
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)

@@ -50,6 +50,7 @@ class TestToolListing:
             "csegraph_test_gaps",
             "csegraph_review_questions",
             "csegraph_review_eval",
+            "csegraph_vulnerabilities",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -88,6 +89,7 @@ class TestPromptListing:
             "csegraph-review-eval",
             "csegraph-review",
             "csegraph-pre-merge",
+            "csegraph-vulnerabilities",
         }
 
     def test_prompts_have_metadata(self):

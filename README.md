@@ -55,6 +55,8 @@ csegraph report --json            # Structural report
 csegraph hooks install            # Install git auto-refresh hooks
 csegraph watch                    # Auto-refresh on file changes
 csegraph detect-changes --base-ref main  # Risk-scored changed symbols
+csegraph vulnerabilities              # Scan for security vulnerabilities
+csegraph vulnerabilities --limit 10   # Limit results per severity level
 csegraph benchmark --target symbol
 csegraph serve                    # Start MCP stdio server (all tools)
 csegraph serve --tools csegraph_minimal,csegraph_context  # Expose only selected tools
@@ -83,6 +85,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_test_gaps` | Analyze test coverage gaps — untested symbols ranked by hotspot score, per-community coverage. | `repo`, `limit`, `db` |
 | `csegraph_review_questions` | Generate targeted review questions from change detection and graph structure. | `repo`, `base_ref`, `db` |
 | `csegraph_review_eval` | Evaluate review intelligence precision/recall against ground-truth known-risky symbols. | `repo`, `ground_truth_ids`, `base_ref`, `risk_threshold`, `db` |
+| `csegraph_vulnerabilities` | Scan for security vulnerabilities — dangerous calls, untested security code, hardcoded secrets, high-exposure sinks. | `repo`, `limit`, `db` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
@@ -115,6 +118,7 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-review-questions` | Generate review questions from change detection and graph structure. |
 | `csegraph-review-eval` | Evaluate review intelligence against known-risky symbols. |
 | `csegraph-review` | Review changes with change detection, context, and graph tools. |
+| `csegraph-vulnerabilities` | Scan the codebase for security vulnerabilities using the dependency graph. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
 
 ## .csegraphignore

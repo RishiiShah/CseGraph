@@ -381,6 +381,34 @@ _TOOLS: list[Tool] = [
             "required": ["repo", "ground_truth_ids"],
         },
     ),
+    Tool(
+        name="csegraph_vulnerabilities",
+        description=(
+            "Scan the codebase for security vulnerabilities using the dependency graph. "
+            "Detects dangerous API calls (eval, exec, shell injection), untested security-sensitive "
+            "code, hardcoded secret patterns, weak crypto, deserialization risks, and high-exposure "
+            "symbols calling dangerous APIs. Returns severity-ranked results (critical/high/medium/low/info)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "Maximum vulnerabilities per severity level. Default: 50.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -465,6 +493,15 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Optional review focus.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-vulnerabilities",
+        title="Security Vulnerability Scan",
+        description="Scan the codebase for security vulnerabilities using the dependency graph.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="limit", description="Max vulnerabilities per severity (default: 50).", required=False),
         ],
     ),
     Prompt(
@@ -796,6 +833,14 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             risk_threshold=risk_threshold,
         ))
 
+    if name == "csegraph_vulnerabilities":
+        from csegraph_core.graph.vulnerabilities import VulnerabilityService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        limit = arguments.get("limit", 50)
+        return to_dict(VulnerabilityService(db).scan(limit=limit))
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -895,6 +940,18 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             ],
             args,
         )
+    elif name == "csegraph-vulnerabilities":
+        text = _prompt_text(
+            "Scan the codebase for security vulnerabilities using the dependency graph.",
+            [
+                "Call `csegraph_vulnerabilities` with the repo path.",
+                "Report findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW, INFO).",
+                "For each vulnerability, explain the category, affected symbol, evidence, and recommended fix.",
+                "If critical or high findings exist, recommend immediate action items.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
     elif name == "csegraph-review":
         text = _prompt_text(
             "Review current changes using change detection, context, and graph inspection.",
@@ -914,7 +971,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             [
                 "Step 1: Call `csegraph_refresh` to ensure the index reflects the latest changes.",
                 "Step 2: Call `csegraph_detect_changes` with the base branch to get the risk-prioritized change list.",
-                "Step 3: Call `csegraph_test_gaps` to check test coverage of changed areas, or `csegraph_review_questions` for targeted review questions.",
+                "Step 3: Call `csegraph_test_gaps` to check test coverage of changed areas, `csegraph_review_questions` for targeted review questions, or `csegraph_vulnerabilities` for security issues.",
                 "Do NOT call more than 3 tools total.",
                 "Output a GO / NO-GO recommendation with:",
                 "  - Blockers: missing tests, broken call chains, unresolved symbols.",

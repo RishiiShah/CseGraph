@@ -62,6 +62,11 @@ from csegraph_core.graph.test_gaps import (
     TestGapService,
     UntestedSymbol,
 )
+from csegraph_core.graph.vulnerabilities import (
+    Vulnerability,
+    VulnerabilityResult,
+    VulnerabilityService,
+)
 from csegraph_core.hooks import HooksResult
 from csegraph_core.graph.queries import GraphQueryService
 from csegraph_core.graph.report import ReportService
@@ -137,6 +142,9 @@ __all__ = [
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",
+    "Vulnerability",
+    "VulnerabilityResult",
+    "VulnerabilityService",
     "get_profile",
     "load_profile",
     "to_dict",

@@ -394,6 +394,42 @@ def _line_range_text(line_range: Optional[List[int]]) -> str:
     return f":{line_range[0]}-{line_range[1]}"
 
 
+def render_vulnerabilities_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_vulnerabilities", 0)
+    lines = [
+        f"Vulnerability scan: {total} issue(s) found",
+        f"Categories: {', '.join(payload.get('scan_categories', []))}",
+        "",
+    ]
+    for level, label in [
+        ("critical", "CRITICAL"),
+        ("high", "HIGH"),
+        ("medium", "MEDIUM"),
+        ("low", "LOW"),
+        ("info", "INFO"),
+    ]:
+        items = payload.get(level, [])
+        if not items:
+            continue
+        lines.append(f"  {label} ({len(items)}):")
+        for v in items:
+            loc = v["path"]
+            lr = v.get("line_range")
+            if lr:
+                loc += f":{lr[0]}-{lr[1]}"
+            evidence = ", ".join(v.get("evidence", []))
+            lines.append(f"    [{v['category']}] {v['symbol_name']} ({v['symbol_kind']})  {loc}")
+            lines.append(f"      {v['description']}")
+            if evidence:
+                lines.append(f"      Evidence: {evidence}")
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_report_markdown(payload: Dict[str, Any]) -> str:
     lines: List[str] = ["# csegraph report", ""]
     _render_corpus_check(lines, payload)
