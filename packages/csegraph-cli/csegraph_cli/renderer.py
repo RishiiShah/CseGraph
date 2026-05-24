@@ -223,6 +223,46 @@ def render_review_eval_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_architecture_summary(payload: Dict[str, Any]) -> str:
+    num = payload.get("num_communities", 0)
+    lines = [
+        f"Architecture: {num} communities, "
+        f"{payload.get('total_nodes', 0):,} nodes, "
+        f"{payload.get('total_edges', 0):,} edges",
+        "",
+    ]
+    for s in payload.get("summaries", []):
+        langs = ", ".join(f"{k}:{v}" for k, v in (s.get("languages") or {}).items())
+        lines.append(
+            f"  [{s['community_id']}] {s['label']}  "
+            f"({s['size']} nodes, {s['files']} files, "
+            f"{s['internal_edges']} internal / {s['cross_edges']} cross edges)"
+        )
+        if langs:
+            lines.append(f"       Languages: {langs}")
+        key_syms = s.get("key_symbols", [])
+        if key_syms:
+            names = ", ".join(f"{ks['name']}({ks['degree']})" for ks in key_syms[:3])
+            lines.append(f"       Key symbols: {names}")
+    lines.append("")
+    coupling = payload.get("coupling", [])
+    if coupling:
+        lines.append("Coupling:")
+        for cp in coupling[:10]:
+            rels = ", ".join(f"{k}:{v}" for k, v in (cp.get("relations") or {}).items())
+            lines.append(
+                f"  [{cp['community_a']}] {cp['label_a']} <-> "
+                f"[{cp['community_b']}] {cp['label_b']}  "
+                f"({cp['weight']} edges: {rels})"
+            )
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_communities_summary(payload: Dict[str, Any]) -> str:
     lines = [
         f"Communities: {payload.get('num_communities', 0)} detected  "

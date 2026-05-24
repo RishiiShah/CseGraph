@@ -409,6 +409,33 @@ _TOOLS: list[Tool] = [
             "required": ["repo"],
         },
     ),
+    Tool(
+        name="csegraph_architecture",
+        description=(
+            "Generate community summaries and an architecture overview. "
+            "Returns auto-labeled communities with key symbols, language breakdown, "
+            "internal/cross-community edge counts, and coupling warnings between modules."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of community summaries to return. Default: 20.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -502,6 +529,15 @@ _PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="limit", description="Max vulnerabilities per severity (default: 50).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-architecture",
+        title="Architecture Overview",
+        description="Generate community summaries and an architecture overview with coupling analysis.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="limit", description="Max communities to summarize (default: 20).", required=False),
         ],
     ),
     Prompt(
@@ -841,6 +877,14 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         limit = arguments.get("limit", 50)
         return to_dict(VulnerabilityService(db).scan(limit=limit))
 
+    if name == "csegraph_architecture":
+        from csegraph_core.graph.architecture import ArchitectureService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        limit = arguments.get("limit", 20)
+        return to_dict(ArchitectureService(db).overview(limit=limit))
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -948,6 +992,18 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "Report findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW, INFO).",
                 "For each vulnerability, explain the category, affected symbol, evidence, and recommended fix.",
                 "If critical or high findings exist, recommend immediate action items.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-architecture":
+        text = _prompt_text(
+            "Generate an architecture overview with community summaries and coupling analysis.",
+            [
+                "Call `csegraph_architecture` with the repo path.",
+                "Present each community with its label, size, key symbols, and language breakdown.",
+                "Highlight high-coupling pairs between communities as potential architectural concerns.",
+                "If warnings mention high coupling, recommend reviewing the dependency direction.",
                 "Do NOT call more than 1 tool.",
             ],
             args,

@@ -14,10 +14,13 @@ __version__ = "1.6.0"
 from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph_core.core.models import (
+    ArchitectureResult,
     BenchmarkResult,
     BenchmarkStep,
+    CommunitySummary,
     ContextNode,
     ContextResult,
+    CouplingPair,
     GraphEdgeView,
     GraphNodeView,
     GraphResult,
@@ -39,6 +42,7 @@ from csegraph_core.core.models import (
     to_dict,
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
+from csegraph_core.graph.architecture import ArchitectureService
 from csegraph_core.graph.change_detection import (
     ChangeDetectionResult,
     ChangeDetectionService,
@@ -84,12 +88,16 @@ from csegraph_core.status import StatusService
 
 __all__ = [
     "__version__",
+    "ArchitectureResult",
+    "ArchitectureService",
     "BenchmarkResult",
     "BenchmarkService",
     "BenchmarkStep",
     "ChangeDetectionResult",
     "ChangeDetectionService",
     "ChangedSymbol",
+    "CommunitySummary",
+    "CouplingPair",
     "CommunityCoverage",
     "Community",
     "CommunityResult",

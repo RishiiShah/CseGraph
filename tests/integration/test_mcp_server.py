@@ -51,6 +51,7 @@ class TestToolListing:
             "csegraph_review_questions",
             "csegraph_review_eval",
             "csegraph_vulnerabilities",
+            "csegraph_architecture",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -88,6 +89,7 @@ class TestPromptListing:
             "csegraph-review-questions",
             "csegraph-review-eval",
             "csegraph-review",
+            "csegraph-architecture",
             "csegraph-pre-merge",
             "csegraph-vulnerabilities",
         }

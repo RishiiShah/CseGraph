@@ -15,6 +15,7 @@ from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
+    render_architecture_summary,
     render_communities_summary,
     render_context_markdown,
     render_benchmark_summary,
@@ -68,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         print(render_review_questions_summary(payload), end="")
     elif args.command == "review-eval" and not args.json:
         print(render_review_eval_summary(payload), end="")
+    elif args.command == "architecture" and not args.json:
+        print(render_architecture_summary(payload), end="")
     elif args.command == "communities" and not args.json:
         print(render_communities_summary(payload), end="")
     elif args.command == "status" and not args.json:
@@ -238,6 +241,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(tree)
     tree.add_argument("--output", "-o", default=None, help="Output HTML file path (default: beside the SQLite index DB).")
     _add_json(tree)
+
+    architecture = subparsers.add_parser("architecture", help="Community summaries and architecture overview.")
+    _add_repo_positional(architecture)
+    _add_db(architecture)
+    architecture.add_argument("--limit", type=int, default=20, help="Max community summaries (default: 20).")
+    _add_json(architecture)
 
     communities = subparsers.add_parser("communities", help="Detect communities in the dependency graph.")
     _add_repo_positional(communities)
@@ -438,6 +447,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db_path = _db_arg(args, str(repo))
         output = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
         return TreeExportService(db_path).export(output)
+    if args.command == "architecture":
+        from csegraph_core.graph.architecture import ArchitectureService
+        repo = _repo_arg(args)
+        return ArchitectureService(_db_arg(args, repo)).overview(limit=args.limit)
     if args.command == "communities":
         from csegraph_core.graph.communities import detect_communities
         repo = _repo_arg(args)

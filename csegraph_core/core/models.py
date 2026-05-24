@@ -318,6 +318,43 @@ class MinimalResult:
     estimated_tokens: int
 
 
+@dataclass
+class CommunitySummary:
+    community_id: int
+    label: str
+    size: int
+    files: int
+    languages: Dict[str, int] = field(default_factory=dict)
+    type_counts: Dict[str, int] = field(default_factory=dict)
+    key_symbols: List[Dict[str, Any]] = field(default_factory=list)
+    internal_edges: int = 0
+    cross_edges: int = 0
+    test_count: int = 0
+
+
+@dataclass
+class CouplingPair:
+    community_a: int
+    community_b: int
+    label_a: str
+    label_b: str
+    weight: int
+    relations: Dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ArchitectureResult:
+    command: str
+    db_path: str
+    repo_root: str
+    total_nodes: int
+    total_edges: int
+    num_communities: int
+    summaries: List["CommunitySummary"] = field(default_factory=list)
+    coupling: List["CouplingPair"] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+
 def to_dict(value: Any) -> Any:
     from csegraph_core.core.serializer import to_dict as serialize
 

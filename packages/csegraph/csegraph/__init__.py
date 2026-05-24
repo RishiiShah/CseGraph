@@ -7,12 +7,16 @@ from `csegraph-core` directly and does not depend on this package.
 from __future__ import annotations
 
 from csegraph_core import (
+    ArchitectureResult,
+    ArchitectureService,
     BenchmarkResult,
     BenchmarkService,
     BenchmarkStep,
     ChangeDetectionResult,
     ChangeDetectionService,
     ChangedSymbol,
+    CommunitySummary,
+    CouplingPair,
     CommunityCoverage,
     Community,
     CommunityResult,
@@ -77,12 +81,16 @@ __version__ = "1.6.0"
 
 __all__ = [
     "__version__",
+    "ArchitectureResult",
+    "ArchitectureService",
     "BenchmarkResult",
     "BenchmarkService",
     "BenchmarkStep",
     "ChangeDetectionResult",
     "ChangeDetectionService",
     "ChangedSymbol",
+    "CommunitySummary",
+    "CouplingPair",
     "CommunityCoverage",
     "Community",
     "CommunityResult",
