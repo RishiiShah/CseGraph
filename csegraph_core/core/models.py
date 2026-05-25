@@ -55,6 +55,9 @@ class RefreshResult:
     deleted_files: List[str] = field(default_factory=list)
     changed_symbols: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    dependents_expanded: int = 0
+    dependents_cap_hit: bool = False
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -105,6 +108,7 @@ class ContextResult:
     warnings: List[str] = field(default_factory=list)
     run_id: Optional[int] = None
     confidence_breakdown: Dict[str, int] = field(default_factory=dict)
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -259,6 +263,9 @@ class PostprocessResult:
     communities_detected: int
     modularity: float = 0.0
     skipped: List[str] = field(default_factory=list)
+    resolvers_edges_added: int = 0
+    level: str = "full"
+    timings_ms: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -310,6 +317,119 @@ class MinimalResult:
     key_entities: List[KeyEntity]
     next_tool_suggestions: List[NextToolSuggestion]
     estimated_tokens: int
+
+
+@dataclass
+class ExportResult:
+    command: str
+    db_path: str
+    repo_root: str
+    output_path: str
+    format: str
+    total_nodes: int
+    total_edges: int
+    files_written: int
+
+
+@dataclass
+class CommunitySummary:
+    community_id: int
+    label: str
+    size: int
+    files: int
+    languages: Dict[str, int] = field(default_factory=dict)
+    type_counts: Dict[str, int] = field(default_factory=dict)
+    key_symbols: List[Dict[str, Any]] = field(default_factory=list)
+    internal_edges: int = 0
+    cross_edges: int = 0
+    test_count: int = 0
+
+
+@dataclass
+class CouplingPair:
+    community_a: int
+    community_b: int
+    label_a: str
+    label_b: str
+    weight: int
+    relations: Dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ArchitectureResult:
+    command: str
+    db_path: str
+    repo_root: str
+    total_nodes: int
+    total_edges: int
+    num_communities: int
+    summaries: List["CommunitySummary"] = field(default_factory=list)
+    coupling: List["CouplingPair"] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+
+@dataclass
+class RegistryEntry:
+    alias: str
+    root: str
+    db: str
+    profile: str = "medium"
+    added_at: Optional[str] = None
+
+
+@dataclass
+class RegistryResult:
+    command: str
+    entries: List["RegistryEntry"] = field(default_factory=list)
+    action: Optional[str] = None
+    alias: Optional[str] = None
+    message: Optional[str] = None
+
+
+@dataclass
+class DaemonEntry:
+    alias: str
+    root: str
+    pid: Optional[int] = None
+    status: str = "stopped"
+    last_refresh: Optional[str] = None
+    error: Optional[str] = None
+
+
+@dataclass
+class DaemonResult:
+    command: str
+    running: bool = False
+    entries: List["DaemonEntry"] = field(default_factory=list)
+    pid_file: Optional[str] = None
+    message: Optional[str] = None
+
+
+@dataclass
+class EmbeddingSearchHit:
+    node_id: str
+    name: str
+    kind: str
+    path: str
+    score: float
+    source: str = "embedding"
+
+
+@dataclass
+class EmbeddingResult:
+    command: str
+    db_path: str
+    repo_root: str
+    action: str
+    model: str
+    provider: str
+    nodes_embedded: int = 0
+    nodes_skipped: int = 0
+    nodes_cached: int = 0
+    query: str = ""
+    top_k: int = 0
+    hits: List["EmbeddingSearchHit"] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
 
 def to_dict(value: Any) -> Any:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -281,6 +280,7 @@ class GraphQueryService:
         target: str,
         detail_level: str = "minimal",
         relations: Optional[List[str]] = None,
+        max_depth: int = 15,
     ) -> PathResult:
         if detail_level not in ("minimal", "standard"):
             raise ValueError(f"detail_level must be 'minimal' or 'standard', got '{detail_level}'")
@@ -293,42 +293,60 @@ class GraphQueryService:
             src = _resolve_graph_node(index, source, repo_root)
             dst = _resolve_graph_node(index, target, repo_root)
 
-            # Build adjacency optionally restricted to the requested relations.
-            adj: Dict[str, List[Tuple[str, str, str]]] = {}
-            rel_clause, rel_params = _relation_clause(relations)
-            for row in index.conn.execute(f"SELECT source, target, relation, confidence_tier FROM edges {rel_clause}", rel_params):
-                s, t, r = row["source"], row["target"], row["relation"]
-                try:
-                    tier = row["confidence_tier"] if row["confidence_tier"] else "EXTRACTED"
-                except Exception:
-                    tier = "EXTRACTED"
-                adj.setdefault(s, []).append((t, r, tier))
-                adj.setdefault(t, []).append((s, r, tier))
-
-            # Precompute hub threshold and hub node ids for hub-aware BFS.
             threshold = _compute_hub_threshold(index, relations)
             hubs = _hub_node_ids(index, threshold, relations)
             hubs.discard(src)
             hubs.discard(dst)
 
-            prev: Dict[str, Optional[Tuple[str, str, str]]] = {src: None}
-            queue: deque[str] = deque([src])
-            found = False
-            while queue:
-                current = queue.popleft()
-                if current == dst:
-                    found = True
-                    break
-                # Hub-aware expansion: do not expand through hub nodes unless they
-                # are the source or the destination.
-                if current in hubs:
-                    continue
-                for neighbor, relation, tier in adj.get(current, []):
-                    if neighbor not in prev:
-                        prev[neighbor] = (current, relation, tier)
-                        queue.append(neighbor)
+            # Hub-aware BFS via SQLite recursive CTE.
+            # The CTE tracks (node, depth, parent, relation) so we can
+            # reconstruct the path without loading the full adjacency list.
+            rel_filter = (
+                f"AND e.relation IN ({','.join('?' for _ in relations)})"
+                if relations
+                else ""
+            )
+            hub_filter = ""
+            hub_params: Tuple[Any, ...] = ()
+            if hubs:
+                hub_placeholders = ",".join("?" for _ in hubs)
+                hub_filter = f"AND bfs.node_id NOT IN ({hub_placeholders})"
+                hub_params = tuple(hubs)
 
-            if not found:
+            path_cte = f"""
+            WITH RECURSIVE bfs(node_id, depth, parent, relation, tier) AS (
+                SELECT ?, 0, NULL, NULL, NULL
+              UNION
+                SELECT
+                    CASE WHEN e.source = bfs.node_id THEN e.target
+                         ELSE e.source END,
+                    bfs.depth + 1,
+                    bfs.node_id,
+                    e.relation,
+                    COALESCE(e.confidence_tier, 'EXTRACTED')
+                FROM bfs
+                JOIN edges e
+                  ON (e.source = bfs.node_id OR e.target = bfs.node_id)
+                WHERE bfs.depth < ?
+                  {hub_filter}
+                  {rel_filter}
+            )
+            SELECT node_id, depth, parent, relation, tier FROM bfs
+            """
+            cte_params: Tuple[Any, ...] = (
+                src, max_depth, *hub_params, *(relations or [])
+            )
+
+            # Execute CTE and build parent map for path reconstruction.
+            parent_map: Dict[str, Tuple[str, str, str]] = {}
+            for row in index.conn.execute(path_cte, cte_params):
+                nid = row["node_id"]
+                if nid not in parent_map and row["parent"] is not None:
+                    parent_map[nid] = (row["parent"], row["relation"], row["tier"])
+                if nid == dst:
+                    break
+
+            if dst not in parent_map and dst != src:
                 summary = f"No path: '{source}' ↛ '{target}'."
                 return PathResult(
                     command="path",
@@ -344,15 +362,22 @@ class GraphQueryService:
                     summary=summary,
                 )
 
+            # Reconstruct path from dst back to src.
             path_ids: List[str] = []
             path_edges: List[PathEdge] = []
+            confidence_counts: Dict[str, int] = {}
+            visited_trace: Set[str] = set()
             node = dst
             while node is not None:
+                if node in visited_trace:
+                    break
+                visited_trace.add(node)
                 path_ids.append(node)
-                entry = prev.get(node)
+                entry = parent_map.get(node)
                 if entry is not None:
                     parent, relation, tier = entry
                     path_edges.append(PathEdge(source=parent, target=node, relation=relation))
+                    confidence_counts[tier] = confidence_counts.get(tier, 0) + 1
                     node = parent
                 else:
                     node = None
@@ -370,17 +395,6 @@ class GraphQueryService:
             name_chain = " → ".join(_short_name(nid, node_rows) for nid in path_ids)
             summary = f"{name_chain} ({len(path_edges)} hops)"
 
-            # Compute a confidence breakdown over the edges forming the path.
-            confidence_counts: Dict[str, int] = {}
-            for pe in path_edges:
-                row = index.conn.execute(
-                    "SELECT confidence_tier FROM edges WHERE source = ? AND target = ? AND relation = ? LIMIT 1",
-                    (pe.source, pe.target, pe.relation),
-                ).fetchone()
-                tier = row["confidence_tier"] if row and row["confidence_tier"] else "EXTRACTED"
-                confidence_counts[tier] = confidence_counts.get(tier, 0) + 1
-
-            # Count how many hub nodes were avoided within the path (excluding endpoints).
             hubs_skipped = sum(1 for nid in path_ids if nid in hubs)
 
             if detail_level == "minimal":

@@ -39,6 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=9.0.3"]
+embeddings = ["sentence-transformers>=2.0"]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"
@@ -51,3 +52,4 @@ include = ["csegraph_core*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
+pythonpath = ["."]

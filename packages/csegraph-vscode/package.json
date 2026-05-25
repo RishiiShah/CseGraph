@@ -1,0 +1,159 @@
+{
+  "name": "csegraph-vscode",
+  "displayName": "CseGraph",
+  "description": "Code graph context for coding agents — index, inspect, and trace dependencies from VS Code.",
+  "version": "1.0.0",
+  "publisher": "csegraph",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apocalypse44/CseGraph"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "code graph",
+    "dependency graph",
+    "code review",
+    "context",
+    "csegraph"
+  ],
+  "activationEvents": [
+    "workspaceContains:.csegraph/index.db",
+    "onCommand:csegraph.index"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "csegraph.index",
+        "title": "CseGraph: Build Index",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.refresh",
+        "title": "CseGraph: Refresh Changed Files",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.status",
+        "title": "CseGraph: Show Status",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.context",
+        "title": "CseGraph: Get Context for Task",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.flows",
+        "title": "CseGraph: Trace Execution Flows",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.flowsHere",
+        "title": "CseGraph: Trace Flow from This Function",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.inspect",
+        "title": "CseGraph: Inspect Symbol",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.vulnerabilities",
+        "title": "CseGraph: Scan Vulnerabilities",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.architecture",
+        "title": "CseGraph: Architecture Overview",
+        "category": "CseGraph"
+      },
+      {
+        "command": "csegraph.testGaps",
+        "title": "CseGraph: Show Test Gaps",
+        "category": "CseGraph"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "csegraph.context",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
+      },
+      {
+        "command": "csegraph.inspect",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "csegraph.inspect",
+          "group": "csegraph@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "csegraph.flowsHere",
+          "group": "csegraph@2",
+          "when": "editorTextFocus"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CseGraph",
+      "properties": {
+        "csegraph.command": {
+          "type": "string",
+          "default": "csegraph",
+          "description": "Path to the csegraph CLI executable."
+        },
+        "csegraph.profile": {
+          "type": "string",
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ],
+          "default": "medium",
+          "description": "Retrieval profile for indexing and context."
+        },
+        "csegraph.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh the index when files are saved."
+        },
+        "csegraph.refreshDebounce": {
+          "type": "number",
+          "default": 2000,
+          "description": "Debounce interval (ms) for auto-refresh after save."
+        },
+        "csegraph.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show csegraph status in the status bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}

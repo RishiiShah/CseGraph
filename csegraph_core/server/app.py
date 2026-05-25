@@ -39,6 +39,12 @@ _TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
                 },
+                "postprocess_level": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "full"],
+                    "default": "full",
+                    "description": "Postprocess level: none (fastest, parse only), minimal (FTS only), full (FTS + communities).",
+                },
             },
             "required": ["repo"],
         },
@@ -65,6 +71,12 @@ _TOOLS: list[Tool] = [
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+                "postprocess_level": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "full"],
+                    "default": "full",
+                    "description": "Postprocess level: none (fastest), minimal (FTS only), full (FTS + communities).",
                 },
             },
             "required": ["repo"],
@@ -249,6 +261,363 @@ _TOOLS: list[Tool] = [
             "required": ["source", "target", "repo"],
         },
     ),
+    Tool(
+        name="csegraph_detect_changes",
+        description=(
+            "Detect changed symbols between the current state and a base git ref, "
+            "then score each by review risk (caller count, cross-community edges, "
+            "test coverage). Returns prioritized high/medium/low lists so the agent "
+            "knows where to focus review effort."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "base_ref": {
+                    "type": "string",
+                    "default": "HEAD~1",
+                    "description": "Git ref to diff against (branch, tag, or commit). Default: HEAD~1.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_test_gaps",
+        description=(
+            "Analyze test coverage gaps in the codebase. Returns untested symbols "
+            "ranked by hotspot score (caller count, cross-community edges), "
+            "per-community coverage percentages, and overall coverage stats."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of untested hotspots to return. Default: 20.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_review_questions",
+        description=(
+            "Generate targeted review questions from change detection and graph "
+            "structure. Runs change detection internally and produces priority-ranked "
+            "questions about test gaps, cross-community blast radius, and caller breakage."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "base_ref": {
+                    "type": "string",
+                    "default": "HEAD~1",
+                    "description": "Git ref to diff against. Default: HEAD~1.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_review_eval",
+        description=(
+            "Evaluate review intelligence against ground-truth known-risky symbols. "
+            "Measures precision, recall, and F1 of risk scoring, and checks whether "
+            "generated review questions address the known issues."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "ground_truth_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of node IDs known to be risky (ground truth).",
+                },
+                "base_ref": {
+                    "type": "string",
+                    "default": "HEAD~1",
+                    "description": "Git ref to diff against. Default: HEAD~1.",
+                },
+                "risk_threshold": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "default": "medium",
+                    "description": "Risk level threshold for detection. Default: medium.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo", "ground_truth_ids"],
+        },
+    ),
+    Tool(
+        name="csegraph_vulnerabilities",
+        description=(
+            "Scan the codebase for security vulnerabilities using the dependency graph. "
+            "Detects dangerous API calls (eval, exec, shell injection), untested security-sensitive "
+            "code, hardcoded secret patterns, weak crypto, deserialization risks, and high-exposure "
+            "symbols calling dangerous APIs. Returns severity-ranked results (critical/high/medium/low/info)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "Maximum vulnerabilities per severity level. Default: 50.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_architecture",
+        description=(
+            "Generate community summaries and an architecture overview. "
+            "Returns auto-labeled communities with key symbols, language breakdown, "
+            "internal/cross-community edge counts, and coupling warnings between modules."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of community summaries to return. Default: 20.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_flows",
+        description=(
+            "Trace execution flows from entry points through the call graph. "
+            "Auto-detects entry points (functions with no callers, conventional names like main/handler/serve) "
+            "and traces forward through CALLS edges with BFS. Returns flows ranked by criticality "
+            "(file spread, depth, cross-community, test coverage gaps, security sensitivity). "
+            "Use entry_point to trace from a specific function."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "entry_point": {
+                    "type": "string",
+                    "description": "Optional: trace from a specific function/symbol instead of auto-detecting entry points.",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Maximum BFS depth for flow tracing. Default: 10.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of flows to return. Default: 20.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_resolvers",
+        description=(
+            "Run resolver passes to add inferred edges to the graph: transitive test coverage "
+            "(BFS from test functions through call chains), Python import resolution (retry unresolved "
+            "imports via __init__.py and suffix matching), and TypeScript alias resolution (tsconfig.json paths). "
+            "Idempotent — safe to run multiple times."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_export",
+        description=(
+            "Export the csegraph index to GraphML, Obsidian vault, or portable JSON. "
+            "GraphML can be opened in Neo4j, Gephi, or yEd. Obsidian creates a vault of "
+            "linked markdown notes. JSON produces a portable graph dump."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "Output path (file for graphml/json, directory for obsidian). Default: beside the index DB.",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["graphml", "obsidian", "json"],
+                    "default": "graphml",
+                    "description": "Export format. Default: graphml.",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_embeddings",
+        description=(
+            "Compute or search code embeddings. Actions: 'compute' embeds all symbol nodes "
+            "into the embedding cache (local sentence-transformers by default, optional "
+            "OpenAI-compatible endpoint). 'search' performs semantic similarity search over "
+            "cached embeddings, optionally fused with FTS via Reciprocal Rank Fusion. "
+            "'status' reports cache statistics. 'clear' removes cached vectors."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["compute", "search", "status", "clear"],
+                    "description": "Embedding action to perform.",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search query (required for search action).",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Number of search results to return. Default: 10.",
+                },
+                "hybrid": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Fuse embedding results with FTS via RRF. Default: true.",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Embedding model name. Default: all-MiniLM-L6-v2 for local.",
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": ["local", "openai-compatible"],
+                    "default": "local",
+                    "description": "Embedding provider. Default: local (sentence-transformers).",
+                },
+                "endpoint": {
+                    "type": "string",
+                    "description": "OpenAI-compatible API endpoint URL (required for openai-compatible provider).",
+                },
+                "db": {
+                    "type": "string",
+                    "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+            },
+            "required": ["action", "repo"],
+        },
+    ),
+    Tool(
+        name="csegraph_registry",
+        description=(
+            "Manage the multi-repo registry. Register, unregister, list, "
+            "or check status of tracked repositories."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["register", "unregister", "list", "status"],
+                    "description": "Registry action to perform.",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Absolute path to the repository root (required for register).",
+                },
+                "alias": {
+                    "type": "string",
+                    "description": "Short alias for the repo. Default: directory name.",
+                },
+                "profile": {
+                    "type": "string",
+                    "enum": ["small", "medium", "large"],
+                    "default": "medium",
+                    "description": "Retrieval profile (used for register).",
+                },
+            },
+            "required": ["action"],
+        },
+    ),
 ]
 
 _PROMPTS: list[Prompt] = [
@@ -290,6 +659,43 @@ _PROMPTS: list[Prompt] = [
         ],
     ),
     Prompt(
+        name="csegraph-detect-changes",
+        title="Detect Changes and Score Risk",
+        description="Diff against a base ref, map changed lines to graph symbols, and score review risk.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-test-gaps",
+        title="Test Coverage Gaps",
+        description="Identify untested symbols and coverage hotspots in the codebase.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="limit", description="Max hotspots to return (default: 20).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-review-questions",
+        title="Generate Review Questions",
+        description="Generate targeted review questions from change detection and graph structure.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-review-eval",
+        title="Evaluate Review Intelligence",
+        description="Measure precision and recall of review intelligence against known-risky symbols.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="ground_truth_ids", description="Comma-separated node IDs known to be risky.", required=True),
+            PromptArgument(name="base_ref", description="Git ref to diff against (default: HEAD~1).", required=False),
+        ],
+    ),
+    Prompt(
         name="csegraph-review",
         title="Review Current Changes",
         description="Review changes with csegraph context, graph inspection, and structural report data.",
@@ -299,12 +705,77 @@ _PROMPTS: list[Prompt] = [
         ],
     ),
     Prompt(
+        name="csegraph-vulnerabilities",
+        title="Security Vulnerability Scan",
+        description="Scan the codebase for security vulnerabilities using the dependency graph.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="limit", description="Max vulnerabilities per severity (default: 50).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-flows",
+        title="Trace Execution Flows",
+        description="Trace execution flows from entry points through the call graph, ranked by criticality.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="entry_point", description="Optional specific entry point to trace from.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-resolvers",
+        title="Run Resolver Passes",
+        description="Run framework resolver passes to add inferred edges (transitive tests, imports, TS aliases).",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+        ],
+    ),
+    Prompt(
+        name="csegraph-export",
+        title="Export Graph",
+        description="Export the csegraph index to GraphML, Obsidian vault, or portable JSON.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="format", description="graphml, obsidian, or json (default: graphml).", required=False),
+            PromptArgument(name="output", description="Output file or directory path.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-architecture",
+        title="Architecture Overview",
+        description="Generate community summaries and an architecture overview with coupling analysis.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="limit", description="Max communities to summarize (default: 20).", required=False),
+        ],
+    ),
+    Prompt(
         name="csegraph-pre-merge",
         title="Pre-Merge Check",
         description="Run a pre-merge workflow using csegraph context and structural checks.",
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Optional merge or PR description.", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-embeddings",
+        title="Code Embeddings",
+        description="Compute or search code embeddings for semantic similarity search.",
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(name="action", description="compute, search, status, or clear.", required=True),
+            PromptArgument(name="query", description="Search query (for search action).", required=False),
+        ],
+    ),
+    Prompt(
+        name="csegraph-registry",
+        title="Multi-Repo Registry",
+        description="Register, list, or check status of tracked repositories in the multi-repo registry.",
+        arguments=[
+            PromptArgument(name="action", description="register, unregister, list, or status.", required=True),
+            PromptArgument(name="repo", description="Absolute repository path (for register).", required=False),
+            PromptArgument(name="alias", description="Repo alias (for register/unregister/status).", required=False),
         ],
     ),
 ]
@@ -503,19 +974,29 @@ def _finalize_response_bytes(result: dict[str, Any]) -> None:
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
         from csegraph_core.index.services import IndexService
+        from csegraph_core.postprocess import PostprocessService
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(IndexService(db).index(repo, profile=profile))
+        result = IndexService(db).index(repo, profile=profile)
+        pp_level = arguments.get("postprocess_level", "full")
+        if pp_level != "none":
+            PostprocessService(db).postprocess(level=pp_level)
+        return to_dict(result)
 
     if name == "csegraph_refresh":
         from csegraph_core.index.services import RefreshService
+        from csegraph_core.postprocess import PostprocessService
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(RefreshService(db).refresh(profile=profile))
+        result = RefreshService(db).refresh(profile=profile)
+        pp_level = arguments.get("postprocess_level", "full")
+        if pp_level != "none" and result.files_indexed > 0:
+            PostprocessService(db).postprocess(level=pp_level)
+        return to_dict(result)
 
     if name == "csegraph_minimal":
         from csegraph_core.retrieval.minimal import MinimalService
@@ -579,6 +1060,148 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             )
         )
 
+    if name == "csegraph_detect_changes":
+        from csegraph_core.graph.change_detection import ChangeDetectionService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        base_ref = arguments.get("base_ref", "HEAD~1")
+        return to_dict(ChangeDetectionService(db).detect_changes(base_ref=base_ref))
+
+    if name == "csegraph_test_gaps":
+        from csegraph_core.graph.test_gaps import TestGapService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        limit = arguments.get("limit", 20)
+        return to_dict(TestGapService(db).analyze(limit=limit))
+
+    if name == "csegraph_review_questions":
+        from csegraph_core.graph.review_questions import ReviewQuestionsService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        base_ref = arguments.get("base_ref", "HEAD~1")
+        return to_dict(ReviewQuestionsService(db).generate(base_ref=base_ref))
+
+    if name == "csegraph_review_eval":
+        from csegraph_core.graph.review_eval import ReviewEvalService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        base_ref = arguments.get("base_ref", "HEAD~1")
+        ground_truth_ids = arguments["ground_truth_ids"]
+        risk_threshold = arguments.get("risk_threshold", "medium")
+        return to_dict(ReviewEvalService(db).evaluate(
+            ground_truth_ids=ground_truth_ids,
+            base_ref=base_ref,
+            risk_threshold=risk_threshold,
+        ))
+
+    if name == "csegraph_vulnerabilities":
+        from csegraph_core.graph.vulnerabilities import VulnerabilityService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        limit = arguments.get("limit", 50)
+        return to_dict(VulnerabilityService(db).scan(limit=limit))
+
+    if name == "csegraph_architecture":
+        from csegraph_core.graph.architecture import ArchitectureService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        limit = arguments.get("limit", 20)
+        return to_dict(ArchitectureService(db).overview(limit=limit))
+
+    if name == "csegraph_flows":
+        from csegraph_core.graph.flows import FlowService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(FlowService(db).trace(
+            entry_point=arguments.get("entry_point"),
+            max_depth=arguments.get("max_depth", 10),
+            limit=arguments.get("limit", 20),
+        ))
+
+    if name == "csegraph_resolvers":
+        from csegraph_core.graph.resolvers import ResolverService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        return to_dict(ResolverService(db).run_all())
+
+    if name == "csegraph_export":
+        from csegraph_core.graph.exports import ExportService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        fmt = arguments.get("format", "graphml")
+        output = arguments.get("output")
+        if not output:
+            db_p = Path(db).resolve()
+            suffix_map = {"graphml": "csegraph-graph.graphml", "json": "csegraph-export.json", "obsidian": "csegraph-vault"}
+            output = str(db_p.with_name(suffix_map.get(fmt, "csegraph-export")))
+        return to_dict(ExportService(db).export(output, fmt=fmt))
+
+    if name == "csegraph_embeddings":
+        from csegraph_core.graph.embeddings import EmbeddingService
+
+        repo = arguments["repo"]
+        db = _db_path(repo, arguments.get("db"))
+        action = arguments["action"]
+        svc = EmbeddingService(
+            db,
+            model=arguments.get("model"),
+            provider=arguments.get("provider", "local"),
+            endpoint=arguments.get("endpoint"),
+        )
+        if action == "compute":
+            return to_dict(svc.compute())
+        if action == "search":
+            query = arguments.get("query")
+            if not query:
+                raise ValueError("query is required for search action")
+            return to_dict(svc.search(
+                query,
+                top_k=arguments.get("top_k", 10),
+                hybrid=arguments.get("hybrid", True),
+            ))
+        if action == "status":
+            return to_dict(svc.status())
+        if action == "clear":
+            return to_dict(svc.clear())
+        raise ValueError(f"Unknown embeddings action: {action}")
+
+    if name == "csegraph_registry":
+        from csegraph_core.registry import RegistryService
+
+        svc = RegistryService()
+        action = arguments["action"]
+        if action == "register":
+            repo = arguments.get("repo")
+            if not repo:
+                raise ValueError("repo is required for register action")
+            return to_dict(svc.register(
+                repo,
+                alias=arguments.get("alias"),
+                profile=arguments.get("profile", "medium"),
+            ))
+        if action == "unregister":
+            alias = arguments.get("alias")
+            if not alias:
+                raise ValueError("alias is required for unregister action")
+            return to_dict(svc.unregister(alias))
+        if action == "list":
+            return to_dict(svc.list())
+        if action == "status":
+            alias = arguments.get("alias")
+            if not alias:
+                raise ValueError("alias is required for status action")
+            return to_dict(svc.status(alias))
+        raise ValueError(f"Unknown registry action: {action}")
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -586,67 +1209,213 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
     args = arguments or {}
     if name == "csegraph-index":
         text = _prompt_text(
-            "Build or rebuild the repository index.",
+            "Build or rebuild the csegraph repository index.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_index` with the repo path and optional profile.",
-                "Summarize files, symbols, edges, cache stats, and parse errors.",
+                "Call `csegraph_index` with the repo path and profile (default medium).",
+                "Report: files indexed, symbols, edges, cache hits/misses, parse errors.",
+                "If parse errors > 0, list them so the user can fix syntax before relying on the graph.",
             ],
             args,
         )
     elif name == "csegraph-refresh":
         text = _prompt_text(
-            "Refresh changed and deleted files in the existing index.",
+            "Incrementally refresh the csegraph index for changed and deleted files.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_refresh` with the repo path and optional profile.",
-                "Summarize changed, deleted, unchanged files, cache stats, and parse errors.",
+                "Call `csegraph_refresh` with the repo path and profile (default medium).",
+                "Report: changed files re-indexed, deleted files removed, unchanged files kept.",
+                "If parse errors appear on changed files, flag them.",
             ],
             args,
         )
     elif name == "csegraph-minimal":
         text = _prompt_text(
-            "Get a compact routing card before invoking heavier tools.",
+            "Get a compact routing card (~150 tokens) before invoking heavier tools.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
                 "Call `csegraph_minimal` with the repo and the user's task (if any).",
-                "Use the returned `next_tool_suggestions` to choose the next call; do not invoke unrelated tools.",
-                "Never make more than 3 tool calls in a single agent turn; prefer choosing one suggested next_tool.",
+                "If the routing card includes a stale-index warning, call `csegraph_refresh` before proceeding.",
+                "Read the `next_tool_suggestions` array. Call exactly one suggested tool — do not invoke tools not in the suggestions.",
+                "If suggestions are empty or the routing card says the graph is sufficient, stop — no further tool calls needed.",
             ],
             args,
         )
     elif name == "csegraph-context":
         text = _prompt_text(
-            "Retrieve graph-backed context for the task, starting with minimal if sufficient.",
+            "Retrieve task-specific context, starting minimal and escalating only when needed.",
             [
-                "If `repo` or `task` is missing, ask for it before calling tools.",
-                "Call `csegraph_context` with repo, task, optional target, detail_level=auto to start efficiently.",
-                "If returned_detail_level is minimal and sufficiency is met, avoid escalating to `csegraph_graph` or `csegraph_path` unless the task intent requires structural dependency checks.",
-                "If intent='debug' AND minimal returns >=3 key_entities, prefer calling `csegraph_context` with a focused target rather than broad graph traversals.",
-                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work and minimize follow-up tool calls.",
+                "Step 1: Call `csegraph_minimal` first to get the routing card (skip if already called this session).",
+                "Step 2: Call `csegraph_context` with detail_level=auto. Auto returns minimal if sufficient, standard otherwise.",
+                "Step 3 (only if needed): If returned_detail_level=minimal and you need source code, re-call with detail_level=standard and a focused target.",
+                "Step 4 (only if needed): If a structural dependency question remains, call `csegraph_graph` for one key symbol with depth=1.",
+                "Stop after at most 3 tool calls total. Use the returned sufficiency metrics to decide whether more context is needed.",
+                "Do NOT call `csegraph_graph` or `csegraph_path` unless the task specifically requires structural/dependency information.",
+            ],
+            args,
+        )
+    elif name == "csegraph-detect-changes":
+        text = _prompt_text(
+            "Detect changed symbols and score review risk using the csegraph dependency graph.",
+            [
+                "Step 1: Call `csegraph_detect_changes` with the repo and base_ref (default HEAD~1).",
+                "Step 2: Focus review on the `high_risk` symbols first — they have the most callers and least test coverage.",
+                "Step 3 (only for high-risk symbols): Call `csegraph_graph` with depth=1 on at most one high-risk symbol to see its full blast radius.",
+                "Do NOT call more than 2 tools total.",
+                "Output: Summarize the risk breakdown (high/medium/low counts), then list each high-risk symbol with its risk factors.",
+            ],
+            args,
+        )
+    elif name == "csegraph-test-gaps":
+        text = _prompt_text(
+            "Identify untested symbols and coverage hotspots in the codebase.",
+            [
+                "Call `csegraph_test_gaps` with the repo path.",
+                "Report overall coverage percentage and the top untested hotspots.",
+                "For each hotspot, explain why it is high-priority (caller count, cross-community edges).",
+                "If community coverage data is available, highlight communities below 50% coverage.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-review-questions":
+        text = _prompt_text(
+            "Generate targeted review questions from change detection and graph structure.",
+            [
+                "Call `csegraph_review_questions` with the repo path and base_ref.",
+                "Present each question grouped by priority (P1 first, then P2, then P3).",
+                "For each question, note the related symbols and category.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-review-eval":
+        text = _prompt_text(
+            "Evaluate review intelligence precision and recall against known-risky symbols.",
+            [
+                "Call `csegraph_review_eval` with the repo path, ground_truth_ids, base_ref, and risk_threshold.",
+                "Report overall precision, recall, and F1.",
+                "List missed symbols and false alarms.",
+                "Report question coverage percentage.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-vulnerabilities":
+        text = _prompt_text(
+            "Scan the codebase for security vulnerabilities using the dependency graph.",
+            [
+                "Call `csegraph_vulnerabilities` with the repo path.",
+                "Report findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW, INFO).",
+                "For each vulnerability, explain the category, affected symbol, evidence, and recommended fix.",
+                "If critical or high findings exist, recommend immediate action items.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-flows":
+        text = _prompt_text(
+            "Trace execution flows from entry points through the call graph.",
+            [
+                "Call `csegraph_flows` with the repo path.",
+                "If the user asks about a specific function, pass it as entry_point.",
+                "Report flows sorted by criticality — higher criticality means more files, deeper chains, less test coverage.",
+                "For each high-criticality flow, explain the entry point, what it reaches, and which factors raised the score.",
+                "Highlight flows that touch security-sensitive code or cross multiple communities.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-resolvers":
+        text = _prompt_text(
+            "Run resolver passes to enrich the graph with inferred edges.",
+            [
+                "Call `csegraph_resolvers` with the repo path.",
+                "Report the total inferred edges added and per-resolver breakdown.",
+                "Transitive test edges extend test coverage tracking beyond direct calls.",
+                "Python import resolver retries unresolved imports via __init__.py and suffix matching.",
+                "TypeScript alias resolver uses tsconfig.json paths to resolve aliased imports.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-export":
+        text = _prompt_text(
+            "Export the csegraph index to an external format for browsing or visualization.",
+            [
+                "Call `csegraph_export` with the repo path and desired format (graphml, obsidian, or json).",
+                "Report the output path and the number of nodes/edges exported.",
+                "For obsidian, mention that the vault can be opened directly in Obsidian for linked browsing.",
+                "For graphml, mention that the file can be imported into Neo4j, Gephi, or yEd.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-architecture":
+        text = _prompt_text(
+            "Generate an architecture overview with community summaries and coupling analysis.",
+            [
+                "Call `csegraph_architecture` with the repo path.",
+                "Present each community with its label, size, key symbols, and language breakdown.",
+                "Highlight high-coupling pairs between communities as potential architectural concerns.",
+                "If warnings mention high coupling, recommend reviewing the dependency direction.",
+                "Do NOT call more than 1 tool.",
             ],
             args,
         )
     elif name == "csegraph-review":
         text = _prompt_text(
-            "Review the current work using csegraph before making recommendations.",
+            "Review current changes using change detection, context, and graph inspection.",
             [
-                "Call `csegraph_context` with detail_level=auto to start efficiently (returns minimal if sufficient, standard otherwise).",
-                "Never make more than 3 tool calls in a single agent turn; prefer compact context and a single neighborhood inspection when needed.",
-                "Use `csegraph_graph` for key changed symbols when a neighborhood clarifies blast radius.",
-                "Report findings first, ordered by severity, with file and symbol references.",
+                "Step 1: Call `csegraph_detect_changes` to get the risk-prioritized list of changed symbols.",
+                "Step 2: Call `csegraph_review_questions` to get targeted review questions from graph structure.",
+                "Step 3 (only if needed): Call `csegraph_context` with detail_level=auto and a task describing the review focus. If high-risk symbols were detected, pass the highest-risk one as target.",
+                "Do NOT call more than 3 tools total.",
+                "Output: List findings ordered by severity (blockers first, then warnings, then notes). Each finding must reference a file path and symbol name. Include the generated review questions.",
+                "If confidence_breakdown shows many INFERRED edges, note that some connections are heuristic and may need manual verification.",
             ],
             args,
         )
     elif name == "csegraph-pre-merge":
         text = _prompt_text(
-            "Run a pre-merge context and risk checklist.",
+            "Run a pre-merge checklist using change detection, context, and structural checks.",
             [
-                "Call `csegraph_refresh` first if the index may be stale.",
-                "Call `csegraph_context` with detail_level=auto for the merge or PR task; request standard only when source is needed.",
-                "Never make more than 3 tool calls in a single agent turn; prefer targeted context and a single structural check when necessary.",
-                "Use `csegraph_path` or `csegraph_graph` for any risky dependency questions.",
-                "Return blockers, residual risks, and verification commands.",
+                "Step 1: Call `csegraph_refresh` to ensure the index reflects the latest changes.",
+                "Step 2: Call `csegraph_detect_changes` with the base branch to get the risk-prioritized change list.",
+                "Step 3: Call `csegraph_test_gaps` to check test coverage of changed areas, `csegraph_review_questions` for targeted review questions, or `csegraph_vulnerabilities` for security issues.",
+                "Do NOT call more than 3 tools total.",
+                "Output a GO / NO-GO recommendation with:",
+                "  - Blockers: missing tests, broken call chains, unresolved symbols.",
+                "  - Risks: high-degree symbols modified, cross-community edges, INFERRED-confidence connections.",
+                "  - Verification: specific test commands or manual checks the reviewer should run.",
+            ],
+            args,
+        )
+    elif name == "csegraph-embeddings":
+        text = _prompt_text(
+            "Compute or search code embeddings for semantic similarity search.",
+            [
+                "Determine the user's intent: compute embeddings, search, check status, or clear cache.",
+                "For compute: Call `csegraph_embeddings` with action='compute'. Reports embedded/cached/skipped counts.",
+                "For search: Call `csegraph_embeddings` with action='search' and the user's query. hybrid=true (default) fuses with FTS.",
+                "For status: Call `csegraph_embeddings` with action='status'. Reports cache size and stale count.",
+                "For clear: Call `csegraph_embeddings` with action='clear'. Removes cached vectors for the current model.",
+                "If embeddings have not been computed yet, suggest running compute first.",
+                "Local provider (default) requires sentence-transformers; openai-compatible requires --endpoint.",
+                "Do NOT call more than 1 tool.",
+            ],
+            args,
+        )
+    elif name == "csegraph-registry":
+        text = _prompt_text(
+            "Manage the multi-repo registry for tracking multiple codebases.",
+            [
+                "Determine the user's intent: register a new repo, unregister, list all repos, or check a repo's status.",
+                "Call `csegraph_registry` with the appropriate action parameter.",
+                "For register: ask the user for the repo path if not provided. Alias defaults to directory name.",
+                "For status: show index health (nodes, edges, staleness) for the named repo.",
+                "For list: show all registered repos with their aliases and root paths.",
+                "Do NOT call more than 1 tool.",
             ],
             args,
         )
@@ -679,12 +1448,23 @@ def _prompt_text(goal: str, steps: list[str], arguments: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def create_server() -> Server:
+ALL_TOOL_NAMES = [t.name for t in _TOOLS]
+
+
+def create_server(*, allowed_tools: list[str] | None = None) -> Server:
+    if allowed_tools is not None:
+        unknown = set(allowed_tools) - {t.name for t in _TOOLS}
+        if unknown:
+            raise ValueError(f"Unknown tool names in --tools filter: {sorted(unknown)}")
+        tools = [t for t in _TOOLS if t.name in allowed_tools]
+    else:
+        tools = list(_TOOLS)
+
     server = Server("csegraph")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
-        return _TOOLS
+        return tools
 
     @server.list_prompts()
     async def list_prompts() -> list[Prompt]:
@@ -710,9 +1490,12 @@ def create_server() -> Server:
     return server
 
 
-async def run_stdio() -> None:
+async def run_stdio(*, allowed_tools: list[str] | None = None) -> None:
     import sys
-    print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
-    server = create_server()
+    server = create_server(allowed_tools=allowed_tools)
+    if allowed_tools:
+        print(f"csegraph MCP server running on stdio — exposing {len(allowed_tools)} tools", file=sys.stderr, flush=True)
+    else:
+        print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())

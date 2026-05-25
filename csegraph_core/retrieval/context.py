@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import itertools
 import math
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -46,6 +47,7 @@ class ContextService:
         detail_level = _validate_detail_level(detail_level)
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError("max_tokens must be a positive integer when provided.")
+        timings: Dict[str, float] = {}
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -53,20 +55,25 @@ class ContextService:
             repo_root = metadata["root_dir"]
             config = load_profile(profile, config_path=config_path, repo_root=repo_root)
 
+            t0 = time.perf_counter()
             symbols = load_symbols(index, exclude_heavy=True)
             summaries = load_summaries(index)
             outgoing, incoming = load_edge_maps(index)
+            timings["load_data"] = _elapsed_ms(t0)
 
             if not symbols:
                 raise ValueError("No symbols are indexed in this database.")
 
+            t0 = time.perf_counter()
             target_id = _resolve_target(target, task, symbols, summaries, index, repo_root=repo_root)
             fts_seed = fts_lexical_scores(index.conn, task)
             scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
             if target_id:
                 scores[target_id] += 4.0
                 evidence[target_id].append("target")
+            timings["scoring"] = _elapsed_ms(t0)
 
+            t0 = time.perf_counter()
             anchors = [target_id] if target_id else [
                 node_id for node_id, _ in heapq.nlargest(config.top_k, scores.items(), key=lambda item: item[1])
             ]
@@ -79,6 +86,7 @@ class ContextService:
                     index.conn,
                     symbols,
                 )
+            timings["graph_expansion"] = _elapsed_ms(t0)
 
             context_ids = _select_context_ids(
                 target_id,
@@ -99,6 +107,7 @@ class ContextService:
             )
             returned_detail_level = _returned_detail_level(detail_level, initial_sufficient)
 
+            t0 = time.perf_counter()
             nodes, metrics, sufficient = _build_detail_pass(
                 detail_level=returned_detail_level,
                 context_ids=context_ids,
@@ -141,6 +150,7 @@ class ContextService:
                     index=index,
                 )
                 returned_detail_level = "standard"
+            timings["detail_pass"] = _elapsed_ms(t0)
 
             final_raw_nodes = {node.id for node in nodes if node.raw_code}
             estimated_tokens = sum(node.estimated_tokens for node in nodes)
@@ -208,6 +218,7 @@ class ContextService:
                 warnings=_warnings(sufficient),
                 run_id=run_id,
                 confidence_breakdown=confidence_counts,
+                timings_ms=timings,
             )
         finally:
             index.close()
@@ -602,6 +613,10 @@ def _strip_source(node: ContextNode) -> ContextNode:
         reason=reason,
         explanation=build_explanation(reason) if node.explanation is not None else None,
     )
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 3)
 
 
 def _apply_token_budget(

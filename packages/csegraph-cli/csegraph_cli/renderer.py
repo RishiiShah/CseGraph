@@ -110,6 +110,216 @@ def render_benchmark_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_detect_changes_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_changed_symbols", 0)
+    files = len(payload.get("changed_files", []))
+    communities = payload.get("communities_affected", 0)
+    lines = [
+        f"Changed symbols: {total} across {files} file(s), {communities} community/ies affected",
+        "",
+    ]
+    for level, label in [("high_risk", "HIGH"), ("medium_risk", "MEDIUM"), ("low_risk", "LOW")]:
+        symbols = payload.get(level, [])
+        if not symbols:
+            continue
+        lines.append(f"  {label} ({len(symbols)}):")
+        for sym in symbols:
+            loc = f"{sym['path']}"
+            lr = sym.get("line_range")
+            if lr:
+                loc += f":{lr[0]}-{lr[1]}"
+            factors = ", ".join(sym.get("risk_factors", []))
+            lines.append(f"    {sym['name']} ({sym['kind']})  {loc}  [{factors}]")
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_test_gaps_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_symbols", 0)
+    tested = payload.get("tested_count", 0)
+    pct = payload.get("coverage_pct", 0.0)
+    lines = [
+        f"Test coverage: {pct}% ({tested}/{total} symbols tested)",
+        "",
+    ]
+    hotspots = payload.get("hotspots", [])
+    if hotspots:
+        lines.append(f"HOTSPOTS ({len(hotspots)} untested, ranked by risk):")
+        for sym in hotspots:
+            loc = sym["path"]
+            lr = sym.get("line_range")
+            if lr:
+                loc += f":{lr[0]}-{lr[1]}"
+            factors = ", ".join(sym.get("risk_factors", []))
+            suffix = f"  [{factors}]" if factors else ""
+            lines.append(f"  {sym['name']} ({sym['kind']})  {loc}{suffix}")
+        lines.append("")
+    comms = payload.get("community_coverage", [])
+    if comms:
+        lines.append("Community coverage:")
+        for c in comms:
+            hotspot_names = ", ".join(c.get("untested_hotspots", []))
+            suffix = f"  hotspots: {hotspot_names}" if hotspot_names else ""
+            lines.append(
+                f"  [{c['community_id']}] {c['coverage_pct']}% "
+                f"({c['tested_symbols']}/{c['total_symbols']}){suffix}"
+            )
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_review_questions_summary(payload: Dict[str, Any]) -> str:
+    questions = payload.get("questions", [])
+    if not questions:
+        return "No review questions generated.\n"
+    lines = [f"Review questions ({len(questions)}):", ""]
+    for q in questions:
+        lines.append(f"  [P{q['priority']}] {q['question']}")
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_review_eval_summary(payload: Dict[str, Any]) -> str:
+    lines = [
+        f"Review eval: precision={payload.get('overall_precision', 0):.3f} "
+        f"recall={payload.get('overall_recall', 0):.3f} "
+        f"F1={payload.get('overall_f1', 0):.3f}",
+        "",
+    ]
+    for level_key, label in [("high_risk", "HIGH"), ("medium_risk", "MEDIUM"), ("low_risk", "LOW")]:
+        m = payload.get(level_key, {})
+        if not m:
+            continue
+        lines.append(
+            f"  {label}:   P={m.get('precision', 0):.3f} R={m.get('recall', 0):.3f} "
+            f"F1={m.get('f1', 0):.3f}  "
+            f"(TP={m.get('true_positives', 0)}, FP={m.get('false_positives', 0)}, "
+            f"FN={m.get('false_negatives', 0)})"
+        )
+    lines.append("")
+    for sym in payload.get("missed_symbols", []):
+        lines.append(f"  Missed: {sym}")
+    for sym in payload.get("false_alarm_symbols", []):
+        lines.append(f"  False alarm: {sym}")
+    qc = payload.get("question_coverage", 0)
+    lines.append(f"  Question coverage: {qc * 100:.1f}%")
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_embeddings_summary(payload: Dict[str, Any]) -> str:
+    action = payload.get("action", "")
+    model = payload.get("model", "")
+    lines: List[str] = []
+
+    if action == "compute":
+        embedded = payload.get("nodes_embedded", 0)
+        cached = payload.get("nodes_cached", 0)
+        skipped = payload.get("nodes_skipped", 0)
+        lines.append(f"Embeddings compute: {embedded} embedded, {cached} cached, {skipped} skipped")
+        lines.append(f"  Model: {model}")
+    elif action == "search":
+        query = payload.get("query", "")
+        hits = payload.get("hits", [])
+        lines.append(f"Embedding search: \"{query}\" ({len(hits)} results)")
+        lines.append(f"  Model: {model}")
+        lines.append("")
+        for i, hit in enumerate(hits, 1):
+            loc = hit["path"]
+            lines.append(f"  {i}. {hit['name']} ({hit['kind']})  {loc}  score={hit['score']:.4f}  [{hit['source']}]")
+    elif action == "status":
+        embedded = payload.get("nodes_embedded", 0)
+        stale = payload.get("nodes_skipped", 0)
+        lines.append(f"Embedding cache: {embedded} vectors")
+        lines.append(f"  Model: {model}")
+        if stale:
+            lines.append(f"  Stale: {stale}")
+    elif action == "clear":
+        deleted = payload.get("nodes_embedded", 0)
+        lines.append(f"Embedding cache cleared: {deleted} vectors removed")
+        lines.append(f"  Model: {model}")
+    else:
+        lines.append(f"Embeddings: {action}")
+
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_export_summary(payload: Dict[str, Any]) -> str:
+    fmt = payload.get("format", "unknown")
+    out = payload.get("output_path", "")
+    nodes = payload.get("total_nodes", 0)
+    edges = payload.get("total_edges", 0)
+    files = payload.get("files_written", 0)
+    lines = [
+        f"Exported {fmt}: {nodes:,} nodes, {edges:,} edges",
+        f"  Output: {out}",
+        f"  Files written: {files}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def render_architecture_summary(payload: Dict[str, Any]) -> str:
+    num = payload.get("num_communities", 0)
+    lines = [
+        f"Architecture: {num} communities, "
+        f"{payload.get('total_nodes', 0):,} nodes, "
+        f"{payload.get('total_edges', 0):,} edges",
+        "",
+    ]
+    for s in payload.get("summaries", []):
+        langs = ", ".join(f"{k}:{v}" for k, v in (s.get("languages") or {}).items())
+        lines.append(
+            f"  [{s['community_id']}] {s['label']}  "
+            f"({s['size']} nodes, {s['files']} files, "
+            f"{s['internal_edges']} internal / {s['cross_edges']} cross edges)"
+        )
+        if langs:
+            lines.append(f"       Languages: {langs}")
+        key_syms = s.get("key_symbols", [])
+        if key_syms:
+            names = ", ".join(f"{ks['name']}({ks['degree']})" for ks in key_syms[:3])
+            lines.append(f"       Key symbols: {names}")
+    lines.append("")
+    coupling = payload.get("coupling", [])
+    if coupling:
+        lines.append("Coupling:")
+        for cp in coupling[:10]:
+            rels = ", ".join(f"{k}:{v}" for k, v in (cp.get("relations") or {}).items())
+            lines.append(
+                f"  [{cp['community_a']}] {cp['label_a']} <-> "
+                f"[{cp['community_b']}] {cp['label_b']}  "
+                f"({cp['weight']} edges: {rels})"
+            )
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_communities_summary(payload: Dict[str, Any]) -> str:
     lines = [
         f"Communities: {payload.get('num_communities', 0)} detected  "
@@ -183,6 +393,8 @@ def render_postprocess_summary(payload: Dict[str, Any]) -> str:
     parts = []
     if "fts" not in payload.get("skipped", []):
         parts.append(f"{payload.get('fts_entries', 0):,} FTS entries")
+    if "resolvers" not in payload.get("skipped", []):
+        parts.append(f"{payload.get('resolvers_edges_added', 0)} inferred edges")
     if "communities" not in payload.get("skipped", []):
         parts.append(f"{payload.get('communities_detected', 0)} communities")
     if not parts:
@@ -279,6 +491,110 @@ def _line_range_text(line_range: Optional[List[int]]) -> str:
     if not line_range:
         return ""
     return f":{line_range[0]}-{line_range[1]}"
+
+
+def render_vulnerabilities_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_vulnerabilities", 0)
+    lines = [
+        f"Vulnerability scan: {total} issue(s) found",
+        f"Categories: {', '.join(payload.get('scan_categories', []))}",
+        "",
+    ]
+    for level, label in [
+        ("critical", "CRITICAL"),
+        ("high", "HIGH"),
+        ("medium", "MEDIUM"),
+        ("low", "LOW"),
+        ("info", "INFO"),
+    ]:
+        items = payload.get(level, [])
+        if not items:
+            continue
+        lines.append(f"  {label} ({len(items)}):")
+        for v in items:
+            loc = v["path"]
+            lr = v.get("line_range")
+            if lr:
+                loc += f":{lr[0]}-{lr[1]}"
+            evidence = ", ".join(v.get("evidence", []))
+            lines.append(f"    [{v['category']}] {v['symbol_name']} ({v['symbol_kind']})  {loc}")
+            lines.append(f"      {v['description']}")
+            if evidence:
+                lines.append(f"      Evidence: {evidence}")
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_flows_summary(payload: Dict[str, Any]) -> str:
+    total_ep = payload.get("total_entry_points", 0)
+    total_flows = payload.get("total_flows", 0)
+    lines = [
+        f"Flow tracing: {total_flows} flows from {total_ep} entry points",
+        "",
+    ]
+    for flow in payload.get("flows", []):
+        ep = flow.get("entry_point", {})
+        loc = ep.get("path", "")
+        lr = ep.get("line_range")
+        if lr:
+            loc += f":{lr[0]}-{lr[1]}"
+        reason = ep.get("detection_reason", "")
+        crit = flow.get("criticality", 0)
+        crit_bar = _criticality_bar(crit)
+        lines.append(
+            f"  {ep.get('name', '?')} ({ep.get('kind', '?')})  {loc}"
+        )
+        lines.append(
+            f"    {crit_bar} criticality={crit:.2f}  "
+            f"depth={flow.get('depth', 0)}  "
+            f"nodes={flow.get('node_count', 0)}  "
+            f"files={flow.get('file_count', 0)}  "
+            f"[{reason}]"
+        )
+        factors = flow.get("criticality_factors", [])
+        if factors:
+            lines.append(f"    Factors: {', '.join(factors)}")
+        tested = "yes" if flow.get("has_test_coverage") else "no"
+        lines.append(f"    Test coverage: {tested}")
+        steps = flow.get("steps", [])
+        if steps:
+            shown = steps[:5]
+            step_names = ", ".join(
+                f"{s['name']}(d={s['depth']})" for s in shown
+            )
+            suffix = f" ... +{len(steps) - 5} more" if len(steps) > 5 else ""
+            lines.append(f"    Calls: {step_names}{suffix}")
+        lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _criticality_bar(value: float) -> str:
+    filled = round(value * 5)
+    return "[" + "#" * filled + "." * (5 - filled) + "]"
+
+
+def render_resolvers_summary(payload: Dict[str, Any]) -> str:
+    total = payload.get("total_edges_added", 0)
+    lines = [
+        f"Resolver passes: {total} inferred edges added",
+        "",
+    ]
+    for r in payload.get("resolvers_run", []):
+        lines.append(f"  {r['name']}: +{r['edges_added']} edges ({r['edges_skipped']} skipped)")
+    lines.append("")
+    for warning in payload.get("warnings", []):
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+    return "\n".join(lines)
 
 
 def render_report_markdown(payload: Dict[str, Any]) -> str:
@@ -457,3 +773,41 @@ def _benchmark_stats(stats: Dict[str, Any]) -> str:
     )
     parts = [f"{key}={stats[key]}" for key in preferred if key in stats]
     return ", ".join(parts)
+
+
+def render_registry_summary(payload: Dict[str, Any]) -> str:
+    action = payload.get("action", "")
+    entries = payload.get("entries", [])
+    message = payload.get("message", "")
+
+    if action in ("registered", "updated", "unregistered"):
+        lines = [message]
+        for e in entries:
+            lines.append(f"  Alias:   {e['alias']}")
+            lines.append(f"  Root:    {e['root']}")
+            lines.append(f"  DB:      {e['db']}")
+            lines.append(f"  Profile: {e['profile']}")
+        return "\n".join(lines) + "\n"
+
+    if action == "status":
+        lines = [message]
+        return "\n".join(lines) + "\n"
+
+    lines = [message, ""]
+    if not entries:
+        lines.append("  (no repos registered)")
+    for e in entries:
+        lines.append(f"  {e['alias']:<20} {e['root']}")
+        lines.append(f"  {'':20} db={e['db']}  profile={e['profile']}")
+    return "\n".join(lines) + "\n"
+
+
+def render_daemon_summary(payload: Dict[str, Any]) -> str:
+    message = payload.get("message", "")
+    entries = payload.get("entries", [])
+    lines = [message, ""]
+    for e in entries:
+        pid_str = f"pid={e['pid']}" if e.get("pid") else ""
+        err_str = f"  error: {e['error']}" if e.get("error") else ""
+        lines.append(f"  {e['alias']:<20} [{e['status']}] {e['root']}  {pid_str}{err_str}")
+    return "\n".join(lines) + "\n"

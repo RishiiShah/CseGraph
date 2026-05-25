@@ -62,7 +62,7 @@ def test_v140_package_layout_and_versions():
     assert root_project["name"] == "csegraph-core"
     assert root_project["version"] == "1.6.0"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"test"}
+    assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
@@ -241,3 +241,49 @@ def test_status_and_postprocess_exports():
     assert PostprocessService is SDKPostprocessService
     assert StatusResult is SDKStatusResult
     assert PostprocessResult is SDKPostprocessResult
+
+
+def test_sdk_core_full_parity():
+    import csegraph_core
+    import csegraph
+
+    core_all = set(csegraph_core.__all__)
+    sdk_all = set(csegraph.__all__)
+
+    assert core_all == sdk_all, (
+        f"core-only: {sorted(core_all - sdk_all)}, sdk-only: {sorted(sdk_all - core_all)}"
+    )
+
+    for name in sorted(core_all):
+        if name == "__version__":
+            continue
+        assert getattr(csegraph, name) is getattr(csegraph_core, name), (
+            f"SDK re-export {name} is not the same object as core"
+        )
+
+
+def test_review_intelligence_sdk_exports():
+    from csegraph import (
+        TestGapService,
+        TestGapResult,
+        UntestedSymbol,
+        CommunityCoverage,
+        ReviewQuestionsService,
+        ReviewQuestionsResult,
+        ReviewQuestion,
+        ReviewEvalService,
+        ReviewEvalResult,
+        RiskLevelMetrics,
+    )
+    import csegraph_core
+
+    assert TestGapService is csegraph_core.TestGapService
+    assert TestGapResult is csegraph_core.TestGapResult
+    assert UntestedSymbol is csegraph_core.UntestedSymbol
+    assert CommunityCoverage is csegraph_core.CommunityCoverage
+    assert ReviewQuestionsService is csegraph_core.ReviewQuestionsService
+    assert ReviewQuestionsResult is csegraph_core.ReviewQuestionsResult
+    assert ReviewQuestion is csegraph_core.ReviewQuestion
+    assert ReviewEvalService is csegraph_core.ReviewEvalService
+    assert ReviewEvalResult is csegraph_core.ReviewEvalResult
+    assert RiskLevelMetrics is csegraph_core.RiskLevelMetrics

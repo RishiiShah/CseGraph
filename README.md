@@ -17,6 +17,7 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 | `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
 | `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
 | `csegraph-cli` | `packages/csegraph-cli/` | CLI with indexing, refresh, retrieval, graph inspection, reports, maintenance commands, and MCP stdio serving. |
+| `csegraph-vscode` | `packages/csegraph-vscode/` | VS Code extension: commands, status bar, auto-refresh on save, right-click inspect. See [extension README](packages/csegraph-vscode/README.md) for CLI discovery and troubleshooting. |
 
 Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
 
@@ -33,14 +34,19 @@ env/bin/pip install -e packages/csegraph-cli/
 ## Base Commands
 
 ```bash
-csegraph index                    # Build the repository index
+csegraph index                    # Build the repository index (auto-postprocess: full)
+csegraph index --postprocess minimal  # Index with FTS only (skip community detection)
+csegraph index --postprocess none     # Index without postprocessing (fastest)
 csegraph refresh                  # Incremental refresh for changed/deleted files
+csegraph refresh --postprocess none   # Refresh without postprocessing
 csegraph context "task"           # Retrieve context (detail_level=auto: minimal if sufficient, else standard)
 csegraph context "task" --detail-level standard  # Request working context with source
 csegraph context "task" --detail-level full --explain  # Full context with explanations
 csegraph context "task" --target symbol --format markdown
 csegraph status --verbose         # Graph health and staleness
-csegraph postprocess              # Rebuild FTS and communities without re-parsing
+csegraph postprocess              # Rebuild FTS and communities without re-parsing (level: full)
+csegraph postprocess --level minimal  # FTS only, skip community detection
+csegraph postprocess --level none     # Skip all postprocessing
 csegraph inspect symbol --depth 1 # Graph neighborhood
 csegraph path source target       # Shortest path between nodes
 csegraph graph                    # Generate interactive HTML graph
@@ -49,26 +55,66 @@ csegraph communities              # Detect graph communities
 csegraph report --json            # Structural report
 csegraph hooks install            # Install git auto-refresh hooks
 csegraph watch                    # Auto-refresh on file changes
+csegraph detect-changes --base-ref main  # Risk-scored changed symbols
+csegraph vulnerabilities              # Scan for security vulnerabilities
+csegraph vulnerabilities --limit 10   # Limit results per severity level
+csegraph flows                        # Trace execution flows from auto-detected entry points
+csegraph flows --entry-point main     # Trace from a specific entry point
+csegraph flows --limit 10 --max-depth 8  # Limit flows and trace depth
+csegraph resolvers                    # Run resolver passes (transitive tests, imports, TS aliases)
+csegraph architecture                 # Community summaries and architecture overview
+csegraph architecture --limit 5       # Limit number of community summaries
+csegraph export                       # Export graph as GraphML (default)
+csegraph export --format obsidian     # Export as Obsidian vault of linked notes
+csegraph export --format json -o out.json  # Portable JSON graph dump
+csegraph embeddings compute           # Embed all symbols (requires sentence-transformers)
+csegraph embeddings search "auth login" --top-k 5  # Semantic search (hybrid with FTS)
+csegraph embeddings status            # Show embedding cache stats
+csegraph embeddings clear             # Clear embedding cache
 csegraph benchmark --target symbol
-csegraph serve                    # Start MCP stdio server
+csegraph serve                    # Start MCP stdio server (all tools)
+csegraph serve --tools csegraph_minimal,csegraph_context  # Expose only selected tools
 csegraph install                  # Configure local MCP client files
 csegraph install --platform cursor --dry-run --json
+csegraph install --platform vscode    # Write .vscode/ settings, tasks, extension recommendation
+csegraph install --instructions   # Generate CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md
+csegraph install --hooks          # Install agent hooks (auto-refresh, status checks)
+csegraph install --instructions --hooks  # Full agent onboarding
+csegraph registry register /path/to/repo --alias myapp  # Register a repo
+csegraph registry list            # List all registered repos
+csegraph registry status myapp    # Check index health for a registered repo
+csegraph registry unregister myapp  # Remove a repo from the registry
+csegraph daemon start             # Start watchers for all registered repos
+csegraph daemon start --alias myapp  # Start watcher for one repo
+csegraph daemon status            # Show running watchers
+csegraph daemon stop              # Stop all watchers
 ```
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
 
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
 
-AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot` to target one client.
+AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot|vscode` to target one client. Use `--platform vscode` to write VS Code settings, tasks, and extension recommendations for the csegraph-vscode extension. Add `--instructions` to generate platform instruction files that tell agents to use csegraph first. Add `--hooks` to install agent hooks for automatic index refresh after file edits.
 
 | Tool | Description | Key args |
 |---|---|---|
-| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile` |
-| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile` |
-| `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. | `repo`, `task` |
-| `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `detail_level`, `max_bytes` |
-| `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes` |
-| `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS; supports relation filter. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_bytes` |
+| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db`, `postprocess_level` |
+| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db`, `postprocess_level` |
+| `csegraph_minimal` | Compact routing card (call first): summary + top-degree entities + task-routed next-tool suggestions. | `repo`, `task`, `db` |
+| `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `profile`, `detail_level`, `include_source`, `max_tokens`, `max_bytes`, `explain`, `db` |
+| `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
+| `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS via SQLite recursive CTE with relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
+| `csegraph_detect_changes` | Detect changed symbols between current state and a base git ref, score each by review risk (caller count, cross-community edges, test coverage). | `repo`, `base_ref`, `db` |
+| `csegraph_test_gaps` | Analyze test coverage gaps — untested symbols ranked by hotspot score, per-community coverage. | `repo`, `limit`, `db` |
+| `csegraph_review_questions` | Generate targeted review questions from change detection and graph structure. | `repo`, `base_ref`, `db` |
+| `csegraph_review_eval` | Evaluate review intelligence precision/recall against ground-truth known-risky symbols. | `repo`, `ground_truth_ids`, `base_ref`, `risk_threshold`, `db` |
+| `csegraph_vulnerabilities` | Scan for security vulnerabilities — dangerous calls, untested security code, hardcoded secrets, high-exposure sinks. | `repo`, `limit`, `db` |
+| `csegraph_architecture` | Community summaries and architecture overview — auto-labeled communities, key symbols, coupling analysis. | `repo`, `limit`, `db` |
+| `csegraph_flows` | Trace execution flows from entry points through the call graph, ranked by criticality (file spread, depth, cross-community, test gaps, security). | `repo`, `entry_point`, `max_depth`, `limit`, `db` |
+| `csegraph_resolvers` | Run resolver passes to add inferred edges — transitive test coverage, Python import fallback, TypeScript alias resolution. Idempotent. | `repo`, `db` |
+| `csegraph_export` | Export graph to GraphML (Neo4j/Gephi/yEd), Obsidian vault (linked markdown notes), or portable JSON. | `repo`, `format`, `output`, `db` |
+| `csegraph_embeddings` | Compute or search code embeddings. Local sentence-transformers by default, optional OpenAI-compatible endpoint. Hybrid search fuses embeddings with FTS via Reciprocal Rank Fusion. | `action`, `repo`, `query`, `top_k`, `hybrid`, `model`, `provider`, `endpoint`, `db` |
+| `csegraph_registry` | Manage the multi-repo registry — register, unregister, list, or check status of tracked repositories. | `action`, `repo`, `alias`, `profile` |
 
 The MCP surface stays focused on context delivery to agents. Visualization, community detection, and structural reports remain available as local CLI commands (`csegraph graph|tree|communities|report`) for human inspection.
 
@@ -83,7 +129,7 @@ Every MCP response carries metadata that agents can use to triage and gate furth
 | `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
 | `response_bytes` | every response | Exact serialized JSON size in bytes. |
 | `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Drop order: `source_text` → `explanation` → trim `nodes` from the tail → trim `edges` from the tail. |
-| `confidence_breakdown` | `csegraph_graph`, `csegraph_path` | `{"EXTRACTED": N, "INFERRED": M, "AMBIGUOUS": K}` — edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
+| `confidence_breakdown` | `csegraph_graph`, `csegraph_path`, `csegraph_context` | `{"EXTRACTED": N, "INFERRED": M, "AMBIGUOUS": K}` — edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
 | `hubs_skipped` | `csegraph_graph`, `csegraph_path` | Number of high-degree utility nodes BFS refused to expand through. |
 | `relations_filter` | `csegraph_graph`, `csegraph_path` | Echo of the `relations` arg applied to traversal, for transparency. |
 | `next_tool_suggestions`, `next_actions` | `csegraph_minimal`, `csegraph_context` | Routing recommendations, already filtered against `tools_already_called`. |
@@ -96,8 +142,19 @@ MCP prompts are workflow templates that clients may expose as slash commands.
 | `csegraph-refresh` | Ask the agent to refresh changed files with `csegraph_refresh`. |
 | `csegraph-minimal` | Call `csegraph_minimal` first for a routing card. |
 | `csegraph-context` | Retrieve task-specific context with `csegraph_context`. |
-| `csegraph-review` | Review changes with context and graph tools. |
+| `csegraph-detect-changes` | Detect changed symbols and score review risk. |
+| `csegraph-test-gaps` | Identify untested symbols and coverage hotspots. |
+| `csegraph-review-questions` | Generate review questions from change detection and graph structure. |
+| `csegraph-review-eval` | Evaluate review intelligence against known-risky symbols. |
+| `csegraph-review` | Review changes with change detection, context, and graph tools. |
+| `csegraph-vulnerabilities` | Scan the codebase for security vulnerabilities using the dependency graph. |
+| `csegraph-flows` | Trace execution flows from entry points, ranked by criticality. |
+| `csegraph-resolvers` | Run resolver passes to add inferred edges (transitive tests, imports, TS aliases). |
+| `csegraph-export` | Export the graph to GraphML, Obsidian vault, or portable JSON. |
+| `csegraph-architecture` | Generate community summaries and architecture overview with coupling analysis. |
 | `csegraph-pre-merge` | Run a pre-merge context and risk checklist. |
+| `csegraph-embeddings` | Compute or search code embeddings for semantic similarity search. |
+| `csegraph-registry` | Register, list, or check status of tracked repos in the multi-repo registry. |
 
 ## .csegraphignore
 
@@ -106,18 +163,30 @@ Place a `.csegraphignore` file in the repository root to exclude files and direc
 ## SDK
 
 ```python
-from csegraph import BenchmarkService, ContextService, GraphQueryService, IndexService, RefreshService
+from csegraph import (
+    BenchmarkService, ContextService, GraphQueryService,
+    IndexService, MinimalService, RefreshService,
+    StatusService, ReportService, PostprocessService,
+)
 
 IndexService(".csegraph/index.db").index(".", profile="medium")
 RefreshService(".csegraph/index.db").refresh(profile="medium")
 
+# Routing card (call first — ~150 tokens)
+routing = MinimalService(".csegraph/index.db").build_minimal(task="fix auth bug")
+
+# Task-specific context
 context = ContextService(".csegraph/index.db").build_context(
     task="fix auth token refresh bug",
     target="refresh_token",
     profile="medium",
 )
 
+# Graph inspection
 graph = GraphQueryService(".csegraph/index.db").neighborhood("refresh_token", depth=1)
+
+# Other services
+status = StatusService(".csegraph/index.db").status()
 benchmark = BenchmarkService(".csegraph/index.db").run(".", target="refresh_token")
 ```
 
@@ -141,7 +210,10 @@ All detail levels return the same `nodes` array structure; they differ in what's
 ## Development
 
 ```bash
-env/bin/python -m pytest tests/ -q
-env/bin/python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
-env/bin/python -m csegraph_cli --help
+pytest                              # Full test suite (666 tests)
+pytest tests/unit/                  # Unit tests only
+pytest tests/integration/           # Integration tests only
+pytest -x -q                        # Stop on first failure, quiet
+python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
+csegraph --help
 ```
