@@ -325,6 +325,95 @@ _PROMPTS: list[Prompt] = [
             PromptArgument(name="target", description="Optional symbol, node ID, or file path.", required=False),
         ],
     ),
+    Prompt(
+        name="csegraph-debug-issue",
+        title="Debug Issue",
+        description=(
+            "Guided debugging using the routing card, task context, and one graph neighborhood. "
+            "Replaces broad grep and full-file reads."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="description",
+                description="Bug symptom, error message, or failing behavior.",
+                required=True,
+            ),
+            PromptArgument(
+                name="target",
+                description="Optional failing symbol, file path, or node ID.",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-review-changes",
+        title="Review Changes",
+        description=(
+            "Pre-commit review workflow using graph-backed context. "
+            "Use terminal `csegraph detect-changes` for git-scoped risk lists (CLI-only)."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="task",
+                description="What changed or what to review (e.g. auth module edits).",
+                required=True,
+            ),
+            PromptArgument(
+                name="base",
+                description="Optional git base ref for human CLI diff commands (default HEAD~1).",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-pre-merge-check",
+        title="Pre-Merge Check",
+        description=(
+            "PR readiness using minimal routing, task context, and optional dependency inspection. "
+            "Stays within the six core MCP tools."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="task",
+                description="Merge or PR summary (branch purpose, risky areas).",
+                required=True,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-explore-architecture",
+        title="Explore Architecture",
+        description=(
+            "Map subsystem structure with a routing card and hub-aware graph neighborhood. "
+            "For human HTML exports use CLI `csegraph graph`."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="focus",
+                description="Optional subsystem, symbol, or area to explore.",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-onboard-developer",
+        title="Onboard Developer",
+        description=(
+            "Orient a new contributor: routing card, overview context, and one structural graph call."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="focus",
+                description="Optional area of interest (e.g. retrieval, MCP server).",
+                required=False,
+            ),
+        ],
+    ),
 ]
 
 _CORE_MCP_PROMPT_NAMES = (
@@ -332,6 +421,11 @@ _CORE_MCP_PROMPT_NAMES = (
     "csegraph-refresh",
     "csegraph-minimal",
     "csegraph-context",
+    "csegraph-debug-issue",
+    "csegraph-review-changes",
+    "csegraph-pre-merge-check",
+    "csegraph-explore-architecture",
+    "csegraph-onboard-developer",
 )
 _PROMPTS = [prompt for prompt in _PROMPTS if prompt.name in _CORE_MCP_PROMPT_NAMES]
 
@@ -340,6 +434,11 @@ _PROMPT_TOOL_DEPENDENCIES: dict[str, set[str]] = {
     "csegraph-refresh": {"csegraph_refresh"},
     "csegraph-minimal": {"csegraph_minimal"},
     "csegraph-context": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+    "csegraph-debug-issue": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+    "csegraph-review-changes": {"csegraph_refresh", "csegraph_minimal", "csegraph_context"},
+    "csegraph-pre-merge-check": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+    "csegraph-explore-architecture": {"csegraph_minimal", "csegraph_graph"},
+    "csegraph-onboard-developer": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
 }
 
 
@@ -839,6 +938,79 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "Step 4 (only if needed): If a structural dependency question remains, call `csegraph_graph` for one key symbol with depth=1.",
                 "Stop after at most 3 tool calls total. Use the returned sufficiency metrics to decide whether more context is needed.",
                 "Do NOT call `csegraph_graph` or `csegraph_path` unless the task specifically requires structural/dependency information.",
+            ],
+            args,
+        )
+    elif name == "csegraph-debug-issue":
+        text = _prompt_text(
+            "Debug a reported issue using graph-backed context instead of repo-wide search.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` with task set to the issue description.",
+                "If the routing card warns the index is stale, call `csegraph_refresh` (counts toward the 3-call limit).",
+                "Step 2: Call `csegraph_context` with task=description, target if provided, detail_level=auto.",
+                "Step 3 (only if needed): Call `csegraph_graph` on the failing symbol with depth=1 and detail_level=minimal.",
+                "Do not use broad grep or read whole files unless context is insufficient after these steps.",
+                "Stop after at most 3 csegraph MCP tool calls.",
+            ],
+            args,
+        )
+    elif name == "csegraph-review-changes":
+        base = args.get("base", "HEAD~1")
+        text = _prompt_text(
+            "Review recent changes using compact graph context (context-engine workflow).",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Optional (human terminal, not MCP): run `csegraph detect-changes --base-ref "
+                + repr(base)
+                + "` for a risk-ranked change list.",
+                "Step 1: Call `csegraph_refresh` so the index matches working tree.",
+                "Step 2: Call `csegraph_minimal` with the review task.",
+                "Step 3: Call `csegraph_context` with detail_level=auto and targets from the change list or task.",
+                "Prefer graph-backed context over reading entire changed files.",
+                "Stop after at most 3 csegraph MCP tool calls.",
+            ],
+            args,
+        )
+    elif name == "csegraph-pre-merge-check":
+        text = _prompt_text(
+            "Assess merge/PR readiness with minimal context cost.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` with the merge/PR task summary.",
+                "Step 2: Call `csegraph_context` with detail_level=auto on the highest-risk areas mentioned.",
+                "Step 3 (only if needed): Call `csegraph_graph` with depth=1 on one critical symbol.",
+                "Report: sufficiency metrics, stale-index warnings, and whether more context is needed.",
+                "Do not invoke review-only MCP tools; use CLI diagnostics only if the user asks.",
+                "Stop after at most 3 csegraph MCP tool calls.",
+            ],
+            args,
+        )
+    elif name == "csegraph-explore-architecture":
+        focus = args.get("focus") or "a high-degree key entity from the routing card"
+        text = _prompt_text(
+            "Explore repository architecture with a routing card and one graph neighborhood.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` (task may mention the focus area).",
+                "Step 2: Call `csegraph_graph` on "
+                + repr(focus)
+                + " with depth=2 and detail_level=minimal; use relations=[\"calls\",\"imports\"] if exploring dependencies.",
+                "Summarize modules, coupling hints from confidence_breakdown/hubs_skipped, and suggested next targets.",
+                "Stop after at most 3 csegraph MCP tool calls (second call may be another graph if focus was wrong).",
+            ],
+            args,
+        )
+    elif name == "csegraph-onboard-developer":
+        text = _prompt_text(
+            "Onboard a developer to the codebase using graph-backed orientation.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` to surface key entities and languages.",
+                "Step 2: Call `csegraph_context` with task describing onboarding goals and optional focus area.",
+                "Step 3: Call `csegraph_graph` on one key entity at depth=1 for structural orientation.",
+                "Produce a short guide: entry symbols, main languages, and where to pull task context next.",
+                "Stop after at most 3 csegraph MCP tool calls.",
             ],
             args,
         )

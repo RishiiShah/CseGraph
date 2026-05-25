@@ -91,6 +91,11 @@ class TestPromptListing:
             "csegraph-refresh",
             "csegraph-minimal",
             "csegraph-context",
+            "csegraph-debug-issue",
+            "csegraph-review-changes",
+            "csegraph-pre-merge-check",
+            "csegraph-explore-architecture",
+            "csegraph-onboard-developer",
         }
 
     def test_prompts_have_metadata(self):
@@ -327,12 +332,7 @@ class TestServerCreation:
 
     def test_default_server_exposes_core_prompts_only(self):
         server = create_server()
-        assert asyncio.run(_listed_prompt_names(server)) == [
-            "csegraph-index",
-            "csegraph-refresh",
-            "csegraph-minimal",
-            "csegraph-context",
-        ]
+        assert asyncio.run(_listed_prompt_names(server)) == [p.name for p in _PROMPTS]
 
     def test_extended_tools_are_not_registered(self):
         with pytest.raises(ValueError, match="Unknown tool names"):
@@ -363,6 +363,8 @@ class TestPromptWorkflows:
             args = {"repo": "/repo"}
             if any(a.name == "task" and a.required for a in prompt.arguments):
                 args["task"] = "test task"
+            if any(a.name == "description" and a.required for a in prompt.arguments):
+                args["description"] = "test issue"
             result = _handle_prompt(prompt.name, args)
             text = result.messages[0].content.text
             assert "Token-efficiency" in text, f"{prompt.name} missing preamble"

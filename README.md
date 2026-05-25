@@ -98,14 +98,21 @@ Every MCP response carries metadata that agents can use to triage and gate furth
 | `relations_filter` | `csegraph_graph`, `csegraph_path` | Echo of the `relations` arg applied to traversal, for transparency. |
 | `next_tool_suggestions`, `next_actions` | `csegraph_minimal`, `csegraph_context` | Routing recommendations, already filtered against `tools_already_called`. |
 
-MCP prompts are workflow templates that clients may expose as slash commands.
+MCP prompts are workflow templates that clients expose as slash commands (e.g. `/csegraph:csegraph-debug-issue` in Claude Code).
 
 | Prompt | Workflow |
 |---|---|
-| `csegraph-index` | Ask the agent to build the graph with `csegraph_index`. |
-| `csegraph-refresh` | Ask the agent to refresh changed files with `csegraph_refresh`. |
-| `csegraph-minimal` | Call `csegraph_minimal` first for a routing card. |
-| `csegraph-context` | Retrieve task-specific context with `csegraph_context`. |
+| `csegraph-index` | Build the graph with `csegraph_index`. |
+| `csegraph-refresh` | Refresh changed files with `csegraph_refresh`. |
+| `csegraph-minimal` | Routing card (~150 tokens); call first. |
+| `csegraph-context` | Task-specific context with `csegraph_context`. |
+| `csegraph-debug-issue` | Debug workflow: minimal → context → optional graph. |
+| `csegraph-review-changes` | Pre-commit review: refresh → minimal → context (CLI `detect-changes` optional). |
+| `csegraph-pre-merge-check` | Merge readiness: minimal → context → optional graph. |
+| `csegraph-explore-architecture` | Architecture map: minimal → graph neighborhood. |
+| `csegraph-onboard-developer` | Onboarding guide: minimal → context → graph. |
+
+**MCP connection:** Project `.mcp.json` should use `env/bin/csegraph` (or run `csegraph install --platform claude-code`) so Claude Code does not require a global `csegraph` on PATH.
 
 ## CLI-Only Diagnostics
 

@@ -37,6 +37,7 @@ def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: P
     data = _read_json(config)
     assert data["mcpServers"]["existing"]["command"] == "node"
     assert data["mcpServers"]["csegraph"] == {
+        "type": "stdio",
         "command": "custom-csegraph",
         "args": ["serve"],
     }
@@ -70,6 +71,7 @@ def test_auto_install_writes_root_mcp_and_skips_missing_platform_configs(tmp_pat
 
     data = _read_json(repo / ".mcp.json")
     assert data["mcpServers"]["csegraph"] == {
+        "type": "stdio",
         "command": "csegraph",
         "args": ["serve"],
     }

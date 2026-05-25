@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from csegraph_core.core.models import McpInstallResult, McpInstallTarget
+from csegraph_core.mcp_resolve import build_mcp_server_entry
 
 Platform = Literal[
     "auto",
@@ -349,13 +350,11 @@ class McpInstallService:
             )
 
     def _server_entry(self, *, vscode_style: bool) -> dict[str, Any]:
-        entry: dict[str, Any] = {
-            "command": self.command,
-            "args": ["serve"],
-        }
-        if vscode_style:
-            entry = {"type": "stdio", **entry}
-        return entry
+        return build_mcp_server_entry(
+            self.repo,
+            command=self.command,
+            vscode_style=vscode_style,
+        )
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
