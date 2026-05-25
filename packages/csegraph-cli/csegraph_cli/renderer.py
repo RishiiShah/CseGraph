@@ -84,6 +84,30 @@ def render_visual_export_summary(payload: Dict[str, Any]) -> str:
     return f"Graph file created at: {payload['output_path']}\n"
 
 
+def render_analyze_summary(payload: Dict[str, Any]) -> str:
+    lines = ["Analysis:", ""]
+    for section in payload.get("sections", []):
+        name = section.get("name", "").replace("_", " ")
+        status = section.get("status", "")
+        summary = section.get("summary", "")
+        label = name.title() if name else "Section"
+        if summary:
+            lines.append(f"{label}: {summary}")
+        else:
+            lines.append(f"{label}: {status}")
+    actions = payload.get("next_actions", [])
+    if actions:
+        lines.extend(["", "Next actions:"])
+        for action in actions:
+            lines.append(f"  {action.get('command', '')}  # {action.get('reason', '')}")
+    warnings = payload.get("warnings", [])
+    if warnings:
+        lines.extend(["", "Warnings:"])
+        for warning in warnings:
+            lines.append(f"  {warning}")
+    return "\n".join(lines) + "\n"
+
+
 def render_benchmark_summary(payload: Dict[str, Any]) -> str:
     repo = _display_path(str(payload.get("repo_root", "")), str(payload.get("repo_root", "")))
     lines = [
@@ -598,7 +622,7 @@ def render_resolvers_summary(payload: Dict[str, Any]) -> str:
 
 
 def render_report_markdown(payload: Dict[str, Any]) -> str:
-    lines: List[str] = ["# csegraph report", ""]
+    lines: List[str] = ["# CseGraph maintainer report", ""]
     _render_corpus_check(lines, payload)
     _render_summary_tables(lines, payload)
     _render_god_nodes(lines, payload)

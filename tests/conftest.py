@@ -57,3 +57,25 @@ def run_cli_text(*args: str) -> str:
         text=True,
     )
     return proc.stdout
+
+
+def run_dev_cli(*args: str) -> dict:
+    """Run the repo-local CseGraph maintainer CLI and return parsed JSON output."""
+    proc = subprocess.run(
+        [sys.executable, "tools/csegraph_dev.py", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def run_dev_cli_text(*args: str) -> str:
+    """Run the repo-local CseGraph maintainer CLI and return raw stdout."""
+    proc = subprocess.run(
+        [sys.executable, "tools/csegraph_dev.py", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout

@@ -15,6 +15,7 @@ from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
+    render_analyze_summary,
     render_architecture_summary,
     render_communities_summary,
     render_daemon_summary,
@@ -24,7 +25,6 @@ from csegraph_cli.renderer import (
     render_context_markdown,
     render_benchmark_summary,
     render_detect_changes_summary,
-    render_hooks_summary,
     render_install_summary,
     render_index_summary,
     render_json,
@@ -38,7 +38,6 @@ from csegraph_cli.renderer import (
     render_review_questions_summary,
     render_status_summary,
     render_test_gaps_summary,
-    render_visual_export_summary,
     render_vulnerabilities_summary,
 )
 
@@ -46,6 +45,17 @@ from csegraph_cli.renderer import (
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    return _run(args)
+
+
+def dev_main(argv: list[str] | None = None) -> int:
+    parser = _build_dev_parser()
+    args = parser.parse_args(argv)
+    return _run(args)
+
+
+def _run(args: argparse.Namespace) -> int:
+    command = _effective_command(args)
 
     try:
         _validate_cli_options(args)
@@ -57,61 +67,61 @@ def main(argv: list[str] | None = None) -> int:
     if result is None:
         return 0
     payload = to_dict(result)
-    if args.command == "context" and args.output_format == "markdown":
+    if command == "context" and args.output_format == "markdown":
         print(render_context_markdown(payload), end="")
-    elif args.command == "report" and not args.json:
+    elif command == "analyze" and not args.json:
+        print(render_analyze_summary(payload), end="")
+    elif command == "report" and not args.json:
         print(render_report_markdown(payload), end="")
-    elif args.command == "graph" and not args.json:
-        print(render_visual_export_summary(payload), end="")
-    elif args.command == "tree" and not args.json:
-        print(render_visual_export_summary(payload), end="")
-    elif args.command == "benchmark" and not args.json:
+    elif command == "benchmark" and not args.json:
         print(render_benchmark_summary(payload), end="")
-    elif args.command == "detect-changes" and not args.json:
+    elif command == "detect-changes" and not args.json:
         print(render_detect_changes_summary(payload), end="")
-    elif args.command == "test-gaps" and not args.json:
+    elif command == "test-gaps" and not args.json:
         print(render_test_gaps_summary(payload), end="")
-    elif args.command == "review-questions" and not args.json:
+    elif command == "review-questions" and not args.json:
         print(render_review_questions_summary(payload), end="")
-    elif args.command == "review-eval" and not args.json:
+    elif command == "review-eval" and not args.json:
         print(render_review_eval_summary(payload), end="")
-    elif args.command == "export" and not args.json:
+    elif command == "export" and not args.json:
         print(render_export_summary(payload), end="")
-    elif args.command == "flows" and not args.json:
+    elif command == "flows" and not args.json:
         print(render_flows_summary(payload), end="")
-    elif args.command == "architecture" and not args.json:
+    elif command == "architecture" and not args.json:
         print(render_architecture_summary(payload), end="")
-    elif args.command == "resolvers" and not args.json:
+    elif command == "resolvers" and not args.json:
         print(render_resolvers_summary(payload), end="")
-    elif args.command == "communities" and not args.json:
+    elif command == "communities" and not args.json:
         print(render_communities_summary(payload), end="")
-    elif args.command == "status" and not args.json:
+    elif command == "status" and not args.json:
         print(render_status_summary(payload), end="")
-    elif args.command == "postprocess" and not args.json:
+    elif command == "postprocess" and not args.json:
         print(render_postprocess_summary(payload), end="")
-    elif args.command == "hooks" and not args.json:
-        print(render_hooks_summary(payload), end="")
-    elif args.command == "vulnerabilities" and not args.json:
+    elif command == "vulnerabilities" and not args.json:
         print(render_vulnerabilities_summary(payload), end="")
-    elif args.command == "install" and not args.json:
+    elif command == "install" and not args.json:
         print(render_install_summary(payload), end="")
-    elif args.command == "registry" and not args.json:
+    elif command == "registry" and not args.json:
         print(render_registry_summary(payload), end="")
-    elif args.command == "daemon" and not args.json:
+    elif command == "daemon" and not args.json:
         print(render_daemon_summary(payload), end="")
-    elif args.command == "embeddings" and not args.json:
+    elif command == "embeddings" and not args.json:
         print(render_embeddings_summary(payload), end="")
-    elif args.command == "path" and not args.json:
+    elif command == "path" and not args.json:
         print(render_path_summary(payload), end="")
     elif args.json:
         print(render_json(payload, compact=True))
-    elif args.command == "index":
+    elif command == "index":
         print(render_index_summary(payload), end="")
-    elif args.command == "refresh":
+    elif command == "refresh":
         print(render_refresh_summary(payload), end="")
     else:
         print(render_json(payload, compact=False))
     return 0
+
+
+def _effective_command(args: argparse.Namespace) -> str:
+    return getattr(args, "command")
 
 
 def _add_repo_positional(p: argparse.ArgumentParser) -> None:
@@ -151,23 +161,6 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile(refresh)
     refresh.add_argument("--postprocess", choices=["none", "minimal", "full"], default="full", help="Postprocess level after refresh (default: full).")
     _add_json(refresh)
-
-    minimal = subparsers.add_parser(
-        "minimal",
-        help="Compact routing card with key entities and next-tool suggestions (call first).",
-    )
-    minimal.add_argument(
-        "--repo",
-        default=None,
-        help="Repository root containing the default .csegraph index.",
-    )
-    minimal.add_argument(
-        "--task",
-        default=None,
-        help="Optional task description for keyword routing.",
-    )
-    _add_db(minimal)
-    _add_json(minimal)
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
@@ -248,24 +241,117 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_json(inspect)
 
-    graph = subparsers.add_parser("graph", help="Export a visual HTML graph.")
-    graph.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    _add_db(graph)
-    graph.add_argument("--output", "-o", default=None, help="Output HTML file path (default: beside the SQLite index DB).")
-    _add_json(graph)
-
-    tree = subparsers.add_parser("tree", help="Export an interactive HTML file tree visualization.")
-    tree.add_argument("--repo", default=None, help="Repository root containing the default .csegraph index.")
-    _add_db(tree)
-    tree.add_argument("--output", "-o", default=None, help="Output HTML file path (default: beside the SQLite index DB).")
-    _add_json(tree)
-
-    export = subparsers.add_parser("export", help="Export graph to GraphML, Obsidian vault, or JSON.")
+    export = subparsers.add_parser("export", help="Export graph visualizations or portable graph data.")
     _add_repo_positional(export)
     _add_db(export)
-    export.add_argument("--format", dest="export_format", choices=["graphml", "obsidian", "json"], default="graphml", help="Export format (default: graphml).")
-    export.add_argument("--output", "-o", default=None, help="Output path (file for graphml/json, directory for obsidian).")
+    export.add_argument("--format", dest="export_format", choices=["html", "tree", "graphml", "obsidian", "json"], default="html", help="Export format (default: html).")
+    export.add_argument("--output", "-o", default=None, help="Output path (file for html/tree/graphml/json, directory for obsidian).")
     _add_json(export)
+
+    install = subparsers.add_parser("install", help="Configure MCP clients to run csegraph serve.")
+    _add_repo_positional(install)
+    install.add_argument(
+        "--platform",
+        choices=["auto", "codex", "cursor", "claude-code", "gemini-cli", "kiro", "copilot", "vscode"],
+        default="auto",
+        help="MCP client platform to configure.",
+    )
+    install.add_argument(
+        "--command",
+        dest="server_command",
+        default="csegraph",
+        help="Executable command used by MCP clients to launch csegraph.",
+    )
+    install.add_argument("--dry-run", action="store_true", help="Show planned writes without modifying files.")
+    install.add_argument("--instructions", action="store_true", help="Generate platform instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md).")
+    install.add_argument("--hooks", action="store_true", help="Install agent hooks for auto-refresh and status checks.")
+    _add_json(install)
+
+    watch = subparsers.add_parser("watch", help="Watch for file changes and auto-refresh the index.")
+    _add_repo_positional(watch)
+    _add_db(watch)
+    _add_profile(watch)
+    watch.add_argument("--debounce", type=int, default=500, help="Debounce interval in milliseconds (default: 500).")
+    _add_json(watch, suppress=True)
+
+    serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
+    serve.add_argument(
+        "--tools",
+        default=None,
+        help=(
+            "Tools to expose. Use 'core' (default) or a comma-separated subset "
+            "of the six core context-engine tool names."
+        ),
+    )
+    _add_json(serve, suppress=True)
+
+    status = subparsers.add_parser("status", help="Show graph health and staleness info.")
+    _add_repo_positional(status)
+    status.add_argument("--verbose", action="store_true", help="Include extra detail (parse error paths).")
+    _add_db(status)
+    _add_json(status)
+
+    postprocess = subparsers.add_parser("postprocess", help="Rebuild FTS and communities without re-parsing.")
+    _add_repo_positional(postprocess)
+    _add_db(postprocess)
+    postprocess.add_argument("--level", choices=["none", "minimal", "full"], default="full", help="Postprocess level: none (skip all), minimal (FTS only), full (FTS + communities). Default: full.")
+    postprocess.add_argument("--no-fts", action="store_true", help="Skip FTS rebuild.")
+    postprocess.add_argument("--no-communities", action="store_true", help="Skip community detection.")
+    _add_json(postprocess)
+
+    analyze = subparsers.add_parser("analyze", help="Run one ranked diagnostics summary for the indexed repo.")
+    _add_repo_positional(analyze)
+    _add_db(analyze)
+    analyze.add_argument("--base-ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1).")
+    analyze.add_argument("--limit", type=int, default=10, help="Max items per section (default: 10).")
+    _add_json(analyze)
+
+    registry = subparsers.add_parser("registry", help="Manage the multi-repo registry (~/.csegraph/registry.json).")
+    reg_sub = registry.add_subparsers(dest="registry_command", required=True)
+
+    reg_register = reg_sub.add_parser("register", help="Register a repository.")
+    reg_register.add_argument("repo_arg", nargs="?", help="Repository root to register.")
+    reg_register.add_argument("--repo", dest="repo_opt", help="Repository root to register.")
+    reg_register.add_argument("--alias", default=None, help="Short alias (default: directory name).")
+    reg_register.add_argument("--db", default=None, help="SQLite database path.")
+    _add_profile(reg_register)
+    _add_json(reg_register)
+
+    reg_unregister = reg_sub.add_parser("unregister", help="Remove a repository from the registry.")
+    reg_unregister.add_argument("alias", help="Alias of the repo to remove.")
+    _add_json(reg_unregister)
+
+    reg_list = reg_sub.add_parser("list", help="List all registered repositories.")
+    _add_json(reg_list)
+
+    reg_status = reg_sub.add_parser("status", help="Show detailed status for a registered repo.")
+    reg_status.add_argument("alias", help="Alias of the repo to inspect.")
+    _add_json(reg_status)
+
+    daemon = subparsers.add_parser("daemon", help="Manage multi-repo watch daemon processes.")
+    daemon_sub = daemon.add_subparsers(dest="daemon_command", required=True)
+
+    daemon_start = daemon_sub.add_parser("start", help="Start watch processes for registered repos.")
+    daemon_start.add_argument("--alias", action="append", default=None, help="Restrict to specific alias(es). May be repeated.")
+    daemon_start.add_argument("--profile", default=None, help="Override watch profile for all repos.")
+    _add_json(daemon_start)
+
+    daemon_stop = daemon_sub.add_parser("stop", help="Stop watch processes.")
+    daemon_stop.add_argument("--alias", action="append", default=None, help="Restrict to specific alias(es). May be repeated.")
+    _add_json(daemon_stop)
+
+    daemon_status = daemon_sub.add_parser("status", help="Show status of watch processes.")
+    _add_json(daemon_status)
+
+    return parser
+
+
+def _build_dev_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tools/csegraph_dev.py",
+        description="Repo-local maintainer tooling for CseGraph diagnostics and experiments.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     architecture = subparsers.add_parser("architecture", help="Community summaries and architecture overview.")
     _add_repo_positional(architecture)
@@ -291,70 +377,10 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(communities)
     _add_json(communities)
 
-    hooks = subparsers.add_parser("hooks", help="Manage csegraph git hooks.")
-    hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
-    for name, help_text in [("install", "Install post-commit/merge/checkout hooks."), ("uninstall", "Remove csegraph git hooks.")]:
-        sub = hooks_sub.add_parser(name, help=help_text)
-        _add_repo_positional(sub)
-        _add_json(sub)
-
-    install = subparsers.add_parser("install", help="Configure MCP clients to run csegraph serve.")
-    _add_repo_positional(install)
-    install.add_argument(
-        "--platform",
-        choices=["auto", "codex", "cursor", "claude-code", "gemini-cli", "kiro", "copilot", "vscode"],
-        default="auto",
-        help="MCP client platform to configure.",
-    )
-    install.add_argument(
-        "--command",
-        dest="server_command",
-        default="csegraph",
-        help="Executable command used by MCP clients to launch csegraph.",
-    )
-    install.add_argument("--dry-run", action="store_true", help="Show planned writes without modifying files.")
-    install.add_argument("--instructions", action="store_true", help="Generate platform instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md).")
-    install.add_argument("--hooks", action="store_true", help="Install agent hooks for auto-refresh and status checks.")
-    _add_json(install)
-
     report = subparsers.add_parser("report", help="Generate a project report from the index.")
     _add_repo_positional(report)
     _add_db(report)
     _add_json(report)
-
-    watch = subparsers.add_parser("watch", help="Watch for file changes and auto-refresh the index.")
-    _add_repo_positional(watch)
-    _add_db(watch)
-    _add_profile(watch)
-    watch.add_argument("--debounce", type=int, default=500, help="Debounce interval in milliseconds (default: 500).")
-    _add_json(watch, suppress=True)
-
-    serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
-    serve.add_argument(
-        "--tools",
-        default=None,
-        help=(
-            "Tools to expose. Use 'core' (default) or a comma-separated subset "
-            "of the six core context-engine tool names."
-        ),
-    )
-    _add_json(serve, suppress=True)
-
-    status = subparsers.add_parser("status", help="Show graph health and staleness info.")
-    status.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
-    status.add_argument("--repo", dest="repo_opt", help="Repository root.")
-    status.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    status.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
-    status.add_argument("--verbose", action="store_true", help="Include extra detail (parse error paths).")
-
-    postprocess = subparsers.add_parser("postprocess", help="Rebuild FTS and communities without re-parsing.")
-    postprocess.add_argument("repo_arg", nargs="?", help="Repository root (default: current directory).")
-    postprocess.add_argument("--repo", dest="repo_opt", help="Repository root.")
-    postprocess.add_argument("--db", default=None, help="SQLite database path (default: <repo>/.csegraph/index.db).")
-    postprocess.add_argument("--level", choices=["none", "minimal", "full"], default="full", help="Postprocess level: none (skip all), minimal (FTS only), full (FTS + communities). Default: full.")
-    postprocess.add_argument("--no-fts", action="store_true", help="Skip FTS rebuild.")
-    postprocess.add_argument("--no-communities", action="store_true", help="Skip community detection.")
-    postprocess.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
 
     detect_changes = subparsers.add_parser("detect-changes", help="Detect changed symbols and score review risk.")
     _add_repo_positional(detect_changes)
@@ -439,45 +465,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_json(benchmark)
 
-    # -- registry --
-    registry = subparsers.add_parser("registry", help="Manage the multi-repo registry (~/.csegraph/registry.json).")
-    reg_sub = registry.add_subparsers(dest="registry_command", required=True)
-
-    reg_register = reg_sub.add_parser("register", help="Register a repository.")
-    reg_register.add_argument("repo_arg", nargs="?", help="Repository root to register.")
-    reg_register.add_argument("--repo", dest="repo_opt", help="Repository root to register.")
-    reg_register.add_argument("--alias", default=None, help="Short alias (default: directory name).")
-    reg_register.add_argument("--db", default=None, help="SQLite database path.")
-    _add_profile(reg_register)
-    _add_json(reg_register)
-
-    reg_unregister = reg_sub.add_parser("unregister", help="Remove a repository from the registry.")
-    reg_unregister.add_argument("alias", help="Alias of the repo to remove.")
-    _add_json(reg_unregister)
-
-    reg_list = reg_sub.add_parser("list", help="List all registered repositories.")
-    _add_json(reg_list)
-
-    reg_status = reg_sub.add_parser("status", help="Show detailed status for a registered repo.")
-    reg_status.add_argument("alias", help="Alias of the repo to inspect.")
-    _add_json(reg_status)
-
-    # -- daemon --
-    daemon = subparsers.add_parser("daemon", help="Manage multi-repo watch daemon processes.")
-    daemon_sub = daemon.add_subparsers(dest="daemon_command", required=True)
-
-    daemon_start = daemon_sub.add_parser("start", help="Start watch processes for registered repos.")
-    daemon_start.add_argument("--alias", action="append", default=None, help="Restrict to specific alias(es). May be repeated.")
-    daemon_start.add_argument("--profile", default=None, help="Override watch profile for all repos.")
-    _add_json(daemon_start)
-
-    daemon_stop = daemon_sub.add_parser("stop", help="Stop watch processes.")
-    daemon_stop.add_argument("--alias", action="append", default=None, help="Restrict to specific alias(es). May be repeated.")
-    _add_json(daemon_stop)
-
-    daemon_status = daemon_sub.add_parser("status", help="Show status of watch processes.")
-    _add_json(daemon_status)
-
     return parser
 
 
@@ -502,10 +489,6 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if pp_level != "none" and result.files_indexed > 0:
             PostprocessService(db).postprocess(level=pp_level)
         return result
-    if args.command == "minimal":
-        from csegraph_core.retrieval.minimal import MinimalService
-        repo = Path(args.repo or ".").resolve()
-        return MinimalService(_db_arg(args, str(repo))).first(task=args.task)
     if args.command == "context":
         from csegraph_core.retrieval.context import ContextService
         repo = Path(args.repo or ".").resolve()
@@ -552,23 +535,40 @@ def _dispatch(args: argparse.Namespace) -> Any:
         )
         result.command = "inspect"
         return result
-    if args.command == "graph":
-        from csegraph_core.graph.visual import VisualExportService
-        repo = Path(args.repo or ".").resolve()
-        db_path = _db_arg(args, str(repo))
-        output = args.output or _default_graph_output_path(db_path)
-        return VisualExportService(db_path).export(output)
-    if args.command == "tree":
-        from csegraph_core.graph.tree import TreeExportService
-        repo = Path(args.repo or ".").resolve()
-        db_path = _db_arg(args, str(repo))
-        output = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
-        return TreeExportService(db_path).export(output)
     if args.command == "export":
         from csegraph_core.graph.exports import ExportService
+        from csegraph_core.core.models import ExportResult
         repo = _repo_arg(args)
         db_path = _db_arg(args, repo)
         fmt = args.export_format
+        if fmt == "html":
+            from csegraph_core.graph.visual import VisualExportService
+            out = args.output or _default_graph_output_path(db_path)
+            visual = VisualExportService(db_path).export(out)
+            return ExportResult(
+                command="export",
+                db_path=visual.db_path,
+                repo_root=visual.repo_root,
+                output_path=visual.output_path,
+                format="html",
+                total_nodes=visual.total_nodes,
+                total_edges=visual.total_edges,
+                files_written=1,
+            )
+        if fmt == "tree":
+            from csegraph_core.graph.tree import TreeExportService
+            out = args.output or str(Path(db_path).resolve().with_name("csegraph-tree.html"))
+            visual = TreeExportService(db_path).export(out)
+            return ExportResult(
+                command="export",
+                db_path=visual.db_path,
+                repo_root=visual.repo_root,
+                output_path=visual.output_path,
+                format="tree",
+                total_nodes=visual.total_nodes,
+                total_edges=visual.total_edges,
+                files_written=1,
+            )
         if args.output:
             out = args.output
         elif fmt == "obsidian":
@@ -578,6 +578,9 @@ def _dispatch(args: argparse.Namespace) -> Any:
         else:
             out = str(Path(db_path).resolve().with_name("csegraph-graph.graphml"))
         return ExportService(db_path).export(out, fmt=fmt)
+    if args.command == "analyze":
+        repo = _repo_arg(args)
+        return _run_analyze(repo, _db_arg(args, repo), base_ref=args.base_ref, limit=args.limit)
     if args.command == "architecture":
         from csegraph_core.graph.architecture import ArchitectureService
         repo = _repo_arg(args)
@@ -598,14 +601,6 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.graph.communities import detect_communities
         repo = _repo_arg(args)
         return detect_communities(_db_arg(args, repo))
-    if args.command == "hooks":
-        from csegraph_core.hooks import install_hooks, uninstall_hooks
-        repo = _repo_arg(args)
-        if args.hooks_command == "install":
-            return install_hooks(repo)
-        if args.hooks_command == "uninstall":
-            return uninstall_hooks(repo)
-        raise ValueError(f"Unknown hooks subcommand: {args.hooks_command}")
     if args.command == "install":
         from csegraph_core.mcp_install import McpInstallService
         repo = _repo_arg(args)
@@ -745,6 +740,129 @@ def _dispatch(args: argparse.Namespace) -> Any:
             return svc.status()
         raise ValueError(f"Unknown daemon subcommand: {args.daemon_command}")
     raise ValueError(f"Unknown command: {args.command}")
+
+
+def _run_analyze(repo: str, db: str, *, base_ref: str, limit: int) -> dict[str, Any]:
+    sections: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
+    def add_section(name: str, runner: Any, summary_key: str = "summary") -> None:
+        try:
+            payload = to_dict(runner())
+            section_warnings = payload.get("warnings", [])
+            sections.append(
+                {
+                    "name": name,
+                    "status": "ok",
+                    "summary": payload.get(summary_key, ""),
+                    "data": payload,
+                }
+            )
+            warnings.extend(f"{name}: {warning}" for warning in section_warnings)
+        except Exception as exc:
+            message = str(exc)
+            sections.append(
+                {
+                    "name": name,
+                    "status": "error",
+                    "summary": message,
+                    "data": {},
+                }
+            )
+            warnings.append(f"{name}: {message}")
+
+    def changes() -> Any:
+        from csegraph_core.graph.change_detection import ChangeDetectionService
+        return ChangeDetectionService(db).detect_changes(base_ref=base_ref)
+
+    def test_gaps() -> Any:
+        from csegraph_core.graph.test_gaps import TestGapService
+        return TestGapService(db).analyze(limit=limit)
+
+    def architecture() -> Any:
+        from csegraph_core.graph.architecture import ArchitectureService
+        return ArchitectureService(db).overview(limit=limit)
+
+    def flows() -> Any:
+        from csegraph_core.graph.flows import FlowService
+        return FlowService(db).trace(limit=limit)
+
+    def security() -> Any:
+        from csegraph_core.graph.vulnerabilities import VulnerabilityService
+        return VulnerabilityService(db).scan(limit=limit)
+
+    add_section("changes", changes)
+    add_section("test_gaps", test_gaps)
+    add_section("architecture", architecture)
+    add_section("flows", flows)
+    add_section("security", security)
+
+    next_actions = _analyze_next_actions(sections)
+    return {
+        "command": "analyze",
+        "db_path": db,
+        "repo_root": repo,
+        "base_ref": base_ref,
+        "sections": sections,
+        "next_actions": next_actions,
+        "warnings": warnings,
+    }
+
+
+def _analyze_next_actions(sections: list[dict[str, Any]]) -> list[dict[str, str]]:
+    by_name = {section["name"]: section for section in sections}
+    actions: list[dict[str, str]] = []
+
+    changes = by_name.get("changes", {}).get("data", {})
+    high_risk = changes.get("high_risk", [])
+    medium_risk = changes.get("medium_risk", [])
+    if high_risk:
+        actions.append(
+            {
+                "action": "inspect_high_risk_change",
+                "command": f"csegraph inspect {high_risk[0]['id']}",
+                "reason": "High-risk changed symbol found.",
+            }
+        )
+    elif medium_risk:
+        actions.append(
+            {
+                "action": "inspect_medium_risk_change",
+                "command": f"csegraph inspect {medium_risk[0]['id']}",
+                "reason": "Medium-risk changed symbol found.",
+            }
+        )
+
+    test_gaps = by_name.get("test_gaps", {}).get("data", {})
+    hotspots = test_gaps.get("hotspots", [])
+    if hotspots:
+        actions.append(
+            {
+                "action": "add_test_coverage",
+                "command": f"csegraph context \"Add tests for {hotspots[0]['name']}\" --target {hotspots[0]['id']}",
+                "reason": "Untested hotspot found.",
+            }
+        )
+
+    architecture = by_name.get("architecture", {}).get("data", {})
+    if architecture.get("warnings"):
+        actions.append(
+            {
+                "action": "review_architecture_warning",
+                "command": "csegraph analyze",
+                "reason": architecture["warnings"][0],
+            }
+        )
+
+    if not actions:
+        actions.append(
+            {
+                "action": "retrieve_task_context",
+                "command": "csegraph context \"<task>\"",
+                "reason": "No urgent diagnostics found; start with task-specific context.",
+            }
+        )
+    return actions
 
 
 def _validate_cli_options(args: argparse.Namespace) -> None:

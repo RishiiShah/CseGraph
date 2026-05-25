@@ -14,7 +14,7 @@ Lightweight VS Code extension for [CseGraph](https://github.com/apocalypse44/Cse
 ```bash
 cd packages/csegraph-vscode
 npm install && npm run package
-code --install-extension csegraph-vscode-1.7.0.vsix
+code --install-extension csegraph-vscode-1.7.1.vsix
 ```
 
 ### Via CLI

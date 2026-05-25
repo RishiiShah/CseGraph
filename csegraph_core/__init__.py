@@ -6,25 +6,19 @@ The install/distribution name is `csegraph-core`; Python imports use
 This package is the source-of-truth context engine for coding agents:
 parser, SQLite index, graph traversal, retrieval, and CSE metrics. The SDK
 package (`csegraph`) and CLI package (`csegraph-cli`) depend on this package
-and never on each other.
+and never on each other. Benchmark, eval, resolver, embedding, report, and
+low-level diagnostic services are intentionally not re-exported here; use
+their module paths from repo-local maintainer tooling.
 """
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 
-from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph_core.core.models import (
-    ArchitectureResult,
-    BenchmarkResult,
-    BenchmarkStep,
-    CommunitySummary,
     ContextNode,
     ContextResult,
-    CouplingPair,
     DaemonEntry,
     DaemonResult,
-    EmbeddingResult,
-    EmbeddingSearchHit,
     ExportResult,
     GraphEdgeView,
     GraphNodeView,
@@ -42,49 +36,14 @@ from csegraph_core.core.models import (
     RefreshResult,
     RegistryEntry,
     RegistryResult,
-    ReportResult,
     StatusResult,
     SufficiencyResult,
     VisualExportResult,
     to_dict,
 )
 from csegraph_core.cse.metrics import SufficiencyMetrics
-from csegraph_core.graph.architecture import ArchitectureService
-from csegraph_core.graph.embeddings import EMBEDDING_PROVIDERS, EmbeddingService
 from csegraph_core.graph.exports import EXPORT_FORMATS, ExportService
-from csegraph_core.graph.flows import Flow, FlowEntry, FlowResult, FlowService, FlowStep
-from csegraph_core.graph.resolvers import ResolverResult, ResolverService, ResolverStats
-from csegraph_core.graph.change_detection import (
-    ChangeDetectionResult,
-    ChangeDetectionService,
-    ChangedSymbol,
-    DiffRegion,
-)
-from csegraph_core.graph.communities import Community, CommunityResult
-from csegraph_core.graph.review_eval import (
-    ReviewEvalResult,
-    ReviewEvalService,
-    RiskLevelMetrics,
-)
-from csegraph_core.graph.review_questions import (
-    ReviewQuestion,
-    ReviewQuestionsResult,
-    ReviewQuestionsService,
-)
-from csegraph_core.graph.test_gaps import (
-    CommunityCoverage,
-    TestGapResult,
-    TestGapService,
-    UntestedSymbol,
-)
-from csegraph_core.graph.vulnerabilities import (
-    Vulnerability,
-    VulnerabilityResult,
-    VulnerabilityService,
-)
-from csegraph_core.hooks import HooksResult
 from csegraph_core.graph.queries import GraphQueryService
-from csegraph_core.graph.report import ReportService
 from csegraph_core.graph.tree import TreeExportService
 from csegraph_core.graph.visual import VisualExportService
 from csegraph_core.index.repository import ProjectIndex
@@ -101,43 +60,19 @@ from csegraph_core.status import StatusService
 
 __all__ = [
     "__version__",
-    "ArchitectureResult",
-    "ArchitectureService",
-    "BenchmarkResult",
-    "BenchmarkService",
-    "BenchmarkStep",
-    "ChangeDetectionResult",
-    "ChangeDetectionService",
-    "ChangedSymbol",
-    "CommunitySummary",
-    "CouplingPair",
-    "EMBEDDING_PROVIDERS",
-    "EmbeddingResult",
-    "EmbeddingSearchHit",
-    "EmbeddingService",
     "EXPORT_FORMATS",
     "ExportResult",
     "ExportService",
-    "Flow",
-    "FlowEntry",
-    "FlowResult",
-    "FlowService",
-    "FlowStep",
-    "CommunityCoverage",
-    "Community",
-    "CommunityResult",
     "ContextNode",
     "ContextResult",
     "ContextService",
     "DaemonEntry",
     "DaemonResult",
     "DaemonService",
-    "DiffRegion",
     "GraphEdgeView",
     "GraphNodeView",
     "GraphQueryService",
     "GraphResult",
-    "HooksResult",
     "IndexResult",
     "IndexService",
     "KeyEntity",
@@ -161,32 +96,15 @@ __all__ = [
     "RegistryEntry",
     "RegistryResult",
     "RegistryService",
-    "ReportResult",
-    "ReportService",
-    "ResolverResult",
-    "ResolverService",
-    "ResolverStats",
-    "ReviewEvalResult",
-    "ReviewEvalService",
-    "ReviewQuestion",
-    "ReviewQuestionsResult",
-    "ReviewQuestionsService",
-    "RiskLevelMetrics",
     "SessionState",
     "StatusResult",
     "StatusService",
     "SufficiencyMetrics",
     "SufficiencyResult",
-    "TestGapResult",
-    "TestGapService",
     "TreeExportService",
-    "UntestedSymbol",
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",
-    "Vulnerability",
-    "VulnerabilityResult",
-    "VulnerabilityService",
     "get_profile",
     "load_profile",
     "to_dict",

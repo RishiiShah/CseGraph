@@ -1,4 +1,4 @@
-"""Integration tests for csegraph tree (HTML file tree visualization)."""
+"""Integration tests for HTML file tree visualization."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class TestTreeExport:
         assert Path(output).exists()
         content = Path(output).read_text(encoding="utf-8")
         assert "<!DOCTYPE html>" in content
-        assert "csegraph tree" in content
+        assert "csegraph file tree" in content
 
     def test_result_fields(self, tmp_path):
         db = _index_repo(tmp_path)

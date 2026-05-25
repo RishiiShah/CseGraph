@@ -103,8 +103,7 @@ def test_graph_rejects_node_argument(tmp_path):
         text=True,
     )
     assert proc.returncode == 2
-    assert "unrecognized arguments" in proc.stderr
-    assert "symbol::service.py::function::create_user" in proc.stderr
+    assert "invalid choice" in proc.stderr
 
 
 def test_graph_rejects_node_flag_and_depth(tmp_path):
@@ -117,9 +116,11 @@ def test_graph_rejects_node_flag_and_depth(tmp_path):
             sys.executable,
             "-m",
             "csegraph_cli",
-            "graph",
+            "export",
             "--repo",
             str(repo),
+            "--format",
+            "html",
             "--node",
             "create_user",
             "--depth",
@@ -145,9 +146,11 @@ def test_graph_visual_export_creates_html(tmp_path):
             sys.executable,
             "-m",
             "csegraph_cli",
-            "graph",
+            "export",
             "--repo",
             str(repo),
+            "--format",
+            "html",
             "--output",
             str(output_html),
             "--json",
@@ -157,7 +160,8 @@ def test_graph_visual_export_creates_html(tmp_path):
         text=True,
     )
     result = json.loads(proc.stdout)
-    assert result["command"] == "graph"
+    assert result["command"] == "export"
+    assert result["format"] == "html"
     assert result["output_path"] == str(output_html)
     assert result["total_nodes"] >= 2
     assert result["total_edges"] >= 1
@@ -189,9 +193,11 @@ def test_graph_visual_export_connects_folders_and_empty_files(tmp_path):
 
     output_html = tmp_path / "out.html"
     result = run_cli(
-        "graph",
+        "export",
         "--repo",
         str(repo),
+        "--format",
+        "html",
         "--output",
         str(output_html),
         "--json",
@@ -213,9 +219,11 @@ def test_graph_visual_export_has_click_to_expand_nodes(tmp_path):
 
     output_html = tmp_path / "out.html"
     run_cli(
-        "graph",
+        "export",
         "--repo",
         str(repo),
+        "--format",
+        "html",
         "--output",
         str(output_html),
         "--json",
@@ -241,9 +249,11 @@ def test_graph_visual_export_default_output_path(tmp_path):
             sys.executable,
             "-m",
             "csegraph_cli",
-            "graph",
+            "export",
             "--repo",
             str(repo),
+            "--format",
+            "html",
             "--json",
         ],
         check=True,
@@ -252,7 +262,8 @@ def test_graph_visual_export_default_output_path(tmp_path):
         text=True,
     )
     result = json.loads(proc.stdout)
-    assert result["command"] == "graph"
+    assert result["command"] == "export"
+    assert result["format"] == "html"
     expected_path = repo / ".csegraph" / "csegraph-graph.html"
     assert result["output_path"] == str(expected_path)
     assert expected_path.exists()
@@ -270,9 +281,11 @@ def test_graph_visual_export_default_output_is_concise_message(tmp_path):
             sys.executable,
             "-m",
             "csegraph_cli",
-            "graph",
+            "export",
             "--repo",
             str(repo),
+            "--format",
+            "html",
         ],
         check=True,
         capture_output=True,
@@ -281,7 +294,9 @@ def test_graph_visual_export_default_output_is_concise_message(tmp_path):
     )
 
     expected_path = repo / ".csegraph" / "csegraph-graph.html"
-    assert proc.stdout == f"Graph file created at: {expected_path}\n"
+    assert proc.stdout.startswith("Exported html:")
+    assert f"  Output: {expected_path}\n" in proc.stdout
+    assert "  Files written: 1\n" in proc.stdout
     assert proc.stderr == ""
     assert expected_path.exists()
 
@@ -297,11 +312,13 @@ def test_graph_visual_export_default_output_follows_custom_db_path(tmp_path):
             sys.executable,
             "-m",
             "csegraph_cli",
-            "graph",
+            "export",
             "--repo",
             str(repo),
             "--db",
             str(db_path),
+            "--format",
+            "html",
             "--json",
         ],
         check=True,
@@ -325,9 +342,11 @@ def test_graph_visual_export_has_clean_stderr(tmp_path):
             sys.executable,
             "-m",
             "csegraph_cli",
-            "graph",
+            "export",
             "--repo",
             str(repo),
+            "--format",
+            "html",
             "--output",
             str(tmp_path / "g.html"),
             "--json",

@@ -180,7 +180,10 @@ class EmbeddingService:
                 warnings.append("No embedding results; fell back to FTS only.")
                 source = "fts"
             elif not emb_ranked and not hybrid:
-                warnings.append("No embedding results found. Run 'csegraph embeddings compute' first.")
+                warnings.append(
+                    "No embedding results found. Run "
+                    "'env/bin/python tools/csegraph_dev.py embeddings compute' first."
+                )
 
             node_ids = [nid for nid, _ in merged[:top_k]]
             node_map = _load_node_info(index, node_ids)

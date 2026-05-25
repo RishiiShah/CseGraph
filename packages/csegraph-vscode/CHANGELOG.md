@@ -1,13 +1,15 @@
 # Changelog
 
-## 1.7.0
+## 1.7.1
+
+- Bumped package version to 1.7.1 and updated metadata/installation references (README, package.json, package-lock.json).
 
 - Reduced the extension to the core context loop: index, refresh, status, context, and inspect.
-- Removed diagnostic commands from the VS Code UI; use the CLI for flows, vulnerabilities, architecture, and test-gap analysis.
+- Removed diagnostic commands from the VS Code UI; use `csegraph analyze` for consolidated diagnostics, or repo-local maintainer tooling for low-level analysis.
 
 ## 1.0.0
 
-- 10 commands: index, refresh, status, context, flows, flowsHere, inspect, vulnerabilities, architecture, testGaps
+- Historical broad command set before the extension was reduced to index, refresh, status, context, and inspect.
 - Status bar with node/edge count and warning indicator
 - Auto-refresh on save with configurable debounce
 - Right-click context menu for Inspect and Trace Flow

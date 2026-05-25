@@ -351,7 +351,7 @@ _PROMPTS: list[Prompt] = [
         title="Review Changes",
         description=(
             "Pre-commit review workflow using graph-backed context. "
-            "Use terminal `csegraph detect-changes` for git-scoped risk lists (CLI-only)."
+            "Use terminal `csegraph analyze` for git-scoped risk and diagnostics (CLI-only)."
         ),
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
@@ -388,7 +388,7 @@ _PROMPTS: list[Prompt] = [
         title="Explore Architecture",
         description=(
             "Map subsystem structure with a routing card and hub-aware graph neighborhood. "
-            "For human HTML exports use CLI `csegraph graph`."
+            "For human HTML exports use CLI `csegraph export --format html`."
         ),
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
@@ -961,9 +961,9 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
             "Review recent changes using compact graph context (context-engine workflow).",
             [
                 "If `repo` is missing, ask for the absolute repository path.",
-                "Optional (human terminal, not MCP): run `csegraph detect-changes --base-ref "
+                "Optional (human terminal, not MCP): run `csegraph analyze --base-ref "
                 + repr(base)
-                + "` for a risk-ranked change list.",
+                + "` for risk-ranked diagnostics.",
                 "Step 1: Call `csegraph_refresh` so the index matches working tree.",
                 "Step 2: Call `csegraph_minimal` with the review task.",
                 "Step 3: Call `csegraph_context` with detail_level=auto and targets from the change list or task.",

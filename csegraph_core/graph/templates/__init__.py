@@ -1,1 +1,1 @@
-"""HTML templates for csegraph graph exports."""
+"""HTML templates for csegraph visual exports."""

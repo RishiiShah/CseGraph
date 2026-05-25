@@ -151,10 +151,9 @@ def verify(binary: Path, repo: Path | None = None) -> bool:
     if repo is None:
         record("index", SKIP, "no --repo provided")
         record("context", SKIP, "no --repo provided")
-        record("graph", SKIP, "no --repo provided")
-        record("tree", SKIP, "no --repo provided")
-        record("communities", SKIP, "no --repo provided")
-        record("benchmark", SKIP, "no --repo provided")
+        record("export html", SKIP, "no --repo provided")
+        record("export tree", SKIP, "no --repo provided")
+        record("analyze", SKIP, "no --repo provided")
     else:
         repo_str = str(repo)
 
@@ -168,36 +167,37 @@ def verify(binary: Path, repo: Path | None = None) -> bool:
         )
         record("context", status, f"rc={rc}" if status == FAIL else "")
 
-        # graph (template loading)
+        # HTML graph export (template loading)
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
             graph_out = f.name
         stdout, stderr, status, rc = _run(
-            binary, ["graph", "--repo", repo_str, "--output", graph_out], timeout=60,
+            binary, ["export", repo_str, "--format", "html", "--output", graph_out], timeout=60,
         )
         if status == PASS and Path(graph_out).stat().st_size < 100:
             status = FAIL
-            record("graph", FAIL, "output HTML too small — template loading may have failed")
+            record("export html", FAIL, "output HTML too small — template loading may have failed")
         else:
-            record("graph", status, f"rc={rc}" if status == FAIL else f"output={graph_out}")
+            record("export html", status, f"rc={rc}" if status == FAIL else f"output={graph_out}")
         os.unlink(graph_out) if Path(graph_out).exists() else None
 
-        # tree (template loading)
+        # File tree export (template loading)
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
+            tree_out = f.name
         stdout, stderr, status, rc = _run(
-            binary, ["tree", "--repo", repo_str], timeout=60,
+            binary, ["export", repo_str, "--format", "tree", "--output", tree_out], timeout=60,
         )
-        record("tree", status, f"rc={rc}" if status == FAIL else "")
+        if status == PASS and Path(tree_out).stat().st_size < 100:
+            status = FAIL
+            record("export tree", FAIL, "output HTML too small — template loading may have failed")
+        else:
+            record("export tree", status, f"rc={rc}" if status == FAIL else f"output={tree_out}")
+        os.unlink(tree_out) if Path(tree_out).exists() else None
 
-        # communities
+        # consolidated diagnostics
         stdout, stderr, status, rc = _run(
-            binary, ["communities", repo_str, "--json"], timeout=60,
+            binary, ["analyze", repo_str, "--base-ref", "HEAD", "--json"], timeout=60,
         )
-        record("communities", status, f"rc={rc}" if status == FAIL else "")
-
-        # benchmark
-        stdout, stderr, status, rc = _run(
-            binary, ["benchmark", repo_str], timeout=120,
-        )
-        record("benchmark", status, f"rc={rc}, stderr={stderr[:200]}" if status == FAIL else "")
+        record("analyze", status, f"rc={rc}, stderr={stderr[:200]}" if status == FAIL else "")
 
         # watch (watchfiles — start, let it run briefly, verify it doesn't crash)
         stdout, stderr, watch_status, rc = _run(binary, ["watch", repo_str], timeout=5)
