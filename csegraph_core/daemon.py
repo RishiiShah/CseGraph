@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -21,13 +22,23 @@ from csegraph_core.registry import RegistryService
 
 PIDS_DIR = Path(os.path.expanduser("~")) / ".csegraph" / "pids"
 
+_ALIAS_RE = re.compile(r"^[A-Za-z0-9_\-.]+$")
+
+
+def _validate_alias(alias: str) -> None:
+    if not alias or ".." in alias or not _ALIAS_RE.match(alias):
+        raise ValueError(f"Invalid alias {alias!r}: must be alphanumeric with _ - .")
+
 
 def _pid_file(alias: str) -> Path:
+    _validate_alias(alias)
     return PIDS_DIR / f"{alias}.pid"
 
 
-def _log_file(alias: str) -> Path:
-    log_dir = Path(os.path.expanduser("~")) / ".csegraph" / "logs"
+def _log_file(alias: str, base_dir: Optional[str | Path] = None) -> Path:
+    _validate_alias(alias)
+    root = Path(base_dir) if base_dir else Path(os.path.expanduser("~")) / ".csegraph"
+    log_dir = root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir / f"{alias}.log"
 
@@ -146,21 +157,21 @@ class DaemonService:
                 continue
 
             watch_profile = profile or entry.profile
-            log_path = _log_file(entry.alias)
+            log_path = _log_file(entry.alias, self.pids_dir.parent)
 
             try:
-                log_fh = open(log_path, "a", encoding="utf-8")
-                proc = subprocess.Popen(
-                    [
-                        sys.executable, "-m", "csegraph_cli",
-                        "watch", entry.root,
-                        "--db", entry.db,
-                        "--profile", watch_profile,
-                    ],
-                    stdout=log_fh,
-                    stderr=log_fh,
-                    start_new_session=True,
-                )
+                with open(log_path, "a", encoding="utf-8") as log_fh:
+                    proc = subprocess.Popen(
+                        [
+                            sys.executable, "-m", "csegraph_cli",
+                            "watch", entry.root,
+                            "--db", entry.db,
+                            "--profile", watch_profile,
+                        ],
+                        stdout=log_fh,
+                        stderr=log_fh,
+                        start_new_session=True,
+                    )
                 self._write_pid(entry.alias, proc.pid)
                 entries.append(DaemonEntry(
                     alias=entry.alias,

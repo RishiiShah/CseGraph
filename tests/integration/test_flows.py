@@ -226,44 +226,14 @@ class TestLimitAndWarnings:
 
 
 class TestFlowsMCP:
-    def test_tool_invocation(self, tmp_path):
+    def test_tool_is_cli_only(self):
         from csegraph_core.server.app import _handle_tool
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        (repo / "main.py").write_text(
-            "def main():\n    print('hello')\n",
-            encoding="utf-8",
-        )
-        db = str(tmp_path / "test.db")
-        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
-        result = _handle_tool("csegraph_flows", {
-            "repo": str(repo),
-            "db": db,
-        })
-        assert result["command"] == "flows"
-        assert isinstance(result["total_entry_points"], int)
-        assert isinstance(result["flows"], list)
 
-    def test_tool_with_entry_point(self, tmp_path):
-        from csegraph_core.server.app import _handle_tool
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        (repo / "app.py").write_text(
-            "def run():\n    return helper()\n\ndef helper():\n    return 1\n",
-            encoding="utf-8",
-        )
-        db = str(tmp_path / "test.db")
-        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
-        result = _handle_tool("csegraph_flows", {
-            "repo": str(repo),
-            "db": db,
-            "entry_point": "run",
-        })
-        assert result["total_flows"] == 1
+        with pytest.raises(ValueError, match="Unknown tool"):
+            _handle_tool("csegraph_flows", {})
 
-    def test_prompt_references_tool(self):
+    def test_prompt_is_not_agent_facing(self):
         from csegraph_core.server.app import _handle_prompt
-        result = _handle_prompt("csegraph-flows", {"repo": "/repo"})
-        text = result.messages[0].content.text
-        assert "csegraph_flows" in text
-        assert "Token-efficiency" in text
+
+        with pytest.raises(ValueError, match="Unknown prompt"):
+            _handle_prompt("csegraph-flows", {"repo": "/repo"})

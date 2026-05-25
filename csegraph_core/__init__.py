@@ -9,7 +9,7 @@ package (`csegraph`) and CLI package (`csegraph-cli`) depend on this package
 and never on each other.
 """
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile

@@ -18,7 +18,7 @@ class ProfileConfig:
     semantic_threshold: float = 0.50
     semantic_threshold_relaxed: float = 0.0
     confidence_threshold: float = 0.70
-    max_bytes: int = 16384
+    max_bytes: Optional[int] = None
 
 
 @dataclass

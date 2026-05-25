@@ -1,8 +1,8 @@
 {
   "name": "csegraph-vscode",
   "displayName": "CseGraph",
-  "description": "Code graph context for coding agents — index, inspect, and trace dependencies from VS Code.",
-  "version": "1.0.0",
+  "description": "Code graph context for coding agents - index, refresh, inspect, and retrieve context from VS Code.",
+  "version": "1.7.0",
   "publisher": "csegraph",
   "license": "MIT",
   "repository": {
@@ -18,9 +18,8 @@
   ],
   "keywords": [
     "code graph",
-    "dependency graph",
-    "code review",
     "context",
+    "coding agents",
     "csegraph"
   ],
   "activationEvents": [
@@ -51,33 +50,8 @@
         "category": "CseGraph"
       },
       {
-        "command": "csegraph.flows",
-        "title": "CseGraph: Trace Execution Flows",
-        "category": "CseGraph"
-      },
-      {
-        "command": "csegraph.flowsHere",
-        "title": "CseGraph: Trace Flow from This Function",
-        "category": "CseGraph"
-      },
-      {
         "command": "csegraph.inspect",
         "title": "CseGraph: Inspect Symbol",
-        "category": "CseGraph"
-      },
-      {
-        "command": "csegraph.vulnerabilities",
-        "title": "CseGraph: Scan Vulnerabilities",
-        "category": "CseGraph"
-      },
-      {
-        "command": "csegraph.architecture",
-        "title": "CseGraph: Architecture Overview",
-        "category": "CseGraph"
-      },
-      {
-        "command": "csegraph.testGaps",
-        "title": "CseGraph: Show Test Gaps",
         "category": "CseGraph"
       }
     ],
@@ -99,11 +73,6 @@
         {
           "command": "csegraph.inspect",
           "group": "csegraph@1",
-          "when": "editorTextFocus"
-        },
-        {
-          "command": "csegraph.flowsHere",
-          "group": "csegraph@2",
           "when": "editorTextFocus"
         }
       ]

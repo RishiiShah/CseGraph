@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import struct
 import time
@@ -11,6 +12,8 @@ import urllib.error
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 from csegraph_core.core.models import EmbeddingResult, EmbeddingSearchHit
 from csegraph_core.index.repository import ProjectIndex
@@ -97,7 +100,8 @@ class EmbeddingService:
                 texts = [t[1] for t in batch]
                 try:
                     vectors = embed(texts)
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Embedding batch %d-%d failed: %s", i, i + batch_size, exc)
                     skipped += len(batch)
                     continue
 
@@ -435,6 +439,7 @@ def _fts_search(
             (fts_query,),
         ).fetchall()
     except Exception:
+        logger.debug("FTS search failed", exc_info=True)
         return []
 
     return [(row["node_id"], -row["rank"]) for row in rows]

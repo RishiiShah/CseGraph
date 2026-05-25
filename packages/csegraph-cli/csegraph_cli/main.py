@@ -333,7 +333,10 @@ def _build_parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--tools",
         default=None,
-        help="Comma-separated list of tool names to expose (e.g. 'csegraph_minimal,csegraph_context'). Default: all tools.",
+        help=(
+            "Tools to expose. Use 'core' (default) or a comma-separated subset "
+            "of the six core context-engine tool names."
+        ),
     )
     _add_json(serve, suppress=True)
 
@@ -624,7 +627,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
     if args.command == "serve":
         import asyncio
         from csegraph_core.server import run_stdio
-        allowed = [t.strip() for t in args.tools.split(",") if t.strip()] if args.tools else None
+        raw = args.tools
+        if raw is None or raw == "core":
+            allowed = None
+        else:
+            allowed = [t.strip() for t in raw.split(",") if t.strip()]
+        if raw is not None and not allowed:
+            raise SystemExit("error: --tools resolved to an empty list. Use 'core' or a comma-separated list of tool names.")
         asyncio.run(run_stdio(allowed_tools=allowed))
         return None
     if args.command == "status":

@@ -199,27 +199,14 @@ class TestExportGeneral:
 
 
 class TestExportMCP:
-    def test_tool_invocation(self, tmp_path):
+    def test_tool_is_cli_only(self):
         from csegraph_core.server.app import _handle_tool
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        (repo / "a.py").write_text("def f(): pass\n", encoding="utf-8")
-        db = str(tmp_path / "test.db")
-        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
-        out = str(tmp_path / "export.graphml")
-        result = _handle_tool("csegraph_export", {
-            "repo": str(repo),
-            "db": db,
-            "output": out,
-            "format": "graphml",
-        })
-        assert result["command"] == "export"
-        assert result["format"] == "graphml"
-        assert Path(out).exists()
 
-    def test_prompt_references_tool(self):
+        with pytest.raises(ValueError, match="Unknown tool"):
+            _handle_tool("csegraph_export", {})
+
+    def test_prompt_is_not_agent_facing(self):
         from csegraph_core.server.app import _handle_prompt
-        result = _handle_prompt("csegraph-export", {"repo": "/repo"})
-        text = result.messages[0].content.text
-        assert "csegraph_export" in text
-        assert "Token-efficiency" in text
+
+        with pytest.raises(ValueError, match="Unknown prompt"):
+            _handle_prompt("csegraph-export", {"repo": "/repo"})

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,8 @@ from csegraph_core.core.models import RegistryEntry, RegistryResult
 
 REGISTRY_DIR = Path(os.path.expanduser("~")) / ".csegraph"
 REGISTRY_FILE = REGISTRY_DIR / "registry.json"
+
+_ALIAS_RE = re.compile(r"^[A-Za-z0-9_\-.]+$")
 
 
 class RegistryService:
@@ -47,6 +50,9 @@ class RegistryService:
 
         if alias is None:
             alias = root_path.name
+
+        if not alias or ".." in alias or not _ALIAS_RE.match(alias):
+            raise ValueError(f"Invalid alias {alias!r}: must be alphanumeric with _ - .")
 
         if db is None:
             db_path = str(root_path / ".csegraph" / "index.db")

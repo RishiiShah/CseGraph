@@ -14,7 +14,7 @@ Lightweight VS Code extension for [CseGraph](https://github.com/apocalypse44/Cse
 ```bash
 cd packages/csegraph-vscode
 npm install && npm run package
-code --install-extension csegraph-vscode-1.0.0.vsix
+code --install-extension csegraph-vscode-1.7.0.vsix
 ```
 
 ### Via CLI
@@ -35,12 +35,7 @@ Open the command palette (`Ctrl+Shift+P`) and type "CseGraph":
 | **Refresh Changed Files** | Incremental refresh (minimal postprocess) |
 | **Show Status** | Node/edge counts, warnings, staleness |
 | **Get Context for Task** | Describe a task, get relevant graph context |
-| **Trace Execution Flows** | List top execution flows by criticality |
-| **Trace Flow from This Function** | Trace flows starting from the symbol at cursor |
 | **Inspect Symbol** | Show callers, callees, and edges for a symbol |
-| **Scan Vulnerabilities** | List security-sensitive nodes |
-| **Architecture Overview** | Community summaries and coupling analysis |
-| **Show Test Gaps** | Untested or under-tested symbols |
 
 ## Keybindings
 
@@ -54,7 +49,6 @@ Open the command palette (`Ctrl+Shift+P`) and type "CseGraph":
 In the editor, right-click to access:
 
 - **Inspect Symbol** — inspects the word at cursor
-- **Trace Flow from This Function** — traces flows from the word at cursor
 
 ## Status Bar
 

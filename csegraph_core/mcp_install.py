@@ -30,8 +30,9 @@ _PLATFORMS = {"auto", "codex", "vscode", *_PROJECT_JSON_TARGETS}
 _INSTRUCTION_BODY = """\
 # CseGraph — Agent Instructions
 
-This repository has a csegraph index. Use csegraph MCP tools for code context
-instead of broad file reads or grep scans.
+CseGraph is a context engine: deliver the smallest accurate code slice for the
+task, not whole-repo reads or broad grep. This repository has a csegraph index.
+Use csegraph MCP tools for code context instead of broad file reads or grep scans.
 
 ## Workflow
 
@@ -247,7 +248,7 @@ class McpInstallService:
         tasks_action = "updated" if tasks_path.exists() else "created"
         if not dry_run:
             tasks_data = _read_json_object(tasks_path)
-            tasks_data.setdefault("version", "2.0.0")
+            tasks_data.setdefault("version", "1.7.0")
             tasks_list = tasks_data.setdefault("tasks", [])
             existing_labels = {t.get("label") for t in tasks_list if isinstance(t, dict)}
             for task in _VSCODE_TASKS:

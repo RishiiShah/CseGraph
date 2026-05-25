@@ -8,12 +8,15 @@ against a real (temporary) csegraph index.
 from __future__ import annotations
 
 import json
+import asyncio
 import subprocess
 import pytest
 from pathlib import Path
 
+from mcp.types import ListPromptsRequest, ListToolsRequest
+
 from csegraph_core.server.app import (
-    ALL_TOOL_NAMES,
+    CORE_TOOL_NAMES,
     create_server,
     _handle_prompt,
     _handle_tool,
@@ -36,6 +39,16 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
+async def _listed_tool_names(server) -> list[str]:
+    result = await server.request_handlers[ListToolsRequest](ListToolsRequest())
+    return [tool.name for tool in result.root.tools]
+
+
+async def _listed_prompt_names(server) -> list[str]:
+    result = await server.request_handlers[ListPromptsRequest](ListPromptsRequest())
+    return [prompt.name for prompt in result.root.prompts]
+
+
 class TestToolListing:
     def test_tool_names(self):
         names = {t.name for t in _TOOLS}
@@ -46,17 +59,6 @@ class TestToolListing:
             "csegraph_context",
             "csegraph_graph",
             "csegraph_path",
-            "csegraph_detect_changes",
-            "csegraph_test_gaps",
-            "csegraph_review_questions",
-            "csegraph_review_eval",
-            "csegraph_vulnerabilities",
-            "csegraph_architecture",
-            "csegraph_flows",
-            "csegraph_resolvers",
-            "csegraph_export",
-            "csegraph_embeddings",
-            "csegraph_registry",
         }
 
     def test_all_tools_have_required_fields(self):
@@ -89,19 +91,6 @@ class TestPromptListing:
             "csegraph-refresh",
             "csegraph-minimal",
             "csegraph-context",
-            "csegraph-detect-changes",
-            "csegraph-test-gaps",
-            "csegraph-review-questions",
-            "csegraph-review-eval",
-            "csegraph-review",
-            "csegraph-export",
-            "csegraph-architecture",
-            "csegraph-flows",
-            "csegraph-resolvers",
-            "csegraph-pre-merge",
-            "csegraph-vulnerabilities",
-            "csegraph-embeddings",
-            "csegraph-registry",
         }
 
     def test_prompts_have_metadata(self):
@@ -118,9 +107,6 @@ class TestPromptListing:
         assert context_args["repo"].required is True
         assert context_args["task"].required is True
         assert context_args["target"].required is False
-
-        review_args = {arg.name: arg for arg in by_name["csegraph-review"].arguments}
-        assert review_args["repo"].required is True
 
 
 class TestHandlePrompt:
@@ -144,23 +130,6 @@ class TestHandlePrompt:
         assert "fix auth refresh" in message.content.text
         assert "refresh_token" in message.content.text
         assert "Token-efficiency" in message.content.text
-
-    def test_review_prompt_mentions_review_tool_workflow(self):
-        result = _handle_prompt("csegraph-review", {"repo": "/repo"})
-        text = result.messages[0].content.text
-
-        assert "csegraph_context" in text
-        assert "detail_level=auto" in text
-        assert "csegraph_review_questions" in text
-        assert "Token-efficiency" in text
-
-    def test_pre_merge_prompt_mentions_detect_changes(self):
-        result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
-        text = result.messages[0].content.text
-
-        assert "csegraph_detect_changes" in text
-        assert "csegraph_refresh" in text
-        assert "Token-efficiency" in text
 
     def test_unknown_prompt_raises(self):
         with pytest.raises(ValueError, match="Unknown prompt"):
@@ -320,35 +289,6 @@ class TestHandleTool:
         with pytest.raises(ValueError, match="Unknown tool"):
             _handle_tool("csegraph_nope", {})
 
-    def test_detect_changes(self, tmp_path):
-        repo = tmp_path / "dcrepo"
-        repo.mkdir()
-        subprocess.run(["git", "-C", str(repo), "init"], capture_output=True, check=True)
-        subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@t.com"], capture_output=True, check=True)
-        subprocess.run(["git", "-C", str(repo), "config", "user.name", "T"], capture_output=True, check=True)
-
-        (repo / "mod.py").write_text("def fn():\n    pass\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-        subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], capture_output=True, check=True)
-
-        (repo / "mod.py").write_text("def fn():\n    return 1\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-        subprocess.run(["git", "-C", str(repo), "commit", "-m", "mod"], capture_output=True, check=True)
-
-        db = str(tmp_path / "dc.db")
-        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
-
-        result = _handle_tool("csegraph_detect_changes", {
-            "repo": str(repo),
-            "db": db,
-            "base_ref": "HEAD~1",
-        })
-        assert result["command"] == "detect-changes"
-        assert result["total_changed_symbols"] >= 1
-        assert isinstance(result["high_risk"], list)
-        assert isinstance(result["medium_risk"], list)
-        assert isinstance(result["low_risk"], list)
-
     def test_result_is_json_serializable(self, tmp_path):
         repo = _make_repo(tmp_path)
         db = str(tmp_path / "test.db")
@@ -377,34 +317,29 @@ class TestServerCreation:
         with pytest.raises(ValueError, match="Unknown tool names"):
             create_server(allowed_tools=["csegraph_minimal", "csegraph_fake"])
 
-    def test_all_tool_names_matches_tools_list(self):
-        assert ALL_TOOL_NAMES == [t.name for t in _TOOLS]
+    def test_core_tool_names_has_6_tools(self):
+        assert len(CORE_TOOL_NAMES) == 6
+        assert set(CORE_TOOL_NAMES) == {t.name for t in _TOOLS}
+
+    def test_default_server_exposes_core_only(self):
+        server = create_server()
+        assert asyncio.run(_listed_tool_names(server)) == CORE_TOOL_NAMES
+
+    def test_default_server_exposes_core_prompts_only(self):
+        server = create_server()
+        assert asyncio.run(_listed_prompt_names(server)) == [
+            "csegraph-index",
+            "csegraph-refresh",
+            "csegraph-minimal",
+            "csegraph-context",
+        ]
+
+    def test_extended_tools_are_not_registered(self):
+        with pytest.raises(ValueError, match="Unknown tool names"):
+            create_server(allowed_tools=["csegraph_flows"])
 
 
 class TestPromptWorkflows:
-    def test_review_prompt_has_step_structure(self):
-        result = _handle_prompt("csegraph-review", {"repo": "/repo"})
-        text = result.messages[0].content.text
-        assert "Step 1" in text
-        assert "Step 2" in text
-        assert "Step 3" in text
-        assert "csegraph_detect_changes" in text
-        assert "csegraph_review_questions" in text
-        assert "csegraph_context" in text
-        assert "3 tools total" in text
-
-    def test_pre_merge_prompt_has_go_nogo(self):
-        result = _handle_prompt("csegraph-pre-merge", {"repo": "/repo"})
-        text = result.messages[0].content.text
-        assert "Step 1" in text
-        assert "csegraph_refresh" in text
-        assert "csegraph_detect_changes" in text
-        assert "csegraph_test_gaps" in text
-        assert "GO / NO-GO" in text
-        assert "Blockers" in text
-        assert "Risks" in text
-        assert "Verification" in text
-
     def test_context_prompt_enforces_escalation_pattern(self):
         result = _handle_prompt("csegraph-context", {"repo": "/repo", "task": "fix bug"})
         text = result.messages[0].content.text
@@ -419,13 +354,9 @@ class TestPromptWorkflows:
         assert "next_tool_suggestions" in text
         assert "stale-index warning" in text
 
-    def test_detect_changes_prompt_has_step_structure(self):
-        result = _handle_prompt("csegraph-detect-changes", {"repo": "/repo"})
-        text = result.messages[0].content.text
-        assert "Step 1" in text
-        assert "csegraph_detect_changes" in text
-        assert "high_risk" in text
-        assert "2 tools total" in text
+    def test_detect_changes_prompt_is_not_agent_facing(self):
+        with pytest.raises(ValueError, match="Unknown prompt"):
+            _handle_prompt("csegraph-detect-changes", {"repo": "/repo"})
 
     def test_all_prompts_include_token_efficiency_preamble(self):
         for prompt in _PROMPTS:

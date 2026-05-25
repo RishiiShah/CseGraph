@@ -297,24 +297,14 @@ class TestEmbeddingSerialization:
 
 
 class TestEmbeddingMCP:
-    def test_tool_compute(self, tmp_path):
+    def test_tool_is_cli_only(self):
         from csegraph_core.server.app import _handle_tool
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        (repo / "a.py").write_text("def f(): pass\n", encoding="utf-8")
-        db = str(tmp_path / "test.db")
-        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
-        result = _handle_tool("csegraph_embeddings", {
-            "repo": str(repo),
-            "db": db,
-            "action": "status",
-        })
-        assert result["command"] == "embeddings"
-        assert result["action"] == "status"
 
-    def test_prompt_references_tool(self):
+        with pytest.raises(ValueError, match="Unknown tool"):
+            _handle_tool("csegraph_embeddings", {})
+
+    def test_prompt_is_not_agent_facing(self):
         from csegraph_core.server.app import _handle_prompt
-        result = _handle_prompt("csegraph-embeddings", {"repo": "/repo", "action": "compute"})
-        text = result.messages[0].content.text
-        assert "csegraph_embeddings" in text
-        assert "Token-efficiency" in text
+
+        with pytest.raises(ValueError, match="Unknown prompt"):
+            _handle_prompt("csegraph-embeddings", {"repo": "/repo", "action": "compute"})

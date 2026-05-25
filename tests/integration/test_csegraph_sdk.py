@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 from csegraph import (
-    BenchmarkService,
     ContextService,
     GraphQueryService,
     IndexService,
-    ProjectIndex,
     RefreshService,
 )
+from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.core.errors import UnsupportedSchemaError
+from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.constants import VALID_REASONS
 
 

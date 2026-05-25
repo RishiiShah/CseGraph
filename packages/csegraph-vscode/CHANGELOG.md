@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0
+
+- Reduced the extension to the core context loop: index, refresh, status, context, and inspect.
+- Removed diagnostic commands from the VS Code UI; use the CLI for flows, vulnerabilities, architecture, and test-gap analysis.
+
 ## 1.0.0
 
 - 10 commands: index, refresh, status, context, flows, flowsHere, inspect, vulnerabilities, architecture, testGaps

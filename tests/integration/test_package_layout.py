@@ -52,7 +52,7 @@ def _offline_pip_env() -> dict:
     return env
 
 
-def test_v140_package_layout_and_versions():
+def test_v200_package_layout_and_versions():
     repo_root = Path(__file__).resolve().parents[2]
 
     root_project = _project_metadata(repo_root)
@@ -60,18 +60,18 @@ def test_v140_package_layout_and_versions():
     cli_project = _project_metadata(repo_root / "packages" / "csegraph-cli")
 
     assert root_project["name"] == "csegraph-core"
-    assert root_project["version"] == "1.6.0"
+    assert root_project["version"] == "1.7.0"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
     assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
-    assert sdk_project["version"] == "1.6.0"
-    assert sdk_project["dependencies"] == ["csegraph-core>=1.6.0"]
+    assert sdk_project["version"] == "1.7.0"
+    assert sdk_project["dependencies"] == ["csegraph-core>=1.7.0"]
 
     assert cli_project["name"] == "csegraph-cli"
-    assert cli_project["version"] == "1.6.0"
-    assert cli_project["dependencies"] == ["csegraph-core>=1.6.0"]
+    assert cli_project["version"] == "1.7.0"
+    assert cli_project["dependencies"] == ["csegraph-core>=1.7.0"]
 
     assert (repo_root / "csegraph_core" / "__init__.py").exists()
     assert (repo_root / "packages" / "csegraph" / "csegraph" / "__init__.py").exists()
@@ -243,18 +243,49 @@ def test_status_and_postprocess_exports():
     assert PostprocessResult is SDKPostprocessResult
 
 
-def test_sdk_core_full_parity():
+def test_sdk_exports_context_engine_facade_only():
     import csegraph_core
     import csegraph
 
-    core_all = set(csegraph_core.__all__)
     sdk_all = set(csegraph.__all__)
+    expected = {
+        "__version__",
+        "ContextNode",
+        "ContextResult",
+        "ContextService",
+        "GraphEdgeView",
+        "GraphNodeView",
+        "GraphQueryService",
+        "GraphResult",
+        "IndexResult",
+        "IndexService",
+        "KeyEntity",
+        "MinimalResult",
+        "MinimalService",
+        "NextToolSuggestion",
+        "PathEdge",
+        "PathResult",
+        "PathStep",
+        "POSTPROCESS_LEVELS",
+        "PostprocessResult",
+        "PostprocessService",
+        "PROFILES",
+        "ProfileConfig",
+        "RefreshResult",
+        "RefreshService",
+        "StatusResult",
+        "StatusService",
+        "SufficiencyMetrics",
+        "SufficiencyResult",
+        "VALID_REASONS",
+        "get_profile",
+        "load_profile",
+        "to_dict",
+    }
 
-    assert core_all == sdk_all, (
-        f"core-only: {sorted(core_all - sdk_all)}, sdk-only: {sorted(sdk_all - core_all)}"
-    )
+    assert sdk_all == expected
 
-    for name in sorted(core_all):
+    for name in sorted(sdk_all):
         if name == "__version__":
             continue
         assert getattr(csegraph, name) is getattr(csegraph_core, name), (
@@ -262,28 +293,12 @@ def test_sdk_core_full_parity():
         )
 
 
-def test_review_intelligence_sdk_exports():
-    from csegraph import (
-        TestGapService,
-        TestGapResult,
-        UntestedSymbol,
-        CommunityCoverage,
-        ReviewQuestionsService,
-        ReviewQuestionsResult,
-        ReviewQuestion,
-        ReviewEvalService,
-        ReviewEvalResult,
-        RiskLevelMetrics,
-    )
-    import csegraph_core
+def test_diagnostic_services_are_module_path_only():
+    import csegraph
+    from csegraph_core.graph.test_gaps import TestGapService
+    from csegraph_core.graph.review_questions import ReviewQuestionsService
 
-    assert TestGapService is csegraph_core.TestGapService
-    assert TestGapResult is csegraph_core.TestGapResult
-    assert UntestedSymbol is csegraph_core.UntestedSymbol
-    assert CommunityCoverage is csegraph_core.CommunityCoverage
-    assert ReviewQuestionsService is csegraph_core.ReviewQuestionsService
-    assert ReviewQuestionsResult is csegraph_core.ReviewQuestionsResult
-    assert ReviewQuestion is csegraph_core.ReviewQuestion
-    assert ReviewEvalService is csegraph_core.ReviewEvalService
-    assert ReviewEvalResult is csegraph_core.ReviewEvalResult
-    assert RiskLevelMetrics is csegraph_core.RiskLevelMetrics
+    assert TestGapService is not None
+    assert ReviewQuestionsService is not None
+    assert not hasattr(csegraph, "TestGapService")
+    assert not hasattr(csegraph, "ReviewQuestionsService")

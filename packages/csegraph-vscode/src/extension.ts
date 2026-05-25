@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -24,12 +24,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ["csegraph.refresh", cmdRefresh],
     ["csegraph.status", cmdStatus],
     ["csegraph.context", cmdContext],
-    ["csegraph.flows", cmdFlows],
-    ["csegraph.flowsHere", cmdFlowsHere],
     ["csegraph.inspect", cmdInspect],
-    ["csegraph.vulnerabilities", cmdVulnerabilities],
-    ["csegraph.architecture", cmdArchitecture],
-    ["csegraph.testGaps", cmdTestGaps],
   ];
   for (const [id, handler] of commands) {
     context.subscriptions.push(
@@ -95,7 +90,7 @@ async function cmdContext(): Promise<void> {
   }
 
   const editor = vscode.window.activeTextEditor;
-  const args = [JSON.stringify(task), "--format", "markdown"];
+  const args = [task, "--format", "markdown"];
   if (editor) {
     const symbol = getWordAtCursor(editor);
     if (symbol) {
@@ -103,24 +98,6 @@ async function cmdContext(): Promise<void> {
     }
   }
   run("context", args);
-}
-
-function cmdFlows(): void {
-  run("flows", ["--limit", "10"]);
-}
-
-async function cmdFlowsHere(): Promise<void> {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage("No active editor.");
-    return;
-  }
-  const symbol = getWordAtCursor(editor);
-  if (!symbol) {
-    vscode.window.showWarningMessage("No symbol at cursor.");
-    return;
-  }
-  run("flows", ["--entry-point", symbol, "--limit", "5"]);
 }
 
 async function cmdInspect(): Promise<void> {
@@ -142,18 +119,6 @@ async function cmdInspect(): Promise<void> {
   run("inspect", [symbol, "--depth", "1", "--detail-level", "standard"]);
 }
 
-function cmdVulnerabilities(): void {
-  run("vulnerabilities", ["--limit", "20"]);
-}
-
-function cmdArchitecture(): void {
-  run("architecture", ["--limit", "10"]);
-}
-
-function cmdTestGaps(): void {
-  run("test-gaps", ["--limit", "15"]);
-}
-
 // ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
@@ -168,14 +133,14 @@ function run(command: string, args: string[] = []): void {
   }
 
   const cli = getCliCommand();
-  const fullCmd = [cli, command, ...args].join(" ");
+  const allArgs = [command, ...args];
 
   outputChannel.show(true);
   outputChannel.appendLine("");
-  outputChannel.appendLine(`> ${fullCmd}`);
+  outputChannel.appendLine(`> ${cli} ${allArgs.join(" ")}`);
   outputChannel.appendLine("");
 
-  exec(fullCmd, { cwd: root, timeout: 120_000 }, (err, stdout, stderr) => {
+  execFile(cli, allArgs, { cwd: root, timeout: 120_000 }, (err, stdout, stderr) => {
     if (stdout) {
       outputChannel.appendLine(stdout);
     }
@@ -205,11 +170,11 @@ function runWithProgress(
   }
 
   const cli = getCliCommand();
-  const fullCmd = [cli, command, ...args].join(" ");
+  const allArgs = [command, ...args];
 
   outputChannel.show(true);
   outputChannel.appendLine("");
-  outputChannel.appendLine(`> ${fullCmd}`);
+  outputChannel.appendLine(`> ${cli} ${allArgs.join(" ")}`);
   outputChannel.appendLine("");
 
   vscode.window.withProgress(
@@ -220,8 +185,9 @@ function runWithProgress(
     },
     () =>
       new Promise<void>((resolve) => {
-        exec(
-          fullCmd,
+        execFile(
+          cli,
+          allArgs,
           { cwd: root, timeout: 300_000 },
           (err, stdout, stderr) => {
             if (stdout) {
@@ -253,8 +219,9 @@ function silentRefresh(): void {
     return;
   }
   const cli = getCliCommand();
-  exec(
-    `${cli} refresh --postprocess minimal`,
+  execFile(
+    cli,
+    ["refresh", "--postprocess", "minimal"],
     { cwd: root, timeout: 60_000 },
     (_err, _stdout, _stderr) => {
       updateStatusBar();
@@ -280,8 +247,9 @@ function updateStatusBar(): void {
   }
 
   const cli = getCliCommand();
-  exec(
-    `${cli} status --json`,
+  execFile(
+    cli,
+    ["status", "--json"],
     { cwd: root, timeout: 10_000 },
     (err, stdout) => {
       if (err || !stdout.trim()) {
@@ -346,7 +314,7 @@ function getCliCommand(): string {
         ? path.join(root, dir, "Scripts", "csegraph.exe")
         : path.join(root, dir, "bin", "csegraph");
       if (fs.existsSync(bin)) {
-        resolvedCli = `"${bin}"`;
+        resolvedCli = bin;
         outputChannel.appendLine(`[cli] auto-discovered: ${resolvedCli}`);
         return resolvedCli;
       }

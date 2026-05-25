@@ -7,16 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from csegraph_core.graph.queries import clear_hub_cache
 from csegraph_core.server.session import _SESSION
 
 
 @pytest.fixture(autouse=True)
 def _reset_mcp_session():
-    """The MCP server keeps a module-level SessionState; reset it before each
-    test so tools_called doesn't leak across the suite."""
     _SESSION.reset()
+    clear_hub_cache()
     yield
     _SESSION.reset()
+    clear_hub_cache()
 
 
 @pytest.fixture()

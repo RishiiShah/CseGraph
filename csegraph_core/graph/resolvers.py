@@ -428,7 +428,9 @@ def _probe_ts_file(
     repo_root: str,
     file_by_path: Dict[str, str],
 ) -> Optional[str]:
-    normalized = candidate.replace("\\", "/").lstrip("./")
+    normalized = candidate.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
     if normalized in file_by_path:
         return file_by_path[normalized]
 

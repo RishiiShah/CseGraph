@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from csegraph_core.core.models import to_dict
 from csegraph_core.graph.architecture import ArchitectureService
 from csegraph_core.graph.communities import detect_communities
@@ -164,25 +166,14 @@ class TestArchitectureOverview:
 
 
 class TestArchitectureMCP:
-    def test_tool_invocation(self, tmp_path):
+    def test_tool_is_cli_only(self):
         from csegraph_core.server.app import _handle_tool
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        (repo / "a.py").write_text(
-            "from b import helper\ndef main(): helper()\n",
-            encoding="utf-8",
-        )
-        (repo / "b.py").write_text("def helper(): pass\n", encoding="utf-8")
-        db = str(tmp_path / "test.db")
-        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
-        result = _handle_tool("csegraph_architecture", {"repo": str(repo), "db": db})
-        assert result["command"] == "architecture"
-        assert "summaries" in result
-        assert "coupling" in result
 
-    def test_prompt_references_tool(self):
+        with pytest.raises(ValueError, match="Unknown tool"):
+            _handle_tool("csegraph_architecture", {})
+
+    def test_prompt_is_not_agent_facing(self):
         from csegraph_core.server.app import _handle_prompt
-        result = _handle_prompt("csegraph-architecture", {"repo": "/repo"})
-        text = result.messages[0].content.text
-        assert "csegraph_architecture" in text
-        assert "Token-efficiency" in text
+
+        with pytest.raises(ValueError, match="Unknown prompt"):
+            _handle_prompt("csegraph-architecture", {"repo": "/repo"})
