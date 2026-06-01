@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
+from csegraph_core.graph import queries as queries_module
 from csegraph_core.graph.queries import (
     GraphQueryService,
     _HUB_FLOOR,
+    clear_hub_cache,
     _compute_hub_threshold,
     _hub_node_ids,
 )
@@ -94,6 +97,41 @@ class TestHubThresholdHelpers:
             index.initialize_schema()
             hubs = _hub_node_ids(index, _HUB_FLOOR)
             assert "symbol::helpers.py::function::fmt" in hubs
+        finally:
+            index.close()
+
+
+class TestHubCache:
+    def test_cached_hub_info_reuses_computation(self, tmp_path):
+        _, db = _tiny_repo(tmp_path)
+        clear_hub_cache()
+        index = ProjectIndex(db)
+        try:
+            index.initialize_schema()
+            with patch(
+                "csegraph_core.graph.queries._compute_hub_threshold",
+                wraps=queries_module._compute_hub_threshold,
+            ) as threshold:
+                queries_module._cached_hub_info(db, index, [])
+                queries_module._cached_hub_info(db, index, [])
+                assert threshold.call_count == 1
+        finally:
+            index.close()
+
+    def test_clear_hub_cache_forces_recomputation(self, tmp_path):
+        _, db = _tiny_repo(tmp_path)
+        clear_hub_cache()
+        index = ProjectIndex(db)
+        try:
+            index.initialize_schema()
+            with patch(
+                "csegraph_core.graph.queries._compute_hub_threshold",
+                wraps=queries_module._compute_hub_threshold,
+            ) as threshold:
+                queries_module._cached_hub_info(db, index, [])
+                clear_hub_cache()
+                queries_module._cached_hub_info(db, index, [])
+                assert threshold.call_count == 2
         finally:
             index.close()
 

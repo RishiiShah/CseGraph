@@ -4,7 +4,7 @@ import pytest
 
 import tree_sitter
 
-from tests.conftest import run_cli
+from tests.conftest import run_cli, run_dev_cli
 
 
 def _write_ts_repo(root: Path) -> None:
@@ -152,7 +152,7 @@ def test_report_includes_typescript_symbols(tmp_path):
     _write_ts_repo(repo)
     run_cli("index", str(repo), "--json")
 
-    result = run_cli("report", str(repo), "--json")
+    result = run_dev_cli("report", str(repo), "--json")
 
     assert result["total_files"] == 2
     assert result["total_symbols"] >= 3
@@ -165,12 +165,14 @@ def test_graph_visual_export_with_typescript(tmp_path):
 
     output = tmp_path / "graph.html"
     result = run_cli(
-        "graph",
+        "export",
         "--repo", str(repo),
+        "--format", "html",
         "--output", str(output),
         "--json",
     )
 
+    assert result["format"] == "html"
     assert result["total_nodes"] >= 2
     content = output.read_text(encoding="utf-8")
     assert "UserService" in content

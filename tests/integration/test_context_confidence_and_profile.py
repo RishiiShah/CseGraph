@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from csegraph_core.server.app import _handle_tool
-from csegraph_core.config.profiles import load_profile
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -13,16 +12,39 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def test_context_includes_confidence_breakdown_and_profile_byte_cap(tmp_path: Path):
+def test_context_includes_confidence_breakdown(tmp_path: Path):
     repo = _make_repo(tmp_path)
     db = str(tmp_path / "test.db")
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-    result = _handle_tool("csegraph_context", {"repo": str(repo), "task": "call b", "db": db, "profile": "small"})
+    result = _handle_tool("csegraph_context", {"repo": str(repo), "task": "call b", "db": db})
     assert isinstance(result, dict)
     assert "confidence_breakdown" in result and isinstance(result["confidence_breakdown"], dict)
 
-    cfg = load_profile("small")
-    # server should apply profile default byte cap when none provided
-    assert "byte_cap" in result and result["byte_cap"] == cfg.max_bytes
+
+def test_no_implicit_byte_cap_without_max_bytes(tmp_path: Path):
+    """Without explicit max_bytes, no byte cap is applied (opt-in only)."""
+    repo = _make_repo(tmp_path)
+    db = str(tmp_path / "test.db")
+
+    _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
+
+    result = _handle_tool("csegraph_context", {"repo": str(repo), "task": "call b", "db": db})
+    assert result["byte_cap_applied"] is False
+    assert "byte_cap" not in result or result.get("byte_cap") is None
+
+
+def test_explicit_max_bytes_is_honored(tmp_path: Path):
+    repo = _make_repo(tmp_path)
+    db = str(tmp_path / "test.db")
+
+    _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
+
+    result = _handle_tool(
+        "csegraph_context",
+        {"repo": str(repo), "task": "call b", "db": db, "max_bytes": 800},
+    )
+    assert result["byte_cap"] == 800
+    assert result["byte_cap_applied"] is True
+    assert result["response_bytes"] == len(__import__("json").dumps(result, default=str).encode())

@@ -7,13 +7,14 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
+from mcp.types import CallToolResult, GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
 
 from csegraph_core.core.models import to_dict
-from csegraph_core.config.profiles import load_profile
 from csegraph_core.server.session import _SESSION
 
 logger = logging.getLogger("csegraph.mcp")
+
+_MIN_BYTE_CAP = 256
 
 _TOOLS: list[Tool] = [
     Tool(
@@ -38,6 +39,12 @@ _TOOLS: list[Tool] = [
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+                "postprocess_level": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "full"],
+                    "default": "full",
+                    "description": "Postprocess level: none (fastest, parse only), minimal (FTS only), full (FTS + communities).",
                 },
             },
             "required": ["repo"],
@@ -65,6 +72,12 @@ _TOOLS: list[Tool] = [
                 "db": {
                     "type": "string",
                     "description": "SQLite database path. Default: <repo>/.csegraph/index.db",
+                },
+                "postprocess_level": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "full"],
+                    "default": "full",
+                    "description": "Postprocess level: none (fastest), minimal (FTS only), full (FTS + communities).",
                 },
             },
             "required": ["repo"],
@@ -146,6 +159,7 @@ _TOOLS: list[Tool] = [
                 },
                 "max_bytes": {
                     "type": "integer",
+                    "minimum": _MIN_BYTE_CAP,
                     "description": "Hard ceiling on the serialized JSON response size. When exceeded, source_text is dropped first, then explanations, then nodes from the tail. truncated_fields reports what was dropped.",
                 },
                 "db": {
@@ -192,8 +206,14 @@ _TOOLS: list[Tool] = [
                     "items": {"type": "string"},
                     "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
                 },
+                "confidence_tiers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional confidence tier filter (e.g. ['EXTRACTED']). BFS only follows edges with these tiers. Default: all tiers.",
+                },
                 "max_bytes": {
                     "type": "integer",
+                    "minimum": _MIN_BYTE_CAP,
                     "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
                 },
                 "db": {
@@ -237,8 +257,14 @@ _TOOLS: list[Tool] = [
                     "items": {"type": "string"},
                     "description": "Optional edge-kind filter (e.g. ['calls','imports']). Traversal follows only these relations.",
                 },
+                "confidence_tiers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional confidence tier filter (e.g. ['EXTRACTED']). BFS only follows edges with these tiers. Default: all tiers.",
+                },
                 "max_bytes": {
                     "type": "integer",
+                    "minimum": _MIN_BYTE_CAP,
                     "description": "Hard ceiling on the serialized JSON response size. Trims edges then nodes from the tail; truncated_fields reports what was dropped.",
                 },
                 "db": {
@@ -250,6 +276,16 @@ _TOOLS: list[Tool] = [
         },
     ),
 ]
+
+_CORE_MCP_TOOL_NAMES = (
+    "csegraph_index",
+    "csegraph_refresh",
+    "csegraph_minimal",
+    "csegraph_context",
+    "csegraph_graph",
+    "csegraph_path",
+)
+_TOOLS = [tool for tool in _TOOLS if tool.name in _CORE_MCP_TOOL_NAMES]
 
 _PROMPTS: list[Prompt] = [
     Prompt(
@@ -290,24 +326,120 @@ _PROMPTS: list[Prompt] = [
         ],
     ),
     Prompt(
-        name="csegraph-review",
-        title="Review Current Changes",
-        description="Review changes with csegraph context, graph inspection, and structural report data.",
+        name="csegraph-debug-issue",
+        title="Debug Issue",
+        description=(
+            "Guided debugging using the routing card, task context, and one graph neighborhood. "
+            "Replaces broad grep and full-file reads."
+        ),
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="task", description="Optional review focus.", required=False),
+            PromptArgument(
+                name="description",
+                description="Bug symptom, error message, or failing behavior.",
+                required=True,
+            ),
+            PromptArgument(
+                name="target",
+                description="Optional failing symbol, file path, or node ID.",
+                required=False,
+            ),
         ],
     ),
     Prompt(
-        name="csegraph-pre-merge",
-        title="Pre-Merge Check",
-        description="Run a pre-merge workflow using csegraph context and structural checks.",
+        name="csegraph-review-changes",
+        title="Review Changes",
+        description=(
+            "Pre-commit review workflow using graph-backed context. "
+            "Use terminal `csegraph analyze` for git-scoped risk and diagnostics (CLI-only)."
+        ),
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="task", description="Optional merge or PR description.", required=False),
+            PromptArgument(
+                name="task",
+                description="What changed or what to review (e.g. auth module edits).",
+                required=True,
+            ),
+            PromptArgument(
+                name="base",
+                description="Optional git base ref for human CLI diff commands (default HEAD~1).",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-pre-merge-check",
+        title="Pre-Merge Check",
+        description=(
+            "PR readiness using minimal routing, task context, and optional dependency inspection. "
+            "Stays within the six core MCP tools."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="task",
+                description="Merge or PR summary (branch purpose, risky areas).",
+                required=True,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-explore-architecture",
+        title="Explore Architecture",
+        description=(
+            "Map subsystem structure with a routing card and hub-aware graph neighborhood. "
+            "For human HTML exports use CLI `csegraph export --format html`."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="focus",
+                description="Optional subsystem, symbol, or area to explore.",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="csegraph-onboard-developer",
+        title="Onboard Developer",
+        description=(
+            "Orient a new contributor: routing card, overview context, and one structural graph call."
+        ),
+        arguments=[
+            PromptArgument(name="repo", description="Absolute repository path.", required=True),
+            PromptArgument(
+                name="focus",
+                description="Optional area of interest (e.g. retrieval, MCP server).",
+                required=False,
+            ),
         ],
     ),
 ]
+
+_CORE_MCP_PROMPT_NAMES = (
+    "csegraph-index",
+    "csegraph-refresh",
+    "csegraph-minimal",
+    "csegraph-context",
+    "csegraph-debug-issue",
+    "csegraph-review-changes",
+    "csegraph-pre-merge-check",
+    "csegraph-explore-architecture",
+    "csegraph-onboard-developer",
+)
+_PROMPTS = [prompt for prompt in _PROMPTS if prompt.name in _CORE_MCP_PROMPT_NAMES]
+
+_PROMPT_TOOL_DEPENDENCIES: dict[str, set[str]] = {
+    "csegraph-index": {"csegraph_index"},
+    "csegraph-refresh": {"csegraph_refresh"},
+    "csegraph-minimal": {"csegraph_minimal"},
+    "csegraph-context": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+    "csegraph-debug-issue": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+    "csegraph-review-changes": {"csegraph_refresh", "csegraph_minimal", "csegraph_context"},
+    "csegraph-pre-merge-check": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+    "csegraph-explore-architecture": {"csegraph_minimal", "csegraph_graph"},
+    "csegraph-onboard-developer": {"csegraph_minimal", "csegraph_context", "csegraph_graph"},
+}
 
 
 # Prefixed to every prompt to enforce token-efficiency and escalation rules.
@@ -351,6 +483,16 @@ def _db_path(repo: str, db: str | None = None) -> str:
 
 
 def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
+    if name not in _CORE_MCP_TOOL_NAMES:
+        raise ValueError(f"Unknown tool: {name}")
+    provided_max = arguments.get("max_bytes")
+    if provided_max is not None:
+        if isinstance(provided_max, float) and provided_max == int(provided_max):
+            provided_max = int(provided_max)
+        if not isinstance(provided_max, int):
+            raise TypeError(f"max_bytes must be an integer, got {type(provided_max).__name__}")
+    if isinstance(provided_max, int) and 0 < provided_max < _MIN_BYTE_CAP:
+        raise ValueError(f"max_bytes must be at least {_MIN_BYTE_CAP}")
     result = _dispatch_tool(name, arguments)
     _SESSION.record(name)
     # When the minimal tool runs, cache the detected task intent on the session
@@ -361,17 +503,8 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
             _SESSION.inferred_intent = intent
     if isinstance(result, dict):
         _apply_session_filter(result)
-        provided_max = arguments.get("max_bytes")
-        if isinstance(provided_max, int) and provided_max > 0:
-            effective_max = provided_max
-        else:
-            profile_name = arguments.get("profile") or "medium"
-            try:
-                profile_cfg = load_profile(profile_name)
-                effective_max = getattr(profile_cfg, "max_bytes", None)
-            except Exception:
-                effective_max = None
-        _apply_byte_cap(result, effective_max if isinstance(effective_max, int) and effective_max > 0 else None)
+        effective_max = provided_max if isinstance(provided_max, int) and provided_max > 0 else None
+        _apply_byte_cap(result, effective_max)
     return result
 
 
@@ -439,7 +572,7 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
                 node.pop("source_text", None)
                 dropped = True
         if dropped:
-            truncated.append("source_text")
+            _mark_truncated(truncated, "source_text")
             if _encoded_size(result) <= max_bytes:
                 result["byte_cap_applied"] = True
                 _finalize_response_bytes(result)
@@ -453,7 +586,7 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
                 node.pop("explanation", None)
                 dropped = True
         if dropped:
-            truncated.append("explanation")
+            _mark_truncated(truncated, "explanation")
             if _encoded_size(result) <= max_bytes:
                 result["byte_cap_applied"] = True
                 _finalize_response_bytes(result)
@@ -461,12 +594,10 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
 
     # Step 3: trim nodes list (lowest-priority assumed at tail).
     if isinstance(nodes, list) and nodes:
-        trimmed = False
         while len(nodes) > 1 and _encoded_size(result) > max_bytes:
-            nodes.pop()
-            trimmed = True
-        if trimmed:
-            truncated.append("nodes")
+            _pop_omitted(result, "nodes")
+        if "nodes" in result.get("omitted_counts", {}):
+            _mark_truncated(truncated, "nodes")
             if _encoded_size(result) <= max_bytes:
                 result["byte_cap_applied"] = True
                 _finalize_response_bytes(result)
@@ -475,15 +606,33 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
     # Step 4: trim edges list.
     edges = result.get("edges")
     if isinstance(edges, list) and edges:
-        trimmed = False
         while edges and _encoded_size(result) > max_bytes:
-            edges.pop()
-            trimmed = True
-        if trimmed:
-            truncated.append("edges")
+            _pop_omitted(result, "edges")
+        if "edges" in result.get("omitted_counts", {}):
+            _mark_truncated(truncated, "edges")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 5: trim known non-node result shapes in deterministic priority order.
+    for key in ("low_risk", "medium_risk", "high_risk", "flows"):
+        if _encoded_size(result) <= max_bytes:
+            break
+        _trim_list_field(result, key, max_bytes, truncated)
+
+    # Step 6 (generic): trim any remaining list-valued payload keys.
+    if _encoded_size(result) > max_bytes:
+        _generic_list_trim(result, max_bytes, truncated)
+
+    if _encoded_size(result) > max_bytes:
+        _final_compact_to_cap(result, max_bytes, truncated)
 
     result["byte_cap_applied"] = bool(truncated)
     _finalize_response_bytes(result)
+    if result["response_bytes"] > max_bytes:
+        _replace_with_minimal_cap_notice(result, max_bytes, truncated)
+        _finalize_response_bytes(result)
 
 
 def _finalize_response_bytes(result: dict[str, Any]) -> None:
@@ -500,22 +649,177 @@ def _finalize_response_bytes(result: dict[str, Any]) -> None:
         result["response_bytes"] = new_size
 
 
+_TRIM_SKIP_KEYS = frozenset({
+    "truncated_fields",
+    "tools_already_called",
+    "warnings",
+    "omitted_counts",
+})
+
+
+def _mark_truncated(truncated: list[str], key: str) -> None:
+    if key not in truncated:
+        truncated.append(key)
+
+
+def _pop_omitted(result: dict[str, Any], key: str) -> None:
+    items = result.get(key)
+    if not isinstance(items, list) or not items:
+        return
+    items.pop()
+    counts = result.setdefault("omitted_counts", {})
+    counts[key] = counts.get(key, 0) + 1
+
+
+def _trim_list_field(
+    result: dict[str, Any],
+    key: str,
+    max_bytes: int,
+    truncated: list[str],
+    *,
+    min_items: int = 0,
+) -> None:
+    items = result.get(key)
+    if not isinstance(items, list):
+        return
+    before = len(items)
+    while len(items) > min_items and _encoded_size(result) > max_bytes:
+        _pop_omitted(result, key)
+    if len(items) != before:
+        _mark_truncated(truncated, key)
+
+
+def _generic_list_trim(
+    result: dict[str, Any], max_bytes: int, truncated: list[str]
+) -> None:
+    """Trim list-valued payload keys deterministically until under budget."""
+    while _encoded_size(result) > max_bytes:
+        candidates = [
+            k for k, v in result.items()
+            if isinstance(v, list) and v and k not in _TRIM_SKIP_KEYS
+        ]
+        if not candidates:
+            break
+        largest_key = max(candidates, key=lambda k: len(result[k]))
+        _pop_omitted(result, largest_key)
+        _mark_truncated(truncated, largest_key)
+
+
+def _final_compact_to_cap(
+    result: dict[str, Any], max_bytes: int, truncated: list[str]
+) -> None:
+    """Last-resort compaction that keeps cap metadata and drops payload bulk."""
+    for key, value in list(result.items()):
+        if _encoded_size(result) <= max_bytes:
+            return
+        if key in _TRIM_SKIP_KEYS:
+            continue
+        if isinstance(value, list) and value:
+            counts = result.setdefault("omitted_counts", {})
+            counts[key] = counts.get(key, 0) + len(value)
+            result[key] = []
+            _mark_truncated(truncated, key)
+
+    for preferred in ("summary", "message", "error"):
+        if _encoded_size(result) <= max_bytes:
+            return
+        _truncate_string_field(result, preferred, max_bytes, truncated)
+
+    for key, value in list(result.items()):
+        if _encoded_size(result) <= max_bytes:
+            return
+        if isinstance(value, str) and key not in {"command", "byte_cap"}:
+            _truncate_string_field(result, key, max_bytes, truncated)
+
+    for key in ("warnings", "tools_already_called"):
+        if _encoded_size(result) <= max_bytes:
+            return
+        value = result.get(key)
+        if isinstance(value, list) and value:
+            counts = result.setdefault("omitted_counts", {})
+            counts[key] = counts.get(key, 0) + len(value)
+            result[key] = []
+            _mark_truncated(truncated, key)
+
+
+def _truncate_string_field(
+    result: dict[str, Any], key: str, max_bytes: int, truncated: list[str]
+) -> None:
+    value = result.get(key)
+    if not isinstance(value, str) or not value:
+        return
+    while value and _encoded_size(result) > max_bytes:
+        excess = _encoded_size(result) - max_bytes
+        keep = max(0, len(value) - excess - 16)
+        value = value[:keep]
+        result[key] = value + ("..." if keep > 0 else "")
+    _mark_truncated(truncated, key)
+
+
+def _replace_with_minimal_cap_notice(
+    result: dict[str, Any], max_bytes: int, truncated: list[str]
+) -> None:
+    counts = result.get("omitted_counts", {})
+    omitted_total = sum(v for v in counts.values() if isinstance(v, int))
+    command = result.get("command")
+    truncated_snapshot = list(truncated) or ["response"]
+    result.clear()
+    if command:
+        result["command"] = command
+    result["byte_cap"] = max_bytes
+    result["byte_cap_applied"] = True
+    result["truncated_fields"] = truncated_snapshot
+    if counts:
+        result["omitted_counts"] = counts
+    result["summary"] = "Response compacted to satisfy max_bytes."
+    result["response_bytes"] = max_bytes
+    if _encoded_size(result) <= max_bytes:
+        return
+
+    result["truncated_fields"] = ["response"]
+    if omitted_total:
+        result["omitted_counts"] = {"response": omitted_total}
+    result["summary"] = "Response compacted to satisfy max_bytes."
+    if _encoded_size(result) <= max_bytes:
+        return
+
+    result.pop("summary", None)
+    if _encoded_size(result) <= max_bytes:
+        return
+
+    result.pop("command", None)
+
+
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
         from csegraph_core.index.services import IndexService
+        from csegraph_core.postprocess import PostprocessService
+        from csegraph_core.graph.queries import clear_hub_cache
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(IndexService(db).index(repo, profile=profile))
+        result = IndexService(db).index(repo, profile=profile)
+        pp_level = arguments.get("postprocess_level", "full")
+        if pp_level != "none":
+            PostprocessService(db).postprocess(level=pp_level)
+        clear_hub_cache()
+        return to_dict(result)
 
     if name == "csegraph_refresh":
         from csegraph_core.index.services import RefreshService
+        from csegraph_core.postprocess import PostprocessService
+        from csegraph_core.graph.queries import clear_hub_cache
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(RefreshService(db).refresh(profile=profile))
+        result = RefreshService(db).refresh(profile=profile)
+        pp_level = arguments.get("postprocess_level", "full")
+        if pp_level != "none" and result.files_indexed > 0:
+            PostprocessService(db).postprocess(level=pp_level)
+        clear_hub_cache()
+        return to_dict(result)
 
     if name == "csegraph_minimal":
         from csegraph_core.retrieval.minimal import MinimalService
@@ -554,12 +858,14 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         depth = arguments.get("depth", 1)
         detail_level = arguments.get("detail_level", "minimal")
         relations = arguments.get("relations")
+        confidence_tiers = arguments.get("confidence_tiers")
         return to_dict(
             GraphQueryService(db).neighborhood(
                 arguments["node"],
                 depth=depth,
                 detail_level=detail_level,
                 relations=relations,
+                confidence_tiers=confidence_tiers,
             )
         )
 
@@ -570,12 +876,14 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         detail_level = arguments.get("detail_level", "minimal")
         relations = arguments.get("relations")
+        confidence_tiers = arguments.get("confidence_tiers")
         return to_dict(
             GraphQueryService(db).shortest_path(
                 arguments["source"],
                 arguments["target"],
                 detail_level=detail_level,
                 relations=relations,
+                confidence_tiers=confidence_tiers,
             )
         )
 
@@ -583,70 +891,126 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
 
 def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPromptResult:
+    if name not in _CORE_MCP_PROMPT_NAMES:
+        raise ValueError(f"Unknown prompt: {name}")
     args = arguments or {}
     if name == "csegraph-index":
         text = _prompt_text(
-            "Build or rebuild the repository index.",
+            "Build or rebuild the csegraph repository index.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_index` with the repo path and optional profile.",
-                "Summarize files, symbols, edges, cache stats, and parse errors.",
+                "Call `csegraph_index` with the repo path and profile (default medium).",
+                "Report: files indexed, symbols, edges, cache hits/misses, parse errors.",
+                "If parse errors > 0, list them so the user can fix syntax before relying on the graph.",
             ],
             args,
         )
     elif name == "csegraph-refresh":
         text = _prompt_text(
-            "Refresh changed and deleted files in the existing index.",
+            "Incrementally refresh the csegraph index for changed and deleted files.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_refresh` with the repo path and optional profile.",
-                "Summarize changed, deleted, unchanged files, cache stats, and parse errors.",
+                "Call `csegraph_refresh` with the repo path and profile (default medium).",
+                "Report: changed files re-indexed, deleted files removed, unchanged files kept.",
+                "If parse errors appear on changed files, flag them.",
             ],
             args,
         )
     elif name == "csegraph-minimal":
         text = _prompt_text(
-            "Get a compact routing card before invoking heavier tools.",
+            "Get a compact routing card (~150 tokens) before invoking heavier tools.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
                 "Call `csegraph_minimal` with the repo and the user's task (if any).",
-                "Use the returned `next_tool_suggestions` to choose the next call; do not invoke unrelated tools.",
-                "Never make more than 3 tool calls in a single agent turn; prefer choosing one suggested next_tool.",
+                "If the routing card includes a stale-index warning, call `csegraph_refresh` before proceeding.",
+                "Read the `next_tool_suggestions` array. Call exactly one suggested tool — do not invoke tools not in the suggestions.",
+                "If suggestions are empty or the routing card says the graph is sufficient, stop — no further tool calls needed.",
             ],
             args,
         )
     elif name == "csegraph-context":
         text = _prompt_text(
-            "Retrieve graph-backed context for the task, starting with minimal if sufficient.",
+            "Retrieve task-specific context, starting minimal and escalating only when needed.",
             [
-                "If `repo` or `task` is missing, ask for it before calling tools.",
-                "Call `csegraph_context` with repo, task, optional target, detail_level=auto to start efficiently.",
-                "If returned_detail_level is minimal and sufficiency is met, avoid escalating to `csegraph_graph` or `csegraph_path` unless the task intent requires structural dependency checks.",
-                "If intent='debug' AND minimal returns >=3 key_entities, prefer calling `csegraph_context` with a focused target rather than broad graph traversals.",
-                "Use the returned nodes, reasons, sufficiency, and token estimates to guide the work and minimize follow-up tool calls.",
+                "Step 1: Call `csegraph_minimal` first to get the routing card (skip if already called this session).",
+                "Step 2: Call `csegraph_context` with detail_level=auto. Auto returns minimal if sufficient, standard otherwise.",
+                "Step 3 (only if needed): If returned_detail_level=minimal and you need source code, re-call with detail_level=standard and a focused target.",
+                "Step 4 (only if needed): If a structural dependency question remains, call `csegraph_graph` for one key symbol with depth=1.",
+                "Stop after at most 3 tool calls total. Use the returned sufficiency metrics to decide whether more context is needed.",
+                "Do NOT call `csegraph_graph` or `csegraph_path` unless the task specifically requires structural/dependency information.",
             ],
             args,
         )
-    elif name == "csegraph-review":
+    elif name == "csegraph-debug-issue":
         text = _prompt_text(
-            "Review the current work using csegraph before making recommendations.",
+            "Debug a reported issue using graph-backed context instead of repo-wide search.",
             [
-                "Call `csegraph_context` with detail_level=auto to start efficiently (returns minimal if sufficient, standard otherwise).",
-                "Never make more than 3 tool calls in a single agent turn; prefer compact context and a single neighborhood inspection when needed.",
-                "Use `csegraph_graph` for key changed symbols when a neighborhood clarifies blast radius.",
-                "Report findings first, ordered by severity, with file and symbol references.",
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` with task set to the issue description.",
+                "If the routing card warns the index is stale, call `csegraph_refresh` (counts toward the 3-call limit).",
+                "Step 2: Call `csegraph_context` with task=description, target if provided, detail_level=auto.",
+                "Step 3 (only if needed): Call `csegraph_graph` on the failing symbol with depth=1 and detail_level=minimal.",
+                "Do not use broad grep or read whole files unless context is insufficient after these steps.",
+                "Stop after at most 3 csegraph MCP tool calls.",
             ],
             args,
         )
-    elif name == "csegraph-pre-merge":
+    elif name == "csegraph-review-changes":
+        base = args.get("base", "HEAD~1")
         text = _prompt_text(
-            "Run a pre-merge context and risk checklist.",
+            "Review recent changes using compact graph context (context-engine workflow).",
             [
-                "Call `csegraph_refresh` first if the index may be stale.",
-                "Call `csegraph_context` with detail_level=auto for the merge or PR task; request standard only when source is needed.",
-                "Never make more than 3 tool calls in a single agent turn; prefer targeted context and a single structural check when necessary.",
-                "Use `csegraph_path` or `csegraph_graph` for any risky dependency questions.",
-                "Return blockers, residual risks, and verification commands.",
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Optional (human terminal, not MCP): run `csegraph analyze --base-ref "
+                + repr(base)
+                + "` for risk-ranked diagnostics.",
+                "Step 1: Call `csegraph_refresh` so the index matches working tree.",
+                "Step 2: Call `csegraph_minimal` with the review task.",
+                "Step 3: Call `csegraph_context` with detail_level=auto and targets from the change list or task.",
+                "Prefer graph-backed context over reading entire changed files.",
+                "Stop after at most 3 csegraph MCP tool calls.",
+            ],
+            args,
+        )
+    elif name == "csegraph-pre-merge-check":
+        text = _prompt_text(
+            "Assess merge/PR readiness with minimal context cost.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` with the merge/PR task summary.",
+                "Step 2: Call `csegraph_context` with detail_level=auto on the highest-risk areas mentioned.",
+                "Step 3 (only if needed): Call `csegraph_graph` with depth=1 on one critical symbol.",
+                "Report: sufficiency metrics, stale-index warnings, and whether more context is needed.",
+                "Do not invoke review-only MCP tools; use CLI diagnostics only if the user asks.",
+                "Stop after at most 3 csegraph MCP tool calls.",
+            ],
+            args,
+        )
+    elif name == "csegraph-explore-architecture":
+        focus = args.get("focus") or "a high-degree key entity from the routing card"
+        text = _prompt_text(
+            "Explore repository architecture with a routing card and one graph neighborhood.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` (task may mention the focus area).",
+                "Step 2: Call `csegraph_graph` on "
+                + repr(focus)
+                + " with depth=2 and detail_level=minimal; use relations=[\"calls\",\"imports\"] if exploring dependencies.",
+                "Summarize modules, coupling hints from confidence_breakdown/hubs_skipped, and suggested next targets.",
+                "Stop after at most 3 csegraph MCP tool calls (second call may be another graph if focus was wrong).",
+            ],
+            args,
+        )
+    elif name == "csegraph-onboard-developer":
+        text = _prompt_text(
+            "Onboard a developer to the codebase using graph-backed orientation.",
+            [
+                "If `repo` is missing, ask for the absolute repository path.",
+                "Step 1: Call `csegraph_minimal` to surface key entities and languages.",
+                "Step 2: Call `csegraph_context` with task describing onboarding goals and optional focus area.",
+                "Step 3: Call `csegraph_graph` on one key entity at depth=1 for structural orientation.",
+                "Produce a short guide: entry symbols, main languages, and where to pull task context next.",
+                "Stop after at most 3 csegraph MCP tool calls.",
             ],
             args,
         )
@@ -679,40 +1043,70 @@ def _prompt_text(goal: str, steps: list[str], arguments: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def create_server() -> Server:
+CORE_TOOL_NAMES = list(_CORE_MCP_TOOL_NAMES)
+
+
+def _prompts_for_tools(allowed_tool_names: set[str]) -> list[Prompt]:
+    return [
+        prompt for prompt in _PROMPTS
+        if _PROMPT_TOOL_DEPENDENCIES.get(prompt.name, set()).issubset(allowed_tool_names)
+    ]
+
+
+def create_server(*, allowed_tools: list[str] | None = None) -> Server:
+    if allowed_tools is None:
+        allowed_tools = CORE_TOOL_NAMES
+    unknown = set(allowed_tools) - {t.name for t in _TOOLS}
+    if unknown:
+        raise ValueError(f"Unknown tool names in --tools filter: {sorted(unknown)}")
+    allowed_tool_names = set(allowed_tools)
+    tools = [t for t in _TOOLS if t.name in allowed_tools]
+    prompts = _prompts_for_tools(allowed_tool_names)
+    allowed_prompt_names = {prompt.name for prompt in prompts}
+
     server = Server("csegraph")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
-        return _TOOLS
+        return tools
 
     @server.list_prompts()
     async def list_prompts() -> list[Prompt]:
-        return _PROMPTS
+        return prompts
 
     @server.get_prompt()
     async def get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
+        if name not in allowed_prompt_names:
+            raise ValueError(f"Prompt '{name}' is not enabled for this server")
         return _handle_prompt(name, dict(arguments or {}))
 
     @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
         try:
+            if name not in allowed_tool_names:
+                raise ValueError(f"Tool '{name}' is not enabled for this server")
             result = _handle_tool(name, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         except Exception as exc:
             logger.exception("Tool %s failed", name)
             error_payload = {"error": str(exc), "tool": name}
-            return [TextContent(
-                type="text",
-                text=json.dumps(error_payload, indent=2),
-            )]
+            return CallToolResult(
+                content=[TextContent(
+                    type="text",
+                    text=json.dumps(error_payload, indent=2),
+                )],
+                isError=True,
+            )
 
     return server
 
 
-async def run_stdio() -> None:
+async def run_stdio(*, allowed_tools: list[str] | None = None) -> None:
     import sys
-    print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
-    server = create_server()
+    server = create_server(allowed_tools=allowed_tools)
+    if allowed_tools:
+        print(f"csegraph MCP server running on stdio — exposing {len(allowed_tools)} tools", file=sys.stderr, flush=True)
+    else:
+        print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())

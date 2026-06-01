@@ -100,6 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_is_test ON nodes(is_test) WHERE is_test = 1
 CREATE INDEX IF NOT EXISTS idx_edges_source_relation ON edges(source, relation);
 CREATE INDEX IF NOT EXISTS idx_edges_target_relation ON edges(target, relation);
 CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
+CREATE INDEX IF NOT EXISTS idx_edges_confidence_tier ON edges(confidence_tier);
 """
 
 METADATA_UPSERT = """

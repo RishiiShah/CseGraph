@@ -7,16 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from csegraph_core.graph.queries import clear_hub_cache
 from csegraph_core.server.session import _SESSION
 
 
 @pytest.fixture(autouse=True)
 def _reset_mcp_session():
-    """The MCP server keeps a module-level SessionState; reset it before each
-    test so tools_called doesn't leak across the suite."""
     _SESSION.reset()
+    clear_hub_cache()
     yield
     _SESSION.reset()
+    clear_hub_cache()
 
 
 @pytest.fixture()
@@ -51,6 +52,28 @@ def run_cli_text(*args: str) -> str:
     """Run csegraph_cli as a subprocess and return raw stdout."""
     proc = subprocess.run(
         [sys.executable, "-m", "csegraph_cli", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout
+
+
+def run_dev_cli(*args: str) -> dict:
+    """Run the repo-local CseGraph maintainer CLI and return parsed JSON output."""
+    proc = subprocess.run(
+        [sys.executable, "tools/csegraph_dev.py", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def run_dev_cli_text(*args: str) -> str:
+    """Run the repo-local CseGraph maintainer CLI and return raw stdout."""
+    proc = subprocess.run(
+        [sys.executable, "tools/csegraph_dev.py", *args],
         check=True,
         capture_output=True,
         text=True,

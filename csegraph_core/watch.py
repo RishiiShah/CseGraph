@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from csegraph_core.graph.queries import clear_hub_cache
 from csegraph_core.index.services import RefreshService
 
 
@@ -61,6 +62,7 @@ def watch(
 
         try:
             result = refresh_svc.refresh(profile=profile, changed_paths=changed_paths)
+            clear_hub_cache()
             print(
                 f"[{time.strftime('%H:%M:%S')}] Refreshed: "
                 f"{result.files_indexed} files, {result.symbols_indexed} symbols, "

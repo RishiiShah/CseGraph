@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 from csegraph import (
-    BenchmarkService,
     ContextService,
     GraphQueryService,
     IndexService,
-    ProjectIndex,
     RefreshService,
 )
+from csegraph_core.benchmark import BenchmarkService
 from csegraph_core.core.errors import UnsupportedSchemaError
+from csegraph_core.index.repository import ProjectIndex
 from csegraph_core.retrieval.constants import VALID_REASONS
 
 
@@ -158,7 +158,7 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     refreshed = RefreshService(db_path).refresh(profile="small")
     assert refreshed.changed_files == ["utils.py"]
     assert refreshed.files_indexed == 1
-    assert refreshed.cache_hits == 1
+    assert refreshed.cache_hits == 2
     assert refreshed.cache_misses == 1
     assert "symbol::utils.py::function::format_title" in refreshed.changed_symbols
 

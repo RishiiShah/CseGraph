@@ -52,7 +52,7 @@ def _offline_pip_env() -> dict:
     return env
 
 
-def test_v140_package_layout_and_versions():
+def test_v200_package_layout_and_versions():
     repo_root = Path(__file__).resolve().parents[2]
 
     root_project = _project_metadata(repo_root)
@@ -60,18 +60,18 @@ def test_v140_package_layout_and_versions():
     cli_project = _project_metadata(repo_root / "packages" / "csegraph-cli")
 
     assert root_project["name"] == "csegraph-core"
-    assert root_project["version"] == "1.6.0"
+    assert root_project["version"] == "1.7.1"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"test"}
+    assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
     assert "import: csegraph_core" in root_project["description"]
 
     assert sdk_project["name"] == "csegraph"
-    assert sdk_project["version"] == "1.6.0"
-    assert sdk_project["dependencies"] == ["csegraph-core>=1.6.0"]
+    assert sdk_project["version"] == "1.7.1"
+    assert sdk_project["dependencies"] == ["csegraph-core>=1.7.1"]
 
     assert cli_project["name"] == "csegraph-cli"
-    assert cli_project["version"] == "1.6.0"
-    assert cli_project["dependencies"] == ["csegraph-core>=1.6.0"]
+    assert cli_project["version"] == "1.7.1"
+    assert cli_project["dependencies"] == ["csegraph-core>=1.7.1"]
 
     assert (repo_root / "csegraph_core" / "__init__.py").exists()
     assert (repo_root / "packages" / "csegraph" / "csegraph" / "__init__.py").exists()
@@ -241,3 +241,81 @@ def test_status_and_postprocess_exports():
     assert PostprocessService is SDKPostprocessService
     assert StatusResult is SDKStatusResult
     assert PostprocessResult is SDKPostprocessResult
+
+
+def test_sdk_exports_context_engine_facade_only():
+    import csegraph_core
+    import csegraph
+
+    sdk_all = set(csegraph.__all__)
+    expected = {
+        "__version__",
+        "ContextNode",
+        "ContextResult",
+        "ContextService",
+        "GraphEdgeView",
+        "GraphNodeView",
+        "GraphQueryService",
+        "GraphResult",
+        "IndexResult",
+        "IndexService",
+        "KeyEntity",
+        "MinimalResult",
+        "MinimalService",
+        "NextToolSuggestion",
+        "PathEdge",
+        "PathResult",
+        "PathStep",
+        "POSTPROCESS_LEVELS",
+        "PostprocessResult",
+        "PostprocessService",
+        "PROFILES",
+        "ProfileConfig",
+        "RefreshResult",
+        "RefreshService",
+        "StatusResult",
+        "StatusService",
+        "SufficiencyMetrics",
+        "SufficiencyResult",
+        "VALID_REASONS",
+        "get_profile",
+        "load_profile",
+        "to_dict",
+    }
+
+    assert sdk_all == expected
+
+    for name in sorted(sdk_all):
+        if name == "__version__":
+            continue
+        assert getattr(csegraph, name) is getattr(csegraph_core, name), (
+            f"SDK re-export {name} is not the same object as core"
+        )
+
+
+def test_diagnostic_services_are_module_path_only():
+    import csegraph_core
+    import csegraph
+    from csegraph_core.benchmark import BenchmarkService
+    from csegraph_core.graph.test_gaps import TestGapService
+    from csegraph_core.graph.review_questions import ReviewQuestionsService
+
+    assert BenchmarkService is not None
+    assert TestGapService is not None
+    assert ReviewQuestionsService is not None
+    private_names = {
+        "ArchitectureService",
+        "BenchmarkService",
+        "ChangeDetectionService",
+        "EmbeddingService",
+        "FlowService",
+        "ReportService",
+        "ResolverService",
+        "ReviewEvalService",
+        "ReviewQuestionsService",
+        "TestGapService",
+        "VulnerabilityService",
+    }
+    for name in private_names:
+        assert not hasattr(csegraph, name)
+        assert not hasattr(csegraph_core, name)

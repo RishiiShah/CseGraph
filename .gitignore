@@ -26,6 +26,10 @@ dist/
 *.log
 junit.xml
 
+# Node
+node_modules/
+*.vsix
+
 # IDEs
 .idea/
 .vscode/

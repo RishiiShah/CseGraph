@@ -1,15 +1,12 @@
-"""csegraph v1.6.0 SDK.
+"""csegraph v1.7.1 SDK.
 
-Thin facade over `csegraph-core` (import namespace: `csegraph_core`) for
-coding-agent context retrieval. The CLI package (`csegraph-cli`) imports
-from `csegraph-core` directly and does not depend on this package.
+Thin facade over the context-engine API from `csegraph-core`
+(import namespace: `csegraph_core`). Diagnostic and maintainer services are not
+re-exported by this SDK facade; repo-local tooling imports them by module path.
 """
 from __future__ import annotations
 
 from csegraph_core import (
-    BenchmarkResult,
-    BenchmarkService,
-    BenchmarkStep,
     ContextNode,
     ContextResult,
     ContextService,
@@ -19,34 +16,34 @@ from csegraph_core import (
     GraphResult,
     IndexResult,
     IndexService,
+    KeyEntity,
+    MinimalResult,
+    MinimalService,
+    NextToolSuggestion,
+    PathEdge,
+    PathResult,
+    PathStep,
+    POSTPROCESS_LEVELS,
     PostprocessResult,
     PostprocessService,
     PROFILES,
     ProfileConfig,
-    ProjectIndex,
     RefreshResult,
     RefreshService,
-    ReportResult,
-    ReportService,
     StatusResult,
     StatusService,
     SufficiencyMetrics,
     SufficiencyResult,
     VALID_REASONS,
-    VisualExportResult,
-    VisualExportService,
     get_profile,
     load_profile,
     to_dict,
 )
 
-__version__ = "1.6.0"
+__version__ = "1.7.1"
 
 __all__ = [
     "__version__",
-    "BenchmarkResult",
-    "BenchmarkService",
-    "BenchmarkStep",
     "ContextNode",
     "ContextResult",
     "ContextService",
@@ -56,22 +53,25 @@ __all__ = [
     "GraphResult",
     "IndexResult",
     "IndexService",
+    "KeyEntity",
+    "MinimalResult",
+    "MinimalService",
+    "NextToolSuggestion",
+    "PathEdge",
+    "PathResult",
+    "PathStep",
+    "POSTPROCESS_LEVELS",
     "PostprocessResult",
     "PostprocessService",
     "PROFILES",
     "ProfileConfig",
-    "ProjectIndex",
     "RefreshResult",
     "RefreshService",
-    "ReportResult",
-    "ReportService",
     "StatusResult",
     "StatusService",
     "SufficiencyMetrics",
     "SufficiencyResult",
     "VALID_REASONS",
-    "VisualExportResult",
-    "VisualExportService",
     "get_profile",
     "load_profile",
     "to_dict",

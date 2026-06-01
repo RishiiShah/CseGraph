@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import site
 import sqlite3
 import subprocess
@@ -10,7 +11,7 @@ import pytest
 import csegraph_cli.main as cli_main
 from csegraph_core.retrieval.constants import VALID_REASONS
 
-from tests.conftest import run_cli
+from tests.conftest import run_cli, run_dev_cli
 
 
 def _write_repo(root: Path) -> None:
@@ -127,12 +128,15 @@ def test_cli_json_contracts(tmp_path):
     assert any(edge["relation"] == "calls" for edge in neighborhood["edges"])
 
     graph = run_cli(
-        "graph",
+        "export",
         "--repo",
         str(repo),
+        "--format",
+        "html",
         "--json",
     )
-    assert graph["command"] == "graph"
+    assert graph["command"] == "export"
+    assert graph["format"] == "html"
     assert graph["output_path"] == str(repo / ".csegraph" / "csegraph-graph.html")
 
     refreshed = run_cli(
@@ -321,7 +325,7 @@ def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
     )
 
     assert result["installed"][0]["platform"] == "cursor"
-    assert result["installed"][0]["path"].endswith(".cursor/mcp.json")
+    assert result["installed"][0]["path"].endswith(os.path.join(".cursor", "mcp.json"))
 
 
 def test_install_codex_dry_run_json_uses_user_config(tmp_path):
@@ -335,14 +339,14 @@ def test_install_codex_dry_run_json_uses_user_config(tmp_path):
     )
 
     assert result["installed"][0]["platform"] == "codex"
-    assert result["installed"][0]["path"].endswith(".codex/config.toml")
+    assert result["installed"][0]["path"].endswith(os.path.join(".codex", "config.toml"))
 
 
 def test_benchmark_json_profiles_core_commands(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
 
-    result = run_cli(
+    result = run_dev_cli(
         "benchmark",
         str(repo),
         "--target",
@@ -408,8 +412,7 @@ def test_benchmark_default_output_is_human_summary(tmp_path):
     proc = subprocess.run(
         [
             sys.executable,
-            "-m",
-            "csegraph_cli",
+            "tools/csegraph_dev.py",
             "benchmark",
             str(repo),
             "--target",
@@ -696,15 +699,250 @@ def test_cli_help_lists_only_product_commands():
         capture_output=True,
         text=True,
     )
-    assert "index" in proc.stdout
-    assert "refresh" in proc.stdout
-    assert "context" in proc.stdout
-    assert "inspect" in proc.stdout
-    assert "graph" in proc.stdout
-    assert "report" in proc.stdout
-    assert "benchmark" in proc.stdout
-    removed_command = "code" + "gen"
-    assert removed_command not in proc.stdout
+    public_commands = {
+        "install",
+        "index",
+        "refresh",
+        "postprocess",
+        "watch",
+        "status",
+        "serve",
+        "context",
+        "inspect",
+        "path",
+        "analyze",
+        "export",
+        "registry",
+        "daemon",
+    }
+    match = re.search(r"\{(?P<commands>[^}]+)\}", proc.stdout)
+    assert match
+    exposed_commands = set(match.group("commands").split(","))
+    assert public_commands == exposed_commands
+    for command in (
+        "minimal",
+        "graph",
+        "tree",
+        "communities",
+        "report",
+        "detect-changes",
+        "test-gaps",
+        "flows",
+        "architecture",
+        "vulnerabilities",
+        "benchmark",
+        "review-questions",
+        "review-eval",
+        "resolvers",
+        "embeddings",
+        "hooks",
+    ):
+        assert command not in exposed_commands
+
+
+def test_fragmented_commands_are_not_public():
+    for command in (
+        "minimal",
+        "graph",
+        "tree",
+        "report",
+        "communities",
+        "detect-changes",
+        "test-gaps",
+        "flows",
+        "architecture",
+        "vulnerabilities",
+        "review-questions",
+        "review-eval",
+        "benchmark",
+        "resolvers",
+        "embeddings",
+        "hooks",
+    ):
+        proc = subprocess.run(
+            [sys.executable, "-m", "csegraph_cli", command, "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 2
+        assert "invalid choice" in proc.stderr
+
+
+def test_maintainer_cli_help_lists_only_private_commands():
+    proc = subprocess.run(
+        [sys.executable, "tools/csegraph_dev.py", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    private_commands = {
+        "architecture",
+        "benchmark",
+        "communities",
+        "detect-changes",
+        "embeddings",
+        "flows",
+        "report",
+        "resolvers",
+        "review-eval",
+        "review-questions",
+        "test-gaps",
+        "vulnerabilities",
+    }
+    match = re.search(r"\{(?P<commands>[^}]+)\}", proc.stdout)
+    assert match
+    exposed_commands = set(match.group("commands").split(","))
+    assert private_commands == exposed_commands
+    for command in (
+        "install",
+        "index",
+        "refresh",
+        "postprocess",
+        "watch",
+        "status",
+        "serve",
+        "context",
+        "inspect",
+        "path",
+        "analyze",
+        "export",
+        "registry",
+        "daemon",
+        "minimal",
+        "graph",
+        "tree",
+        "hooks",
+    ):
+        assert command not in exposed_commands
+
+
+def test_export_html_and_tree_replace_graph_and_tree_commands(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    html = run_cli("export", str(repo), "--format", "html", "--json")
+    assert html["command"] == "export"
+    assert html["format"] == "html"
+    assert html["output_path"].endswith("csegraph-graph.html")
+
+    tree = run_cli("export", str(repo), "--format", "tree", "--json")
+    assert tree["command"] == "export"
+    assert tree["format"] == "tree"
+    assert tree["output_path"].endswith("csegraph-tree.html")
+
+
+def test_analyze_json_combines_public_diagnostics(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    result = run_cli("analyze", str(repo), "--base-ref", "HEAD", "--json")
+
+    assert result["command"] == "analyze"
+    assert result["sections"]
+    section_names = {section["name"] for section in result["sections"]}
+    assert {"changes", "test_gaps", "architecture", "flows", "security"} <= section_names
+    assert isinstance(result["next_actions"], list)
+
+
+def test_private_maintainer_cli_exposes_benchmark(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "tools/csegraph_dev.py",
+            "benchmark",
+            str(repo),
+            "--target",
+            "create_user",
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(proc.stdout)
+    assert result["command"] == "benchmark"
+
+
+def _init_git_repo(repo: Path) -> None:
+    subprocess.run(["git", "-C", str(repo), "init"], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@test.com"], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], capture_output=True, check=True)
+
+
+def test_detect_changes_json(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    (repo / "core.py").write_text(
+        "def target():\n    pass\n\ndef caller():\n    target()\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+
+    (repo / "core.py").write_text(
+        "def target():\n    return 42\n\ndef caller():\n    target()\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True)
+
+    run_cli("index", str(repo), "--json")
+    result = run_dev_cli("detect-changes", str(repo), "--base-ref", "HEAD~1", "--json")
+
+    assert result["command"] == "detect-changes"
+    assert result["base_ref"] == "HEAD~1"
+    assert "core.py" in result["changed_files"]
+    assert result["total_changed_symbols"] >= 1
+    all_syms = result["high_risk"] + result["medium_risk"] + result["low_risk"]
+    names = {s["name"] for s in all_syms}
+    assert "target" in names
+
+
+def test_detect_changes_human_output(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    (repo / "mod.py").write_text("def leaf():\n    pass\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+
+    (repo / "mod.py").write_text("def leaf():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True)
+
+    run_cli("index", str(repo), "--json")
+
+    proc = subprocess.run(
+        [sys.executable, "tools/csegraph_dev.py", "detect-changes", str(repo), "--base-ref", "HEAD~1"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "Changed symbols:" in proc.stdout
+    assert "file(s)" in proc.stdout
+
+
+def test_detect_changes_no_changes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+
+    run_cli("index", str(repo), "--json")
+    result = run_dev_cli("detect-changes", str(repo), "--base-ref", "HEAD", "--json")
+
+    assert result["total_changed_symbols"] == 0
+    assert result["high_risk"] == []
 
 
 def test_install_matrix_cli_works_without_sdk(tmp_path):
@@ -781,9 +1019,11 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     proc = subprocess.run(
         [
             str(csegraph_bin),
-            "graph",
+            "export",
             "--repo",
             str(sample),
+            "--format",
+            "html",
             "--json",
         ],
         check=True,
@@ -791,31 +1031,23 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         text=True,
         env=_env,
     )
-    assert json.loads(proc.stdout)["command"] == "graph"
+    assert json.loads(proc.stdout)["format"] == "html"
     proc = subprocess.run(
-        [str(csegraph_bin), "tree", "--repo", str(sample), "--json"],
+        [str(csegraph_bin), "export", "--repo", str(sample), "--format", "tree", "--json"],
         check=True,
         capture_output=True,
         text=True,
         env=_env,
     )
-    assert json.loads(proc.stdout)["command"] == "tree"
+    assert json.loads(proc.stdout)["format"] == "tree"
     proc = subprocess.run(
-        [str(csegraph_bin), "communities", str(sample), "--json"],
+        [str(csegraph_bin), "analyze", str(sample), "--base-ref", "HEAD", "--json"],
         check=True,
         capture_output=True,
         text=True,
         env=_env,
     )
-    assert json.loads(proc.stdout)["command"] == "communities"
-    proc = subprocess.run(
-        [str(csegraph_bin), "report", "--repo", str(sample), "--json"],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=_env,
-    )
-    assert json.loads(proc.stdout)["command"] == "report"
+    assert json.loads(proc.stdout)["command"] == "analyze"
     proc = subprocess.run(
         [str(csegraph_bin), "status", str(sample), "--json"],
         check=True,
@@ -848,23 +1080,6 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         env=_env,
     )
     assert json.loads(proc.stdout)["command"] == "path"
-    proc = subprocess.run(
-        [
-            str(csegraph_bin),
-            "benchmark",
-            str(sample),
-            "--target",
-            "create_user",
-            "--expect-node",
-            "symbol::service.py::function::create_user",
-            "--json",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=_env,
-    )
-    assert json.loads(proc.stdout)["command"] == "benchmark"
     proc = subprocess.run(
         [str(csegraph_bin), "install", str(sample), "--dry-run", "--json"],
         check=True,

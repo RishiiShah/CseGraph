@@ -1,4 +1,4 @@
-"""csegraph hooks — install and manage git hooks for auto-refresh."""
+"""Git hook helpers for csegraph auto-refresh."""
 from __future__ import annotations
 
 import os
@@ -15,7 +15,7 @@ HOOK_SCRIPT = f"""\
 #!/bin/sh
 {HOOK_MARKER}
 # Auto-refresh csegraph index after git operations.
-# Installed by: csegraph hooks install
+# Installed by: csegraph install --hooks
 if command -v csegraph >/dev/null 2>&1; then
     csegraph refresh . --profile small 2>/dev/null &
 fi
@@ -96,7 +96,7 @@ def uninstall_hooks(repo: str | Path) -> HooksResult:
     block_to_remove = f"""\
 {HOOK_MARKER}
 # Auto-refresh csegraph index after git operations.
-# Installed by: csegraph hooks install
+# Installed by: csegraph install --hooks
 if command -v csegraph >/dev/null 2>&1; then
     csegraph refresh . --profile small 2>/dev/null &
 fi"""
