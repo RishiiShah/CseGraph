@@ -7,7 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/apocalypse44/CseGraph"
+    "url": "https://github.com/RishiiShah/CseGraph.git"
+  },
+  "homepage": "https://github.com/RishiiShah/CseGraph/tree/main/packages/csegraph-vscode",
+  "bugs": {
+    "url": "https://github.com/RishiiShah/CseGraph/issues"
   },
   "engines": {
     "vscode": "^1.85.0"

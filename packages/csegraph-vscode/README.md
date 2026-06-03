@@ -1,17 +1,23 @@
 # CseGraph for VS Code
 
-Lightweight VS Code extension for [CseGraph](https://github.com/apocalypse44/CseGraph) — a code graph context engine for coding agents. All graph logic stays in the CLI; the extension is a thin UI layer.
+Lightweight VS Code extension for [CseGraph](https://github.com/RishiiShah/CseGraph) — a code graph context engine for coding agents. All graph logic stays in the CLI; the extension is a thin UI layer.
 
 ## Prerequisites
 
-- **CseGraph CLI** installed (`pip install csegraph` or from source)
+- **CseGraph CLI** installed
+  - Install the actual CLI package: `pip install csegraph-cli`
+  - Or install from source: `env/bin/pip install -e packages/csegraph-cli/`
+  - Installing `csegraph` alone only gives you the SDK facade and does **not** provide the `csegraph` command used by this extension
 - A built index in your workspace (`.csegraph/index.db`)
 
 ## Install
 
+Install the CLI first, then install the VS Code extension.
+
 ### From VSIX
 
 ```bash
+pip install csegraph-cli
 cd packages/csegraph-vscode
 npm install && npm run package
 code --install-extension csegraph-vscode-1.7.1.vsix
@@ -20,6 +26,7 @@ code --install-extension csegraph-vscode-1.7.1.vsix
 ### Via CLI
 
 ```bash
+pip install csegraph-cli
 csegraph install --platform vscode
 ```
 
