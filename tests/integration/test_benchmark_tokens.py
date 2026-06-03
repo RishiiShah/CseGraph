@@ -24,6 +24,10 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _scratch_path(repo: Path, name: str) -> Path:
+    return repo / ".scratch" / "csegraph" / name
+
+
 class TestCountRawTokens:
     def test_counts_all_files(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -45,15 +49,23 @@ class TestCountRawTokens:
 class TestBenchmarkTokenReduction:
     def test_has_token_reduction_step(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
-        result = BenchmarkService(db).run(repo, profile="small")
+        db = str(_scratch_path(repo, "bench.db"))
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
+        )
         step_names = [s.name for s in result.steps]
         assert "token_reduction" in step_names
 
     def test_token_reduction_stats(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
-        result = BenchmarkService(db).run(repo, profile="small")
+        db = str(_scratch_path(repo, "bench.db"))
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
+        )
         tr = next(s for s in result.steps if s.name == "token_reduction")
         assert "raw_tokens" in tr.stats
         assert "diff_tokens" in tr.stats
@@ -69,31 +81,47 @@ class TestBenchmarkTokenReduction:
 
     def test_non_git_repo_reports_zero_diff(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
-        result = BenchmarkService(db).run(repo, profile="small")
+        db = str(_scratch_path(repo, "bench.db"))
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
+        )
         tr = next(s for s in result.steps if s.name == "token_reduction")
         assert tr.stats["diff_tokens"] == 0
         assert tr.stats["diff_to_graph_ratio"] == 0.0
 
     def test_context_tokens_less_than_raw(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
-        result = BenchmarkService(db).run(repo, profile="small")
+        db = str(_scratch_path(repo, "bench.db"))
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
+        )
         tr = next(s for s in result.steps if s.name == "token_reduction")
         assert tr.stats["context_tokens"] <= tr.stats["raw_tokens"]
 
     def test_reduction_percent_range(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
-        result = BenchmarkService(db).run(repo, profile="small")
+        db = str(_scratch_path(repo, "bench.db"))
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
+        )
         tr = next(s for s in result.steps if s.name == "token_reduction")
         assert 0.0 <= tr.stats["reduction_percent"] <= 100.0
 
     def test_json_serializable(self, tmp_path):
         import json
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
-        result = BenchmarkService(db).run(repo, profile="small")
+        db = str(_scratch_path(repo, "bench.db"))
+        result = BenchmarkService(db).run(
+            repo,
+            profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
+        )
         from csegraph_core.core.models import to_dict
         payload = to_dict(result)
         serialized = json.dumps(payload)
@@ -140,10 +168,11 @@ class TestCountDiffTokens:
 class TestBenchmarkContextQuality:
     def test_records_context_contract_and_expected_nodes(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "bench.db")
+        db = str(_scratch_path(repo, "bench.db"))
         result = BenchmarkService(db).run(
             repo,
             profile="small",
+            graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
             query="Explain greet and fmt",
             target="greet",
             expected_nodes=[

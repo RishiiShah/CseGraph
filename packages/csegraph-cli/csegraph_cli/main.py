@@ -13,6 +13,7 @@ from typing import Any
 
 from csegraph_core.config.profiles import PROFILES
 from csegraph_core.core.models import to_dict
+from csegraph_core.core.paths import assert_safe_db_path
 from csegraph_cli.errors import CsegraphCLIError, error_payload
 from csegraph_cli.renderer import (
     render_analyze_summary,
@@ -881,35 +882,10 @@ def _repo_arg(args: argparse.Namespace) -> str:
     return str(Path(args.repo_opt or args.repo_arg or ".").resolve())
 
 
-def _assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
-    import tempfile
-    resolved_path = path.resolve()
-    resolved_repo = repo_path.resolve()
-    if resolved_path.is_relative_to(resolved_repo):
-        return
-    temp_dir = Path(tempfile.gettempdir()).resolve()
-    if resolved_path.is_relative_to(temp_dir):
-        return
-    try:
-        home_dir = Path.home().resolve()
-        if resolved_path.is_relative_to(home_dir):
-            return
-    except Exception:
-        pass
-    try:
-        cwd_dir = Path.cwd().resolve()
-        if resolved_path.is_relative_to(cwd_dir):
-            return
-    except Exception:
-        pass
-    raise ValueError(f"{name} path '{path}' must be within repository root, home directory, temporary directory, or CWD.")
-
-
 def _db_arg(args: argparse.Namespace, repo: str) -> str:
     repo_path = Path(repo).resolve()
     if args.db:
-        db_path = Path(args.db).resolve()
-        _assert_safe_path(db_path, repo_path, "Database")
+        db_path = assert_safe_db_path(args.db, repo_path, "Database")
         return str(db_path)
     return str(repo_path / ".csegraph" / "index.db")
 

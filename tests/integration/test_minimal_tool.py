@@ -28,7 +28,7 @@ def _make_repo(tmp_path: Path) -> Path:
 
 def _indexed(tmp_path: Path) -> tuple[Path, str]:
     repo = _make_repo(tmp_path)
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     IndexService(db).index(repo, profile="small")
     return repo, db
 

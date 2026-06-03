@@ -28,8 +28,37 @@ def _write_repo(root: Path) -> None:
 
 def _offline_pip_env() -> dict:
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.pathsep.join(site.getsitepackages())
+    env.pop("PYTHONPATH", None)
     return env
+
+
+def _create_test_venv(path: Path) -> None:
+    subprocess.run([sys.executable, "-m", "venv", str(path)], check=True)
+    child_site_packages = Path(
+        subprocess.check_output(
+        [
+            str(path / ("Scripts" if sys.platform.startswith("win") else "bin") / ("python.exe" if sys.platform.startswith("win") else "python")),
+            "-c",
+            "import site; print(site.getsitepackages()[0])",
+        ],
+        text=True,
+    ).strip()
+    )
+    parent_site_packages = Path(site.getsitepackages()[0])
+    excluded_prefixes = (
+        "pip",
+        "csegraph",
+        "csegraph_",
+        "__editable__.csegraph",
+        "__editable___csegraph",
+    )
+    for entry in parent_site_packages.iterdir():
+        if entry.name.startswith(excluded_prefixes):
+            continue
+        target = child_site_packages / entry.name
+        if target.exists():
+            continue
+        target.symlink_to(entry)
 
 
 def test_cli_json_contracts(tmp_path):
@@ -438,8 +467,10 @@ def test_benchmark_default_output_is_human_summary(tmp_path):
 
 def test_custom_db_flags_work(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "custom.db"
     _write_repo(repo)
+    db_path = repo / ".scratch" / "csegraph" / "custom.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.unlink(missing_ok=True)
 
     indexed = run_cli(
         "index",
@@ -456,6 +487,8 @@ def test_custom_db_flags_work(tmp_path):
 
     context = run_cli(
         "context",
+        "--repo",
+        str(repo),
         "--db",
         str(db_path),
         "--task",
@@ -660,7 +693,11 @@ def test_context_cli_json_markdown_conflict_fails_clearly(tmp_path):
 
 
 def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
-    db_path = tmp_path / "future.db"
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    db_path = repo / ".scratch" / "csegraph" / "future.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.unlink(missing_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
             """
@@ -676,6 +713,8 @@ def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
             "csegraph_cli",
             "context",
             "Implement create_user",
+            "--repo",
+            str(repo),
             "--db",
             str(db_path),
             "--json",
@@ -953,7 +992,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
         pytest.skip("root csegraph-core package not present in this checkout")
 
     venv = tmp_path / "v"
-    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    _create_test_venv(venv)
     bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
     pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
     csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
@@ -979,6 +1018,7 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
     sample = tmp_path / "repo"
     _write_repo(sample)
     _env = _offline_pip_env()
+    _env["PYTHONPATH"] = os.pathsep.join(site.getsitepackages())
     proc = subprocess.run(
         [str(csegraph_bin), "index", str(sample), "--json"],
         check=True, capture_output=True, text=True, env=_env,

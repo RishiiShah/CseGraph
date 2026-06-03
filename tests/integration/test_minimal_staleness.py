@@ -15,7 +15,7 @@ def _make_repo(tmp_path: Path) -> Path:
 
 def test_minimal_warns_when_index_stale(tmp_path: Path):
     repo = _make_repo(tmp_path)
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 

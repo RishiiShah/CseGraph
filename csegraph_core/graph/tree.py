@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from csegraph_core.core.models import VisualExportResult
+from csegraph_core.core.paths import assert_repo_local_path
 from csegraph_core.index.loaders import load_nodes
 from csegraph_core.index.repository import ProjectIndex
 
@@ -17,37 +18,13 @@ class TreeExportService:
         self.db_path = str(Path(db_path))
 
     def export(self, output_path: str | Path) -> VisualExportResult:
-        output = Path(output_path).resolve()
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = metadata["root_dir"]
-
             repo_root_path = Path(repo_root).resolve()
-            import tempfile
-            def assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
-                resolved_path = path.resolve()
-                if resolved_path.is_relative_to(repo_path.resolve()):
-                    return
-                temp_dir = Path(tempfile.gettempdir()).resolve()
-                if resolved_path.is_relative_to(temp_dir):
-                    return
-                try:
-                    home_dir = Path.home().resolve()
-                    if resolved_path.is_relative_to(home_dir):
-                        return
-                except Exception:
-                    pass
-                try:
-                    cwd_dir = Path.cwd().resolve()
-                    if resolved_path.is_relative_to(cwd_dir):
-                        return
-                except Exception:
-                    pass
-                raise ValueError(f"{name} path '{path}' must be within repository root, home directory, temporary directory, or CWD.")
-
-            assert_safe_path(output, repo_root_path, "Output")
+            output = assert_repo_local_path(output_path, repo_root_path, "Output")
 
             all_nodes = load_nodes(index)
             tree_nodes = _build_tree_nodes(all_nodes)

@@ -43,8 +43,14 @@ def _write_sample_repo(root: Path) -> None:
     )
 
 
+def _scratch_path(repo: Path, name: str) -> Path:
+    return repo / ".scratch" / "csegraph" / name
+
+
 def test_project_index_schema_is_idempotent(tmp_path):
-    db_path = tmp_path / "index.db"
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    db_path = _scratch_path(repo, "index.db")
 
     index = ProjectIndex(db_path)
     index.initialize_schema()
@@ -94,7 +100,7 @@ def test_project_index_schema_is_idempotent(tmp_path):
 
 def test_index_context_graph_and_incremental_refresh(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
 
     index_result = IndexService(db_path).index(repo, profile="small")
@@ -172,7 +178,8 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
 
 def test_benchmark_service_runs_core_pipeline(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
+    graph_output_path = _scratch_path(repo, "graph.html")
     _write_sample_repo(repo)
 
     result = BenchmarkService(db_path).run(
@@ -180,7 +187,7 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
         profile="small",
         query="Implement build_report using format_user",
         target="build_report",
-        graph_output_path=tmp_path / "graph.html",
+        graph_output_path=graph_output_path,
         expected_nodes=[
             "symbol::main.py::function::build_report",
             "symbol::utils.py::function::format_user",
@@ -191,7 +198,7 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
     assert result.profile == "small"
     assert result.repo_root == str(repo)
     assert result.db_path == str(db_path)
-    assert result.graph_output_path == str(tmp_path / "graph.html")
+    assert result.graph_output_path == str(graph_output_path)
     assert result.total_elapsed_ms >= 0
     assert [step.name for step in result.steps] == ["index", "refresh", "context", "graph", "report", "token_reduction"]
     assert result.steps[0].stats["files"] == 2
@@ -211,7 +218,7 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
 
 def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -245,7 +252,7 @@ def test_context_auto_includes_source_for_target_and_direct_dependencies(tmp_pat
 
 def test_context_explain_populates_human_explanations(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -266,7 +273,7 @@ def test_context_explain_populates_human_explanations(tmp_path):
 
 def test_context_include_source_never_stays_compact(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -285,7 +292,7 @@ def test_context_include_source_never_stays_compact(tmp_path):
 
 def test_context_max_tokens_limits_source_materialization(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -306,7 +313,7 @@ def test_context_max_tokens_limits_source_materialization(tmp_path):
 
 def test_context_reason_enum_is_strict(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -324,7 +331,7 @@ def test_context_reason_enum_is_strict(tmp_path):
 
 def test_context_service_config_path_overrides_thresholds(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "repo.csegraph.db"
+    db_path = _scratch_path(repo, "repo.csegraph.db")
     _write_sample_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -360,7 +367,7 @@ def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
         encoding="utf-8",
     )
 
-    db_path = tmp_path / "repo.db"
+    db_path = _scratch_path(repo, "repo.db")
     IndexService(db_path).index(repo, profile="small")
     with sqlite3.connect(db_path) as conn:
         relations = {row[0] for row in conn.execute("SELECT DISTINCT relation FROM edges")}
@@ -372,7 +379,10 @@ def test_v12_emits_inherits_decorates_and_tested_by(tmp_path):
 
 
 def test_unsupported_schema_version_raises_structured_error(tmp_path):
-    db_path = tmp_path / "future.db"
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    db_path = _scratch_path(repo, "future.db")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
             """
@@ -393,7 +403,10 @@ def test_unsupported_schema_version_raises_structured_error(tmp_path):
 
 
 def test_malformed_schema_metadata_raises_structured_error(tmp_path):
-    db_path = tmp_path / "malformed.db"
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    db_path = _scratch_path(repo, "malformed.db")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
             """

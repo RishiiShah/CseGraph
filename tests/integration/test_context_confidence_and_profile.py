@@ -12,9 +12,13 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _scratch_db(repo: Path) -> str:
+    return str(repo / ".scratch" / "csegraph" / "test.db")
+
+
 def test_context_includes_confidence_breakdown(tmp_path: Path):
     repo = _make_repo(tmp_path)
-    db = str(tmp_path / "test.db")
+    db = _scratch_db(repo)
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
@@ -26,7 +30,7 @@ def test_context_includes_confidence_breakdown(tmp_path: Path):
 def test_no_implicit_byte_cap_without_max_bytes(tmp_path: Path):
     """Without explicit max_bytes, no byte cap is applied (opt-in only)."""
     repo = _make_repo(tmp_path)
-    db = str(tmp_path / "test.db")
+    db = _scratch_db(repo)
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
@@ -37,7 +41,7 @@ def test_no_implicit_byte_cap_without_max_bytes(tmp_path: Path):
 
 def test_explicit_max_bytes_is_honored(tmp_path: Path):
     repo = _make_repo(tmp_path)
-    db = str(tmp_path / "test.db")
+    db = _scratch_db(repo)
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 

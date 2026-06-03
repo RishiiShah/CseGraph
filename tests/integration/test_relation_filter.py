@@ -29,7 +29,7 @@ def _multi_relation_repo(tmp_path: Path) -> tuple[Path, str]:
         "    return f\"hi {name}\"\n",
         encoding="utf-8",
     )
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     IndexService(db).index(repo, profile="small")
     return repo, db
 

@@ -20,7 +20,7 @@ def _indexed_repo(tmp_path: Path) -> tuple[Path, str]:
         "    return name.strip().title()\n",
         encoding="utf-8",
     )
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
     return repo, db
 

@@ -163,7 +163,7 @@ def test_graph_visual_export_with_typescript(tmp_path):
     _write_ts_repo(repo)
     run_cli("index", str(repo), "--json")
 
-    output = tmp_path / "graph.html"
+    output = repo / ".scratch" / "csegraph" / "graph.html"
     result = run_cli(
         "export",
         "--repo", str(repo),

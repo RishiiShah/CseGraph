@@ -44,31 +44,34 @@ def watch(
     print(f"Watching {repo_path} for changes (profile={profile})...", file=sys.stderr, flush=True)
 
     refresh_svc = RefreshService(db_path)
-    for changes in _watch(str(repo_path), watch_filter=_should_watch, debounce=debounce_ms):
-        changed_paths = [path for _, path in changes]
-        rel_paths = []
-        for p in changed_paths:
-            try:
-                rel_paths.append(str(Path(p).relative_to(repo_path)))
-            except ValueError:
-                rel_paths.append(p)
+    try:
+        for changes in _watch(str(repo_path), watch_filter=_should_watch, debounce=debounce_ms):
+            changed_paths = [path for _, path in changes]
+            rel_paths = []
+            for p in changed_paths:
+                try:
+                    rel_paths.append(str(Path(p).relative_to(repo_path)))
+                except ValueError:
+                    rel_paths.append(p)
 
-        print(
-            f"[{time.strftime('%H:%M:%S')}] {len(changed_paths)} file(s) changed: "
-            f"{', '.join(rel_paths[:5])}{'...' if len(rel_paths) > 5 else ''}",
-            file=sys.stderr,
-            flush=True,
-        )
-
-        try:
-            result = refresh_svc.refresh(profile=profile, changed_paths=changed_paths)
-            clear_hub_cache()
             print(
-                f"[{time.strftime('%H:%M:%S')}] Refreshed: "
-                f"{result.files_indexed} files, {result.symbols_indexed} symbols, "
-                f"{result.edges_indexed} edges",
+                f"[{time.strftime('%H:%M:%S')}] {len(changed_paths)} file(s) changed: "
+                f"{', '.join(rel_paths[:5])}{'...' if len(rel_paths) > 5 else ''}",
                 file=sys.stderr,
                 flush=True,
             )
-        except Exception as exc:
-            print(f"[{time.strftime('%H:%M:%S')}] Refresh error: {exc}", file=sys.stderr, flush=True)
+
+            try:
+                result = refresh_svc.refresh(profile=profile, changed_paths=changed_paths)
+                clear_hub_cache()
+                print(
+                    f"[{time.strftime('%H:%M:%S')}] Refreshed: "
+                    f"{result.files_indexed} files, {result.symbols_indexed} symbols, "
+                    f"{result.edges_indexed} edges",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            except Exception as exc:
+                print(f"[{time.strftime('%H:%M:%S')}] Refresh error: {exc}", file=sys.stderr, flush=True)
+    except KeyboardInterrupt:
+        print(f"\n[{time.strftime('%H:%M:%S')}] Stopped watching.", file=sys.stderr, flush=True)

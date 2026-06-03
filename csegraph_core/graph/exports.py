@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Set
 
 from csegraph_core.core.models import ExportResult
+from csegraph_core.core.paths import assert_repo_local_path
 from csegraph_core.index.loaders import load_edges, load_nodes
 from csegraph_core.index.repository import ProjectIndex, json_loads
 
@@ -27,14 +28,13 @@ class ExportService:
         if fmt not in EXPORT_FORMATS:
             raise ValueError(f"Unknown export format '{fmt}'. Choose from: {', '.join(EXPORT_FORMATS)}")
 
-        output = Path(output_path).resolve()
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = metadata["root_dir"]
-
-            _assert_safe_output(output, Path(repo_root).resolve())
+            repo_root_path = Path(repo_root).resolve()
+            output = assert_repo_local_path(output_path, repo_root_path, "Output")
 
             all_nodes = load_nodes(index)
             edges = load_edges(index)
@@ -58,32 +58,6 @@ class ExportService:
             )
         finally:
             index.close()
-
-
-def _assert_safe_output(output: Path, repo_root: Path) -> None:
-    import tempfile
-    resolved = output.resolve()
-    if resolved.is_relative_to(repo_root):
-        return
-    temp_dir = Path(tempfile.gettempdir()).resolve()
-    if resolved.is_relative_to(temp_dir):
-        return
-    try:
-        if resolved.is_relative_to(Path.home().resolve()):
-            return
-    except Exception:
-        pass
-    try:
-        if resolved.is_relative_to(Path.cwd().resolve()):
-            return
-    except Exception:
-        pass
-    raise ValueError(
-        f"Output path '{output}' must be within repository root, "
-        "home directory, temporary directory, or CWD."
-    )
-
-
 # -- GraphML ------------------------------------------------------------------
 
 def _write_graphml(

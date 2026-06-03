@@ -22,7 +22,7 @@ def _indexed(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     IndexService(db).index(repo, profile="small")
     return repo, db
 
@@ -47,15 +47,17 @@ class TestAliasValidation:
 
 
 class TestMcpProtocol:
-    def test_call_tool_returns_is_error_on_handler_failure(self):
+    def test_call_tool_returns_is_error_on_handler_failure(self, tmp_path: Path):
         async def _run():
+            repo = tmp_path / "repo"
+            repo.mkdir()
             server = create_server(allowed_tools=["csegraph_minimal"])
             handler = server.request_handlers[CallToolRequest]
             req = CallToolRequest(
                 method="tools/call",
                 params={
                     "name": "csegraph_context",
-                    "arguments": {"repo": "/tmp", "task": "t"},
+                    "arguments": {"repo": str(repo), "task": "t"},
                 },
             )
             return await handler(req)

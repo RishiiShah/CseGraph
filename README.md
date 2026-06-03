@@ -71,11 +71,13 @@ csegraph daemon status
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
 
+Codex-safe temporary artifacts should live under `<repo>/.scratch/csegraph/`, not OS temp directories such as `/tmp` or `/private/tmp`. Use that repo-local scratch area for throwaway DBs, exports, and test fixtures, and clean up generated artifacts before handoff.
+
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
 
 AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot|vscode` to target one client. Use `--platform vscode` to write VS Code settings, tasks, and extension recommendations for the csegraph-vscode extension. Add `--instructions` to generate platform instruction files that tell agents to use csegraph first. Add `--hooks` to install agent hooks for automatic index refresh after file edits.
 
-`csegraph serve --tools` accepts `core` or a comma-separated subset of the six core tool names. It does not expose CLI operations such as `analyze`, `export`, `registry`, or `daemon`, and it does not expose maintainer-only benchmark/eval tools.
+`csegraph serve --tools` accepts `core` or a comma-separated subset of the six core tool names. The MCP surface is explicitly limited to these six tools; it does not expose CLI operations such as `analyze`, `export`, `registry`, or `daemon`, and it does not expose maintainer-only benchmark/eval tools.
 
 | Tool | Description | Key args |
 |---|---|---|
@@ -86,7 +88,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
 | `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS via SQLite recursive CTE with relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
 
-The MCP surface stays focused on context delivery to agents. Public operational commands such as `analyze`, `export`, `registry`, and `daemon` remain local CLI commands.
+The MCP surface stays focused on the six core context-engine tools for index, refresh, retrieval, and inspection. Public operational commands such as `analyze`, `export`, `registry`, and `daemon` remain local CLI commands.
 
 Note: `csegraph_context` supports both `max_tokens` (a soft budgeting hint used during retrieval to decide how much source material to include) and `max_bytes` (a hard ceiling enforced on the serialized JSON response; when exceeded the server drops `source_text`, then `explanation`, then trims `nodes`/`edges`).
 
@@ -154,7 +156,7 @@ env/bin/python tools/csegraph_dev.py report . --json
 env/bin/python tools/csegraph_dev.py embeddings status .
 ```
 
-There is no packaged `csegraph-dev` console script. These services remain importable from their module paths under `csegraph_core`, but they are not re-exported by the top-level `csegraph_core` package or the public `csegraph` SDK facade.
+There is no packaged `csegraph-dev` console script. These maintainer-only benchmark, eval, and development-analytics surfaces stay repo-local behind `tools/csegraph_dev.py` rather than being part of the public CLI, SDK, or MCP surface.
 
 ## .csegraphignore
 

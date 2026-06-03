@@ -10,6 +10,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
 
 from csegraph_core.core.models import to_dict
+from csegraph_core.core.paths import assert_safe_db_path
 from csegraph_core.server.session import _SESSION
 
 logger = logging.getLogger("csegraph.mcp")
@@ -449,35 +450,10 @@ _TOKEN_EFFICIENCY_PREAMBLE = (
     "If a minimal routing card is sufficient, prefer it to additional heavy calls."
 )
 
-def _assert_safe_path(path: Path, repo_path: Path, name: str) -> None:
-    import tempfile
-    resolved_path = path.resolve()
-    resolved_repo = repo_path.resolve()
-    if resolved_path.is_relative_to(resolved_repo):
-        return
-    temp_dir = Path(tempfile.gettempdir()).resolve()
-    if resolved_path.is_relative_to(temp_dir):
-        return
-    try:
-        home_dir = Path.home().resolve()
-        if resolved_path.is_relative_to(home_dir):
-            return
-    except Exception:
-        pass
-    try:
-        cwd_dir = Path.cwd().resolve()
-        if resolved_path.is_relative_to(cwd_dir):
-            return
-    except Exception:
-        pass
-    raise ValueError(f"{name} path '{path}' must be within repository root, home directory, temporary directory, or CWD.")
-
-
 def _db_path(repo: str, db: str | None = None) -> str:
     repo_path = Path(repo).resolve()
     if db:
-        db_path = Path(db).resolve()
-        _assert_safe_path(db_path, repo_path, "Database")
+        db_path = assert_safe_db_path(db, repo_path, "Database")
         return str(db_path)
     return str(repo_path / ".csegraph" / "index.db")
 

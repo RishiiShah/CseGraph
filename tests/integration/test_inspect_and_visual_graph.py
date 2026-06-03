@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from tests.conftest import run_cli
@@ -140,7 +141,7 @@ def test_graph_visual_export_creates_html(tmp_path):
     _write_repo(repo)
     run_cli("index", str(repo), "--json")
 
-    output_html = tmp_path / "out.html"
+    output_html = repo / ".scratch" / "csegraph" / "out.html"
     proc = subprocess.run(
         [
             sys.executable,
@@ -191,7 +192,7 @@ def test_graph_visual_export_connects_folders_and_empty_files(tmp_path):
     _write_nested_repo(repo)
     run_cli("index", str(repo), "--json")
 
-    output_html = tmp_path / "out.html"
+    output_html = repo / ".scratch" / "csegraph" / "out.html"
     result = run_cli(
         "export",
         "--repo",
@@ -217,7 +218,7 @@ def test_graph_visual_export_has_click_to_expand_nodes(tmp_path):
     _write_nested_repo(repo)
     run_cli("index", str(repo), "--json")
 
-    output_html = tmp_path / "out.html"
+    output_html = repo / ".scratch" / "csegraph" / "out.html"
     run_cli(
         "export",
         "--repo",
@@ -303,7 +304,7 @@ def test_graph_visual_export_default_output_is_concise_message(tmp_path):
 
 def test_graph_visual_export_default_output_follows_custom_db_path(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "custom-index" / "index.db"
+    db_path = repo / ".scratch" / "csegraph" / "custom-index.db"
     _write_repo(repo)
     run_cli("index", "--repo", str(repo), "--db", str(db_path), "--json")
 
@@ -348,7 +349,7 @@ def test_graph_visual_export_has_clean_stderr(tmp_path):
             "--format",
             "html",
             "--output",
-            str(tmp_path / "g.html"),
+            str(repo / ".scratch" / "csegraph" / "g.html"),
             "--json",
         ],
         check=True,
@@ -356,6 +357,54 @@ def test_graph_visual_export_has_clean_stderr(tmp_path):
         text=True,
     )
     assert proc.stderr == ""
+
+
+def test_graph_visual_export_allows_repo_local_scratch_output(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    output_html = repo / ".scratch" / "csegraph" / "graph.html"
+    result = run_cli(
+        "export",
+        "--repo",
+        str(repo),
+        "--format",
+        "html",
+        "--output",
+        str(output_html),
+        "--json",
+    )
+
+    assert result["output_path"] == str(output_html.resolve())
+    assert output_html.exists()
+
+
+def test_graph_visual_export_rejects_tmp_output(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+    temp_output = Path(tempfile.gettempdir()) / f"{tmp_path.name}-csegraph-graph.html"
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "csegraph_cli",
+            "export",
+            "--repo",
+            str(repo),
+            "--format",
+            "html",
+            "--output",
+            str(temp_output),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 1
 
 
 def test_inspect_resolves_folder_node(tmp_path):

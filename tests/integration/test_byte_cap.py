@@ -27,7 +27,7 @@ def _indexed(tmp_path: Path) -> tuple[Path, str]:
         "def helper():\n    return 1\n",
         encoding="utf-8",
     )
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
     return repo, db
 
@@ -98,12 +98,14 @@ class TestByteCapHelper:
         _apply_byte_cap(result, 300)
         assert result["response_bytes"] == _encoded(result)
 
-    def test_small_cap_validated_by_handle_tool(self):
+    def test_small_cap_validated_by_handle_tool(self, tmp_path):
         """Validation of max_bytes < 256 is done in _handle_tool, not _apply_byte_cap."""
         from csegraph_core.server.app import _handle_tool
         import pytest
+        repo = tmp_path / "repo"
+        repo.mkdir()
         with pytest.raises(ValueError, match="max_bytes must be at least 256"):
-            _handle_tool("csegraph_context", {"repo": "/tmp", "task": "t", "max_bytes": 100})
+            _handle_tool("csegraph_context", {"repo": str(repo), "task": "t", "max_bytes": 100})
 
 
 class TestByteCapOnMcpResponse:

@@ -28,6 +28,10 @@ def _run_cli(*args: str) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def _scratch_path(repo: Path, name: str | Path) -> Path:
+    return repo / ".scratch" / "csegraph" / Path(name)
+
+
 def _make_repo(tmp_path: Path, files: dict[str, str]) -> tuple[str, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -35,7 +39,7 @@ def _make_repo(tmp_path: Path, files: dict[str, str]) -> tuple[str, str]:
         p = repo / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
-    db = str(tmp_path / "index.db")
+    db = str(_scratch_path(repo, "index.db"))
     IndexService(db).index(str(repo), profile="small")
     return str(repo), db
 
@@ -54,7 +58,7 @@ def _make_git_repo(tmp_path: Path, files: dict[str, str]) -> tuple[str, str]:
     subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True, env=env)
     subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True, check=True, env=env)
 
-    db = str(tmp_path / "index.db")
+    db = str(_scratch_path(repo, "index.db"))
     IndexService(db).index(str(repo), profile="small")
     return str(repo), db
 
@@ -103,16 +107,21 @@ class TestStatusService:
         assert "Last updated:" in text
 
     def test_status_missing_db(self, tmp_path):
-        db = str(tmp_path / "nonexistent" / "index.db")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = str(_scratch_path(repo, Path("nonexistent") / "index.db"))
         with pytest.raises(ValueError, match="No csegraph index found"):
             StatusService(db).status()
 
     def test_status_empty_db(self, tmp_path):
         # Create an empty DB file (no schema)
-        db = str(tmp_path / "empty.db")
-        Path(db).touch()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = _scratch_path(repo, "empty.db")
+        db.parent.mkdir(parents=True, exist_ok=True)
+        db.touch()
         with pytest.raises(ValueError, match="No csegraph index found"):
-            StatusService(db).status()
+            StatusService(str(db)).status()
 
     def test_status_languages_sorted(self, tmp_path):
         _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
@@ -131,7 +140,7 @@ class TestStatusService:
         (repo / "valid.py").write_text("def f(): pass\n")
         (repo / "invalid.py").write_text("def f( ]\n")  # Syntax error
 
-        db = str(tmp_path / "index.db")
+        db = str(_scratch_path(repo, "index.db"))
         IndexService(db).index(str(repo), profile="small")
 
         result = StatusService(db).status(verbose=True)
@@ -152,7 +161,7 @@ class TestStatusRendering:
         (repo / "valid.py").write_text("def f(): pass\n")
         (repo / "invalid.py").write_text("def f( ]\n")  # Syntax error
 
-        db = str(tmp_path / "index.db")
+        db = str(_scratch_path(repo, "index.db"))
         IndexService(db).index(str(repo), profile="small")
 
         result = StatusService(db).status(verbose=True)
@@ -265,17 +274,21 @@ class TestPostprocessService:
 
 class TestPostprocessPreflight:
     def test_postprocess_missing_db_raises(self, tmp_path):
-        db = str(tmp_path / "nonexistent" / "index.db")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = str(_scratch_path(repo, Path("nonexistent") / "index.db"))
         with pytest.raises(ValueError, match="No csegraph index found"):
             PostprocessService(db).postprocess()
 
     def test_postprocess_missing_db_not_created(self, tmp_path):
-        db = str(tmp_path / "nonexistent" / "index.db")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = _scratch_path(repo, Path("nonexistent") / "index.db")
         try:
-            PostprocessService(db).postprocess()
+            PostprocessService(str(db)).postprocess()
         except ValueError:
             pass
-        assert not Path(db).exists(), "postprocess should not create DB on error"
+        assert not db.exists(), "postprocess should not create DB on error"
 
 
 class TestReadSourceSliceTraversal:
@@ -309,8 +322,8 @@ class TestPostprocessRenderer:
 
 class TestCLIStatus:
     def test_cli_status_json(self, tmp_path):
-        _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
-        code, stdout, stderr = _run_cli("status", "--db", db, "--json")
+        repo, db = _make_repo(tmp_path, SAMPLE_FILES)
+        code, stdout, stderr = _run_cli("status", "--repo", repo, "--db", db, "--json")
         assert code == 0
         payload = json.loads(stdout)
         assert payload["command"] == "status"
@@ -323,25 +336,30 @@ class TestCLIStatus:
         repo.mkdir()
         (repo / "valid.py").write_text("def f(): pass\n")
         (repo / "invalid.py").write_text("def f( ]\n")
-        db = str(tmp_path / "index.db")
+        db = str(_scratch_path(repo, "index.db"))
         IndexService(db).index(str(repo), profile="small")
 
-        code, stdout, stderr = _run_cli("status", "--db", db, "--verbose")
+        code, stdout, stderr = _run_cli("status", "--repo", str(repo), "--db", db, "--verbose")
         assert code == 0
         assert "Parse errors:" in stdout
         assert "invalid.py" in stdout
 
     def test_cli_status_missing_db(self, tmp_path):
-        db = str(tmp_path / "nonexistent.db")
-        code, stdout, stderr = _run_cli("status", "--db", db)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = _scratch_path(repo, "nonexistent.db")
+        code, stdout, stderr = _run_cli("status", "--repo", str(repo), "--db", str(db))
         assert code == 1
         payload = json.loads(stderr)
         assert payload["error"] == "No csegraph index found. Run csegraph index first."
 
     def test_cli_status_empty_db(self, tmp_path):
-        db = str(tmp_path / "empty.db")
-        Path(db).touch()
-        code, stdout, stderr = _run_cli("status", "--db", db)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = _scratch_path(repo, "empty.db")
+        db.parent.mkdir(parents=True, exist_ok=True)
+        db.touch()
+        code, stdout, stderr = _run_cli("status", "--repo", str(repo), "--db", str(db))
         assert code == 1
         payload = json.loads(stderr)
         assert payload["error"] == "No csegraph index found. Run csegraph index first."
@@ -349,8 +367,8 @@ class TestCLIStatus:
 
 class TestCLIPostprocess:
     def test_cli_postprocess_json(self, tmp_path):
-        _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
-        code, stdout, stderr = _run_cli("postprocess", "--db", db, "--json")
+        repo, db = _make_repo(tmp_path, SAMPLE_FILES)
+        code, stdout, stderr = _run_cli("postprocess", "--repo", repo, "--db", db, "--json")
         assert code == 0
         payload = json.loads(stdout)
         assert payload["command"] == "postprocess"
@@ -358,9 +376,9 @@ class TestCLIPostprocess:
         assert "communities_detected" in payload
 
     def test_cli_postprocess_no_fts_no_communities(self, tmp_path):
-        _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
+        repo, db = _make_repo(tmp_path, SAMPLE_FILES)
         code, stdout, stderr = _run_cli(
-            "postprocess", "--db", db, "--no-fts", "--no-communities", "--json"
+            "postprocess", "--repo", repo, "--db", db, "--no-fts", "--no-communities", "--json"
         )
         assert code == 0
         payload = json.loads(stdout)
@@ -370,16 +388,21 @@ class TestCLIPostprocess:
         assert "communities" in payload["skipped"]
 
     def test_cli_postprocess_missing_db(self, tmp_path):
-        db = str(tmp_path / "nonexistent.db")
-        code, stdout, stderr = _run_cli("postprocess", "--db", db)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = _scratch_path(repo, "nonexistent.db")
+        code, stdout, stderr = _run_cli("postprocess", "--repo", str(repo), "--db", str(db))
         assert code == 1
         payload = json.loads(stderr)
         assert payload["error"] == "No csegraph index found. Run csegraph index first."
 
     def test_cli_postprocess_empty_db(self, tmp_path):
-        db = str(tmp_path / "empty.db")
-        Path(db).touch()
-        code, stdout, stderr = _run_cli("postprocess", "--db", db)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        db = _scratch_path(repo, "empty.db")
+        db.parent.mkdir(parents=True, exist_ok=True)
+        db.touch()
+        code, stdout, stderr = _run_cli("postprocess", "--repo", str(repo), "--db", str(db))
         assert code == 1
         payload = json.loads(stderr)
         assert payload["error"] == "No csegraph index found. Run csegraph index first."

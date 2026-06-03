@@ -48,8 +48,37 @@ def _project_metadata(path: Path) -> dict:
 
 def _offline_pip_env() -> dict:
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.pathsep.join(site.getsitepackages())
+    env.pop("PYTHONPATH", None)
     return env
+
+
+def _create_test_venv(path: Path) -> None:
+    subprocess.run([sys.executable, "-m", "venv", str(path)], check=True)
+    child_site_packages = Path(
+        subprocess.check_output(
+        [
+            str(path / ("Scripts" if sys.platform.startswith("win") else "bin") / ("python.exe" if sys.platform.startswith("win") else "python")),
+            "-c",
+            "import site; print(site.getsitepackages()[0])",
+        ],
+        text=True,
+    ).strip()
+    )
+    parent_site_packages = Path(site.getsitepackages()[0])
+    excluded_prefixes = (
+        "pip",
+        "csegraph",
+        "csegraph_",
+        "__editable__.csegraph",
+        "__editable___csegraph",
+    )
+    for entry in parent_site_packages.iterdir():
+        if entry.name.startswith(excluded_prefixes):
+            continue
+        target = child_site_packages / entry.name
+        if target.exists():
+            continue
+        target.symlink_to(entry)
 
 
 def test_v200_package_layout_and_versions():
@@ -84,7 +113,7 @@ def test_v200_package_layout_and_versions():
 def test_install_matrix_sdk_is_separate_from_core(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     venv = tmp_path / "v"
-    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    _create_test_venv(venv)
     bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
     pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
     python = bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")
@@ -151,7 +180,7 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
 def test_cli_package_source_install_exposes_base_commands(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     venv = tmp_path / "v"
-    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    _create_test_venv(venv)
     bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
     pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
     csegraph = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
@@ -197,7 +226,7 @@ def test_cli_package_source_install_exposes_base_commands(tmp_path):
 def test_core_module_entrypoint_points_to_cli_package(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     venv = tmp_path / "v"
-    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    _create_test_venv(venv)
     bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
     pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
     python = bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")
