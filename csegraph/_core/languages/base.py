@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import abc
 import hashlib
-import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, FrozenSet, List, Optional, Protocol, runtime_checkable
 
 from csegraph._core.languages.types import ParsedFile
@@ -66,31 +65,30 @@ class BaseParser(abc.ABC):
     def excluded_dirs(self) -> FrozenSet[str]:
         return EXCLUDED_DIRS | self.extra_excluded_dirs
 
+    def excludes_rel_path(self, rel_path: str) -> bool:
+        extra_excluded = set(self.extra_excluded_dirs)
+        if not extra_excluded:
+            extra_excluded = set(self.excluded_dirs) - set(EXCLUDED_DIRS)
+        if not extra_excluded:
+            return False
+        dirs = PurePosixPath(rel_path).parts[:-1]
+        return any(part in extra_excluded for part in dirs)
+
     def iter_files(self, root_dir: Path) -> List[Path]:
+        from csegraph._core.discovery import iter_discoverable_rel_paths
         from csegraph._core.ignore import load_ignore_filter
 
         ignore = load_ignore_filter(root_dir)
         resolved_root = root_dir.resolve()
-        excluded = self.excluded_dirs
         paths: List[Path] = []
-        for root, dirs, files in os.walk(root_dir):
-            rel_root = Path(root).resolve().relative_to(resolved_root).as_posix()
-            dirs[:] = sorted(
-                name for name in dirs
-                if name not in excluded
-                and not name.startswith(".")
-                and ignore.should_descend(
-                    f"{rel_root}/{name}" if rel_root != "." else name,
-                )
-            )
-            for filename in sorted(files):
-                if filename.startswith("."):
-                    continue
-                if not any(filename.endswith(ext) for ext in self.extensions):
-                    continue
-                rel_path = f"{rel_root}/{filename}" if rel_root != "." else filename
-                if not ignore.is_ignored(rel_path):
-                    paths.append(Path(root) / filename)
+        for rel_path in iter_discoverable_rel_paths(resolved_root, ignore=ignore):
+            if self.excludes_rel_path(rel_path):
+                continue
+            if not any(rel_path.endswith(ext) for ext in self.extensions):
+                continue
+            path = resolved_root / rel_path
+            if path.is_file() and not path.is_symlink():
+                paths.append(path)
         return sorted(paths)
 
     @abc.abstractmethod

@@ -7,7 +7,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from csegraph._core.discovery import is_discoverable_rel_path
 from csegraph._core.graph.queries import clear_hub_cache
+from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.services import RefreshService
 
 
@@ -46,13 +48,20 @@ def watch(
     refresh_svc = RefreshService(db_path)
     try:
         for changes in _watch(str(repo_path), watch_filter=_should_watch, debounce=debounce_ms):
-            changed_paths = [path for _, path in changes]
+            ignore = load_ignore_filter(repo_path)
+            changed_paths = []
             rel_paths = []
-            for p in changed_paths:
+            for _, path in changes:
                 try:
-                    rel_paths.append(str(Path(p).relative_to(repo_path)))
+                    rel = Path(path).resolve().relative_to(repo_path).as_posix()
                 except ValueError:
-                    rel_paths.append(p)
+                    continue
+                if not is_discoverable_rel_path(rel, ignore):
+                    continue
+                changed_paths.append(path)
+                rel_paths.append(rel)
+            if not changed_paths:
+                continue
 
             print(
                 f"[{time.strftime('%H:%M:%S')}] {len(changed_paths)} file(s) changed: "

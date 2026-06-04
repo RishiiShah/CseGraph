@@ -1,9 +1,9 @@
 """Git-aware ignore handling for CseGraph discovery.
 
-``.gitignore`` supplies the baseline for untracked files in git repos,
-while ``.csegraphignore`` is the CseGraph-specific override that applies
-to both tracked and untracked files.  The public entrypoint remains
-``load_ignore_filter(root)``.
+Discovery in git repos uses ``git ls-files`` (see ``discovery``); only index
+entries are candidates. ``.csegraphignore`` excludes paths from that set.
+``.gitignore`` still applies on non-git directory walks and for ignore-rule
+unit tests. The public entrypoint is ``load_ignore_filter(root)``.
 """
 from __future__ import annotations
 
@@ -147,6 +147,15 @@ class IgnoreFilter:
             return False
         rules = self._effective_rules(rel_path, is_dir=is_dir)
         return self._is_ignored_by_rules(rel_path, is_dir=is_dir, rules=rules).ignored
+
+    @property
+    def git_repo(self) -> bool:
+        return self._git_repo
+
+    @property
+    def index_paths(self) -> Set[str]:
+        """Repo-relative paths from ``git ls-files`` under the scan root."""
+        return self._tracked_paths
 
     def should_descend(self, rel_dir: str) -> bool:
         rel_dir = _normalize_rel(rel_dir)

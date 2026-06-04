@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple
 
-from csegraph._core.languages.base import EXCLUDED_DIRS, Parser, Tokenizer
+from csegraph._core.discovery import iter_discoverable_rel_paths
+from csegraph._core.ignore import load_ignore_filter
+from csegraph._core.languages.base import Parser, Tokenizer
 
 
 class UnsupportedLanguageError(KeyError):
@@ -31,32 +33,20 @@ class LanguageRegistry:
             raise UnsupportedLanguageError(f"No parser registered for extension {ext!r}")
 
     def iter_files(self, root: Path) -> Iterable[Tuple[Parser, Path]]:
-        from csegraph._core.ignore import load_ignore_filter
-
         ignore = load_ignore_filter(root)
         resolved_root = root.resolve()
         results: List[Tuple[Parser, Path]] = []
 
-        for dirpath, dirnames, filenames in os.walk(root):
-            rel_root = Path(dirpath).resolve().relative_to(resolved_root).as_posix()
-            dirnames[:] = sorted(
-                name for name in dirnames
-                if name not in EXCLUDED_DIRS
-                and not name.startswith(".")
-                and ignore.should_descend(
-                    f"{rel_root}/{name}" if rel_root != "." else name,
-                )
-            )
-            for filename in sorted(filenames):
-                if filename.startswith("."):
-                    continue
-                ext = os.path.splitext(filename)[1]
-                parser = self._ext_to_parser.get(ext)
-                if parser is None:
-                    continue
-                rel_path = f"{rel_root}/{filename}" if rel_root != "." else filename
-                if not ignore.is_ignored(rel_path) and not _parser_excludes_path(parser, rel_path):
-                    results.append((parser, Path(dirpath) / filename))
+        for rel_path in iter_discoverable_rel_paths(resolved_root, ignore=ignore):
+            ext = os.path.splitext(rel_path)[1]
+            parser = self._ext_to_parser.get(ext)
+            if parser is None:
+                continue
+            if parser.excludes_rel_path(rel_path):
+                continue
+            path = resolved_root / rel_path
+            if path.is_file() and not path.is_symlink():
+                results.append((parser, path))
 
         return results
 
@@ -71,13 +61,3 @@ class LanguageRegistry:
 
 
 registry = LanguageRegistry()
-
-
-def _parser_excludes_path(parser: Parser, rel_path: str) -> bool:
-    extra_excluded = set(getattr(parser, "extra_excluded_dirs", frozenset()))
-    if not extra_excluded:
-        extra_excluded = set(getattr(parser, "excluded_dirs", frozenset())) - set(EXCLUDED_DIRS)
-    if not extra_excluded:
-        return False
-    dirs = PurePosixPath(rel_path).parts[:-1]
-    return any(part in extra_excluded for part in dirs)

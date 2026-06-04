@@ -166,6 +166,36 @@ def test_tracked_gitignored_file_stays_indexed(tmp_path):
     assert "generated.py" in indexed_files
 
 
+def test_untracked_files_not_indexed_in_git_repo(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _git(repo, "init")
+    _git(repo, "add", "helpers.py", "service.py")
+
+    ref = repo / "ref"
+    ref.mkdir()
+    (ref / "notes.py").write_text("SECRET = 1\n", encoding="utf-8")
+
+    result = run_cli("index", str(repo), "--json")
+    indexed_files = result["changed_files"]
+    assert "helpers.py" in indexed_files
+    assert "service.py" in indexed_files
+    assert all("ref/" not in path for path in indexed_files)
+    assert "generated.py" not in indexed_files
+
+
+def test_staged_file_indexed_before_commit(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _git(repo, "init")
+    _git(repo, "add", "helpers.py", "service.py")
+    (repo / "new_module.py").write_text("def new():\n    pass\n", encoding="utf-8")
+    _git(repo, "add", "new_module.py")
+
+    result = run_cli("index", str(repo), "--json")
+    assert "new_module.py" in result["changed_files"]
+
+
 def test_csegraphignore_excludes_tracked_git_file(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)

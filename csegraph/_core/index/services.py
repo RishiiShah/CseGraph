@@ -10,6 +10,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 from csegraph._core.config.profiles import get_profile
 from csegraph._core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph._core.core.models import IndexResult, RefreshResult
+from csegraph._core.discovery import is_discoverable_rel_path
 from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.index.repository import ProjectIndex, json_dumps
@@ -132,7 +133,7 @@ class RefreshService:
                 for path in changed_abs_set:
                     if path.exists() and path.is_file():
                         rel = path.relative_to(repo_root).as_posix()
-                        if ignore.is_ignored(rel):
+                        if not is_discoverable_rel_path(rel, ignore):
                             if rel in stored:
                                 deleted.append(rel)
                             continue

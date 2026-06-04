@@ -167,9 +167,16 @@ env/bin/python tools/csegraph_dev.py embeddings status .
 
 There is no packaged `csegraph-dev` console script. These maintainer-only benchmark, eval, and development-analytics surfaces stay repo-local behind `tools/csegraph_dev.py` rather than being part of the public CLI, SDK, or MCP surface.
 
-## .csegraphignore
+## Discovery and `.csegraphignore`
 
-Place a `.csegraphignore` file in the repository root to exclude files and directories from indexing. Supports a `.gitignore`-like subset: blank lines, `#` comments, glob patterns (`*.generated.py`), directory patterns (`data/`), rooted patterns (`/scripts/`), and negation (`!important.py`).
+In a git repository, CseGraph indexes only paths in the git index (`git ls-files`:
+committed or staged). Untracked local files are skipped until you `git add` them.
+Without git, CseGraph walks the project directory instead.
+
+Place a `.csegraphignore` file in the repository root to exclude paths from that
+candidate set. Supports a `.gitignore`-like subset: blank lines, `#` comments,
+glob patterns (`*.generated.py`), directory patterns (`data/`), rooted patterns
+(`/scripts/`), and negation (`!important.py`).
 
 ## SDK
 
