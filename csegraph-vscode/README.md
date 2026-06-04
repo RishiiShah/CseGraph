@@ -18,7 +18,7 @@ Install the CLI first, then install the VS Code extension.
 ```bash
 pip install csegraph
 cd csegraph-vscode
-npm install && npm run package
+npm ci && npm run package
 code --install-extension csegraph-vscode-1.7.1.vsix
 ```
 

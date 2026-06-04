@@ -8,18 +8,6 @@ from typing import Optional, Union
 from csegraph._core.core.models import ProfileConfig
 
 
-_DEPRECATED_PROFILE_KEYS = {
-    "import_budget",
-    "max_expansion_rounds",
-    "tier0_target",
-    "tier1_target",
-    "confidence_drop_threshold",
-    "compression_hub_count",
-    "compression_max_nodes_per_slice",
-    "compression_source_char_limit",
-}
-
-
 PROFILES = {
     "small": ProfileConfig(
         name="small",
@@ -86,9 +74,6 @@ def load_profile(
     else:
         base_name = default
     base = get_profile(base_name)
-
-    for deprecated_key in _DEPRECATED_PROFILE_KEYS:
-        overrides.pop(deprecated_key, None)
 
     valid_fields = {f.name for f in dc_fields(ProfileConfig)}
     unknown = set(overrides) - valid_fields

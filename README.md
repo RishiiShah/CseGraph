@@ -2,7 +2,7 @@
 
 CseGraph is a **context engine for coding agents**. Its only job is to hand an agent the accurate, minimal slice of code context needed to make a correct retrieval or edit, so the agent spends fewer tokens and skips tool calls it would otherwise make (broad grep, full-file read, repeated lookups).
 
-It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits. Product philosophy, benchmarks, and drift guardrails: [`learn.md`](learn.md).
+It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits. Next-upgrade learning notes: [`learn.md`](learn.md).
 
 The product loop is:
 
@@ -32,6 +32,15 @@ env/bin/pip install -e .
 This repository is source-first. The public project is distributed as one Python
 package and the VS Code extension source; generated binaries, local graph
 databases, build outputs, and dashboard artifacts are not committed.
+
+## Project Hygiene
+
+- Security policy: [SECURITY.md](SECURITY.md)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Release checklist: [RELEASE.md](RELEASE.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Maintainer command reference: [docs/csegraph.md](docs/csegraph.md)
+- Architecture reference: [docs/architecture.md](docs/architecture.md)
 
 ## Base Commands
 

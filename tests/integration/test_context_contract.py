@@ -41,16 +41,7 @@ def test_context_json_contract_is_canonical_only(tmp_path):
     for key in expected["sufficiency_fields"]:
         assert key in payload["sufficiency"]
 
-    removed_fields = {
-        "task",
-        "target_node_id",
-        "estimated_tokens",
-        "metrics",
-        "thresholds",
-        "is_sufficient",
-        "context_nodes",
-    }
-    assert removed_fields.isdisjoint(payload)
+    assert set(payload) == {"schema_version", *expected["canonical_fields"]}
 
     assert payload["query"] == "Implement create_user with clean_name"
     assert payload["target"] == "symbol::service.py::function::create_user"

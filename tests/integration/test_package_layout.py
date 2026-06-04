@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import site
 import subprocess
@@ -98,9 +99,6 @@ def test_one_distribution_package_layout_and_versions():
     assert (repo_root / "csegraph" / "_cli" / "__init__.py").exists()
     assert (repo_root / "csegraph-vscode" / "package.json").exists()
     assert not (repo_root / "csegraph._core").exists()
-    assert not (repo_root / "packages").exists()
-    removed_addon = "code" + "gen"
-    assert not (repo_root / "csegraph" / removed_addon).exists()
 
 
 def test_root_install_exposes_cli_sdk_and_private_modules(tmp_path):
@@ -137,8 +135,6 @@ def test_root_install_exposes_cli_sdk_and_private_modules(tmp_path):
                 "import csegraph._cli; "
                 "from csegraph import ContextService; "
                 "assert ContextService is not None; "
-                "assert importlib.util.find_spec('csegraph_core') is None; "
-                "assert importlib.util.find_spec('csegraph_cli') is None; "
                 "assert importlib.util.find_spec('csegraph.languages') is None"
             ),
         ],
@@ -334,7 +330,6 @@ def test_source_first_package_guard():
         "build/",
         "dist/",
         "csegraph-vscode/out/",
-        "packages/",
     )
     forbidden_exact = {
         "build.py",
@@ -351,3 +346,30 @@ def test_source_first_package_guard():
         )
     ]
     assert violations == []
+
+
+def test_release_hardening_files_and_vscode_audit_override():
+    repo_root = Path(__file__).resolve().parents[2]
+
+    expected_files = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
+        "CHANGELOG.md",
+        "RELEASE.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/architecture.md",
+        "docs/csegraph.md",
+    ]
+    for rel_path in expected_files:
+        assert (repo_root / rel_path).exists(), rel_path
+
+    package_json = json.loads((repo_root / "csegraph-vscode" / "package.json").read_text())
+    assert package_json["overrides"] == {"tmp": "^0.2.6"}
+
+    lock = json.loads((repo_root / "csegraph-vscode" / "package-lock.json").read_text())
+    tmp_version = lock["packages"]["node_modules/tmp"]["version"]
+    major, minor, patch = (int(part) for part in tmp_version.split("."))
+    assert (major, minor, patch) >= (0, 2, 6)

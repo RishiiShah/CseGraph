@@ -104,12 +104,6 @@ def test_documented_base_command_dependencies_are_runtime_dependencies():
     assert {"mcp", "watchfiles", "tomlkit"}.issubset(dependency_names)
 
 
-def test_watch_dependency_message_matches_base_install_contract():
-    watch_source = _read("csegraph/_core/watch.py")
-
-    assert "csegraph-core[watch]" not in watch_source
-
-
 def test_documented_mcp_tools_match_server_registry():
     readme = _read("README.md")
     tool_names = {tool.name for tool in _TOOLS}

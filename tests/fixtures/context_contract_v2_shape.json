@@ -11,6 +11,7 @@
     "returned_detail_level",
     "total_estimated_tokens",
     "sufficiency",
+    "confidence_breakdown",
     "raw_code_nodes",
     "next_actions",
     "warnings",

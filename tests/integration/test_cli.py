@@ -1104,9 +1104,13 @@ def test_single_package_install_exposes_cli_and_sdk(tmp_path):
     )
 
     listing = subprocess.run([str(pip), "list"], check=True, capture_output=True, text=True).stdout
-    assert "csegraph " in listing
-    assert "csegraph-core" not in listing
-    assert "csegraph-cli" not in listing
+    project_lines = [
+        line
+        for line in listing.splitlines()
+        if line.lower().startswith("csegraph")
+    ]
+    assert len(project_lines) == 1
+    assert project_lines[0].startswith("csegraph ")
     import_check = subprocess.run(
         [
             str(bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")),
