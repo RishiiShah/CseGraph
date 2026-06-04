@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from csegraph_core.server.app import _PROMPTS, _TOOLS
+from csegraph._core.server.app import _PROMPTS, _TOOLS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,7 +46,7 @@ def _readme_source_install_lines() -> list[str]:
 
 def test_readme_base_commands_are_real_cli_commands():
     help_proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", "--help"],
+        [sys.executable, "-m", "csegraph._cli", "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -90,7 +90,7 @@ def test_base_commands_expose_help_from_source_install():
 
     for command in base_commands:
         proc = subprocess.run(
-            [sys.executable, "-m", "csegraph_cli", command, "--help"],
+            [sys.executable, "-m", "csegraph._cli", command, "--help"],
             check=True,
             capture_output=True,
             text=True,
@@ -102,12 +102,6 @@ def test_documented_base_command_dependencies_are_runtime_dependencies():
     dependency_names = _root_runtime_dependency_names()
 
     assert {"mcp", "watchfiles", "tomlkit"}.issubset(dependency_names)
-
-
-def test_watch_dependency_message_matches_base_install_contract():
-    watch_source = _read("csegraph_core/watch.py")
-
-    assert "csegraph-core[watch]" not in watch_source
 
 
 def test_documented_mcp_tools_match_server_registry():
@@ -130,18 +124,24 @@ def test_documented_mcp_prompts_match_server_registry():
     assert documented_readme == prompt_names
 
 
-def test_docs_paths_remain_ignored():
-    docs_paths = [
-        Path("docs") / ("AGENT" + "_REFERENCE.md"),
-        Path("docs") / ("csegraph" + ".md"),
-        Path("docs") / "example.md",
-    ]
-
-    for path in docs_paths:
+def test_public_docs_are_not_gitignored():
+    for rel_path in ("docs/csegraph.md", "docs/architecture.md"):
         proc = subprocess.run(
-            ["git", "check-ignore", "-q", str(path)],
+            ["git", "check-ignore", "-q", rel_path],
             cwd=ROOT,
             capture_output=True,
             text=True,
         )
-        assert proc.returncode == 0, f"{path} must remain gitignored"
+        assert proc.returncode != 0, f"{rel_path} must be tracked for open source"
+
+
+def test_local_only_paths_remain_gitignored():
+    ignored_paths = ["learn.md", "ref/", "CLAUDE.md", "AGENTS.md"]
+    for rel_path in ignored_paths:
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", rel_path],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, f"{rel_path} must remain gitignored"

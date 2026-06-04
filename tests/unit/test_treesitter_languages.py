@@ -27,8 +27,8 @@ def _write(root, name, content):
 # Go
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_go_config
-from csegraph_core.languages.treesitter.parser import TreeSitterParser
+from csegraph._core.languages.treesitter.languages import make_go_config
+from csegraph._core.languages.treesitter.parser import TreeSitterParser
 
 
 @pytest.fixture
@@ -138,7 +138,7 @@ def test_go_test_file_detection(tmp_path, go_parser):
 # Rust
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_rust_config
+from csegraph._core.languages.treesitter.languages import make_rust_config
 
 
 @pytest.fixture
@@ -231,7 +231,7 @@ def test_rust_iter_files_skips_target(tmp_path, rust_parser):
 # Java
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_java_config
+from csegraph._core.languages.treesitter.languages import make_java_config
 
 
 @pytest.fixture
@@ -308,7 +308,7 @@ def test_java_inheritance(tmp_path, java_parser):
 # C
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_c_config
+from csegraph._core.languages.treesitter.languages import make_c_config
 
 
 @pytest.fixture
@@ -366,7 +366,7 @@ def test_c_extract_calls(tmp_path, c_parser):
 # C++
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_cpp_config
+from csegraph._core.languages.treesitter.languages import make_cpp_config
 
 
 @pytest.fixture
@@ -402,7 +402,7 @@ def test_cpp_parse_function(tmp_path, cpp_parser):
 # Ruby
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_ruby_config
+from csegraph._core.languages.treesitter.languages import make_ruby_config
 
 
 @pytest.fixture
@@ -456,7 +456,7 @@ def test_ruby_inheritance(tmp_path, ruby_parser):
 # C#
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_csharp_config
+from csegraph._core.languages.treesitter.languages import make_csharp_config
 
 
 @pytest.fixture
@@ -499,7 +499,7 @@ def test_csharp_extract_imports(tmp_path, csharp_parser):
 # Kotlin
 # ---------------------------------------------------------------------------
 
-from csegraph_core.languages.treesitter.languages import make_kotlin_config
+from csegraph._core.languages.treesitter.languages import make_kotlin_config
 
 
 @pytest.fixture
@@ -531,14 +531,14 @@ def test_kotlin_parse_function(tmp_path, kotlin_parser):
 
 
 def test_fallback_module_name_single_extension_language():
-    from csegraph_core.languages.treesitter.languages import make_scala_config
+    from csegraph._core.languages.treesitter.languages import make_scala_config
 
     parser = TreeSitterParser(make_scala_config())
     assert parser.module_name_from_relpath("src/main/App.scala") == "src.main.App"
 
 
 def test_fallback_module_name_multi_extension_language():
-    from csegraph_core.languages.treesitter.languages import make_powershell_config
+    from csegraph._core.languages.treesitter.languages import make_powershell_config
 
     parser = TreeSitterParser(make_powershell_config())
     assert parser.module_name_from_relpath("scripts/Profile.psm1") == "scripts.Profile"

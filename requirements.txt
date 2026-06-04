@@ -1,3 +1,1 @@
 -e .
--e packages/csegraph/
--e packages/csegraph-cli/

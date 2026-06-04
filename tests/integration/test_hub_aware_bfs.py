@@ -10,16 +10,16 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
-from csegraph_core.graph import queries as queries_module
-from csegraph_core.graph.queries import (
+from csegraph._core.graph import queries as queries_module
+from csegraph._core.graph.queries import (
     GraphQueryService,
     _HUB_FLOOR,
     clear_hub_cache,
     _compute_hub_threshold,
     _hub_node_ids,
 )
-from csegraph_core.index.repository import ProjectIndex
-from csegraph_core.index.services import IndexService
+from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.index.services import IndexService
 
 
 def _tiny_repo(tmp_path: Path) -> tuple[Path, str]:
@@ -109,7 +109,7 @@ class TestHubCache:
         try:
             index.initialize_schema()
             with patch(
-                "csegraph_core.graph.queries._compute_hub_threshold",
+                "csegraph._core.graph.queries._compute_hub_threshold",
                 wraps=queries_module._compute_hub_threshold,
             ) as threshold:
                 queries_module._cached_hub_info(db, index, [])
@@ -125,7 +125,7 @@ class TestHubCache:
         try:
             index.initialize_schema()
             with patch(
-                "csegraph_core.graph.queries._compute_hub_threshold",
+                "csegraph._core.graph.queries._compute_hub_threshold",
                 wraps=queries_module._compute_hub_threshold,
             ) as threshold:
                 queries_module._cached_hub_info(db, index, [])

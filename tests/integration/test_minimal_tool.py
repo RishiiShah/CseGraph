@@ -6,10 +6,10 @@ import json
 import sqlite3
 from pathlib import Path
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.index.services import IndexService
-from csegraph_core.retrieval.minimal import MinimalService
-from csegraph_core.server.app import _TOOLS, _handle_tool
+from csegraph._core.core.models import to_dict
+from csegraph._core.index.services import IndexService
+from csegraph._core.retrieval.minimal import MinimalService
+from csegraph._core.server.app import _TOOLS, _handle_tool
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -28,7 +28,7 @@ def _make_repo(tmp_path: Path) -> Path:
 
 def _indexed(tmp_path: Path) -> tuple[Path, str]:
     repo = _make_repo(tmp_path)
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     IndexService(db).index(repo, profile="small")
     return repo, db
 
@@ -43,6 +43,14 @@ class TestMinimalServiceShape:
         assert result.task_intent == "review"
         assert result.estimated_tokens > 0
         assert len(result.key_entities) >= 1
+        assert result.index_health is not None
+        assert result.index_health.verdict
+
+    def test_explore_intent_includes_suggested_queries(self, tmp_path):
+        _, db = _indexed(tmp_path)
+        result = MinimalService(db).first(task="explore the architecture")
+        assert result.task_intent == "explore"
+        assert len(result.suggested_queries) >= 1
 
     def test_payload_is_compact(self, tmp_path):
         repo, db = _indexed(tmp_path)

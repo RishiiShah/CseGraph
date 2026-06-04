@@ -6,8 +6,8 @@ import sys
 import pytest
 
 from csegraph import ContextService, IndexService
-from csegraph_core.core.models import ContextNode
-from csegraph_core.core.serializer import to_dict
+from csegraph._core.core.models import ContextNode
+from csegraph._core.core.serializer import to_dict
 
 
 def _write_repo(root):
@@ -22,9 +22,13 @@ def _write_repo(root):
     )
 
 
+def _scratch_path(repo, name):
+    return repo / ".scratch" / "csegraph" / name
+
+
 def test_canonical_nodes_have_language_field(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "index.db"
+    db_path = _scratch_path(repo, "index.db")
     _write_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
@@ -47,13 +51,13 @@ def test_canonical_nodes_have_language_field(tmp_path):
 
 def test_markdown_output_uses_language_fence(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "index.db"
+    db_path = _scratch_path(repo, "index.db")
     _write_repo(repo)
     IndexService(db_path).index(repo, profile="small")
 
     proc = subprocess.run(
         [
-            sys.executable, "-m", "csegraph_cli",
+            sys.executable, "-m", "csegraph._cli",
             "context", "Implement run",
             "--target", "run",
             "--db", str(db_path),
@@ -109,11 +113,13 @@ def test_context_node_with_empty_language_raises():
 
 def test_schema_v5_language_column_notnull(tmp_path):
     import sqlite3
-    from csegraph_core.index.repository import ProjectIndex
-    db_path = tmp_path / "test.db"
+    from csegraph._core.index.repository import ProjectIndex
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    db_path = _scratch_path(repo, "test.db")
     idx = ProjectIndex(db_path)
     idx.initialize_schema()
-    idx.set_metadata(str(tmp_path / "repo"), "small")
+    idx.set_metadata(str(repo), "small")
     idx.close()
     with sqlite3.connect(db_path) as conn:
         col_info = {row[1]: row for row in conn.execute("PRAGMA table_info(nodes)")}
@@ -125,7 +131,7 @@ def test_real_index_produces_no_null_language(tmp_path):
     import sqlite3
     from csegraph import IndexService
     repo = tmp_path / "repo"
-    db_path = tmp_path / "index.db"
+    db_path = _scratch_path(repo, "index.db")
     _write_repo(repo)
     IndexService(db_path).index(repo, profile="small")
     with sqlite3.connect(db_path) as conn:
@@ -140,7 +146,7 @@ def test_no_empty_language_in_fresh_index(tmp_path):
     import sqlite3
     from csegraph import IndexService
     repo = tmp_path / "repo"
-    db_path = tmp_path / "index.db"
+    db_path = _scratch_path(repo, "index.db")
     _write_repo(repo)
     IndexService(db_path).index(repo, profile="small")
     with sqlite3.connect(db_path) as conn:
@@ -153,25 +159,27 @@ def test_no_empty_language_in_fresh_index(tmp_path):
 def test_writer_guard_fires_before_file_insert(tmp_path):
     """IndexService must raise before writing any nodes when language is empty."""
     import sqlite3
-    from csegraph_core.index.repository import ProjectIndex
-    from csegraph_core.index.services import _write_parsed_files
-    from csegraph_core.languages.types import ParsedFile
+    from csegraph._core.index.repository import ProjectIndex
+    from csegraph._core.index.services import _write_parsed_files
+    from csegraph._core.languages.types import ParsedFile
 
-    db_path = tmp_path / "guard.db"
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    db_path = _scratch_path(repo, "guard.db")
     idx = ProjectIndex(db_path)
     idx.initialize_schema()
-    idx.set_metadata(str(tmp_path / "repo"), "small")
+    idx.set_metadata(str(repo), "small")
 
     bad = ParsedFile(
         rel_path="bad.py",
-        abs_path=str(tmp_path / "repo" / "bad.py"),
+        abs_path=str(repo / "bad.py"),
         sha256="abc",
         mtime=0.0,
         size=0,
         language="",
     )
     with pytest.raises(ValueError, match="language is required"):
-        _write_parsed_files(idx, str(tmp_path / "repo"), [bad])
+        _write_parsed_files(idx, str(repo), [bad])
 
     with sqlite3.connect(db_path) as conn:
         count = conn.execute("SELECT COUNT(*) FROM nodes WHERE type = 'file'").fetchone()[0]

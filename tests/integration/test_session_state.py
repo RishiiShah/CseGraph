@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from csegraph_core.server.app import _handle_tool
-from csegraph_core.server.session import _SESSION
+from csegraph._core.server.app import _handle_tool
+from csegraph._core.server.session import _SESSION
 
 
 def _indexed_repo(tmp_path: Path) -> tuple[Path, str]:
@@ -20,7 +20,7 @@ def _indexed_repo(tmp_path: Path) -> tuple[Path, str]:
         "    return name.strip().title()\n",
         encoding="utf-8",
     )
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
     return repo, db
 

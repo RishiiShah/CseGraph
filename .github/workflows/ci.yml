@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feature
+
+permissions:
+  contents: read
+
+jobs:
+  guardrails:
+    name: Source layout guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Reject generated artifacts
+        run: |
+          python - <<'PY'
+          import subprocess
+          import sys
+
+          tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          forbidden_prefixes = (
+              ".csegraph/",
+              ".scratch/",
+              "dist/",
+              "build/",
+              "csegraph-vscode/out/",
+          )
+          forbidden_suffixes = (
+              ".egg-info/PKG-INFO",
+              ".egg-info/SOURCES.txt",
+              ".pyc",
+              ".pyo",
+              ".db",
+              ".sqlite",
+              ".vsix",
+          )
+          violations = [
+              path
+              for path in tracked
+              if path.startswith(forbidden_prefixes) or path.endswith(forbidden_suffixes)
+          ]
+          if violations:
+              print("Forbidden tracked files:")
+              for path in violations:
+                  print(f"  {path}")
+              sys.exit(1)
+          PY
+
+      - name: Confirm one Python package manifest
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          pyprojects = sorted(
+              path.as_posix()
+              for path in Path(".").rglob("pyproject.toml")
+              if "csegraph-vscode" not in path.as_posix()
+          )
+          assert pyprojects == ["pyproject.toml"], pyprojects
+          assert Path("csegraph/__init__.py").exists()
+          assert Path("csegraph/_core/__init__.py").exists()
+          assert Path("csegraph/_cli/__init__.py").exists()
+          assert Path("csegraph-vscode/package.json").exists()
+          PY
+
+  python:
+    name: Python package and tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.14"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install test/build tooling
+        run: python -m pip install --upgrade pip build
+
+      - name: Install csegraph editable
+        run: python -m pip install -e .
+
+      - name: Assert single installed distribution and import surface
+        run: |
+          python - <<'PY'
+          import importlib.metadata as metadata
+
+          installed = {dist.metadata["Name"].lower() for dist in metadata.distributions()}
+          project_dists = sorted(name for name in installed if name.startswith("csegraph"))
+          assert project_dists == ["csegraph"], project_dists
+          import csegraph
+          from csegraph import ContextService
+          assert csegraph.__version__ == "1.7.1"
+          assert ContextService is not None
+          PY
+
+      - name: Run targeted package and integration tests
+        run: |
+          python -m pytest \
+            tests/integration/test_package_layout.py \
+            tests/integration/test_versions.py \
+            tests/integration/test_cli.py \
+            tests/integration/test_mcp_install.py \
+            tests/integration/test_mcp_server.py \
+            tests/integration/test_mcp_surface_guardrails.py \
+            tests/integration/test_agent_workflow_benchmark.py \
+            tests/integration/test_target_disambiguation.py \
+            tests/integration/test_context_quality_corpus.py \
+            -q
+
+      - name: Run full test suite
+        run: python -m pytest tests/ -q
+
+      - name: Compile Python sources
+        run: python -m compileall -q csegraph tools csegraph-vscode
+
+      - name: Build and inspect wheel
+        run: |
+          python -m build
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          wheels = sorted(Path("dist").glob("csegraph-*.whl"))
+          assert len(wheels) == 1, wheels
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              names = wheel.namelist()
+          assert any(name.startswith("csegraph/") for name in names)
+          assert all(
+              name.startswith(("csegraph/", "csegraph-1.7.1.dist-info/"))
+              for name in names
+          )
+          PY
+
+  vscode:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: csegraph-vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: csegraph-vscode
+        run: npm ci
+
+      - name: Audit extension dependencies
+        working-directory: csegraph-vscode
+        run: npm audit --audit-level=high
+
+      - name: Type-check extension
+        working-directory: csegraph-vscode
+        run: npm run lint
+
+      - name: Compile extension
+        working-directory: csegraph-vscode
+        run: npm run compile
+
+      - name: Package and inspect VSIX
+        working-directory: csegraph-vscode
+        run: |
+          npm run package
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          vsix = Path("csegraph-vscode-1.7.1.vsix")
+          assert vsix.exists()
+          with zipfile.ZipFile(vsix) as archive:
+              names = archive.namelist()
+          assert "extension/out/extension.js" in names
+          assert not any(name.startswith("extension/src/") for name in names)
+          PY

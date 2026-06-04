@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 def _get_python_parser():
-    from csegraph_core.languages import registry
+    from csegraph._core.languages import registry
     return registry.for_extension(".py")
 
 
@@ -60,7 +60,7 @@ def test_python_treesitter_parser_assigns_calls_to_nearest_symbol(tmp_path):
 
 
 def test_python_treesitter_parser_is_base_parser():
-    from csegraph_core.languages.base import BaseParser
+    from csegraph._core.languages.base import BaseParser
     assert isinstance(_get_python_parser(), BaseParser)
 
 

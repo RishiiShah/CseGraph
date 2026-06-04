@@ -10,19 +10,19 @@ from pathlib import Path
 import pytest
 from mcp.types import CallToolRequest
 
-from csegraph_core.daemon import _log_file, _validate_alias
-from csegraph_core.graph.queries import GraphQueryService
-from csegraph_core.graph.resolvers import _probe_ts_file
-from csegraph_core.index.services import IndexService
-from csegraph_core.registry import RegistryService
-from csegraph_core.server.app import _handle_tool, create_server
+from csegraph._core.daemon import _log_file, _validate_alias
+from csegraph._core.graph.queries import GraphQueryService
+from csegraph._core.graph.resolvers import _probe_ts_file
+from csegraph._core.index.services import IndexService
+from csegraph._core.registry import RegistryService
+from csegraph._core.server.app import _handle_tool, create_server
 
 
 def _indexed(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    db = str(tmp_path / "test.db")
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
     IndexService(db).index(repo, profile="small")
     return repo, db
 
@@ -47,15 +47,17 @@ class TestAliasValidation:
 
 
 class TestMcpProtocol:
-    def test_call_tool_returns_is_error_on_handler_failure(self):
+    def test_call_tool_returns_is_error_on_handler_failure(self, tmp_path: Path):
         async def _run():
+            repo = tmp_path / "repo"
+            repo.mkdir()
             server = create_server(allowed_tools=["csegraph_minimal"])
             handler = server.request_handlers[CallToolRequest]
             req = CallToolRequest(
                 method="tools/call",
                 params={
                     "name": "csegraph_context",
-                    "arguments": {"repo": "/tmp", "task": "t"},
+                    "arguments": {"repo": str(repo), "task": "t"},
                 },
             )
             return await handler(req)
@@ -124,7 +126,7 @@ class TestResolversPathNormalization:
 class TestCliServe:
     def test_serve_rejects_empty_tools_list(self):
         proc = subprocess.run(
-            [sys.executable, "-m", "csegraph_cli", "serve", "--tools", ""],
+            [sys.executable, "-m", "csegraph._cli", "serve", "--tools", ""],
             capture_output=True,
             text=True,
         )

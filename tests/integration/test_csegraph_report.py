@@ -325,11 +325,11 @@ def test_report_suggested_questions_are_unique(tmp_path):
 
 def test_report_with_custom_db(tmp_path):
     repo = tmp_path / "repo"
-    db_path = tmp_path / "custom.db"
+    db_path = repo / ".scratch" / "csegraph" / "custom.db"
     _write_repo(repo)
     run_cli("index", "--repo", str(repo), "--db", str(db_path), "--json")
 
-    result = run_dev_cli("report", "--db", str(db_path), "--json")
+    result = run_dev_cli("report", "--repo", str(repo), "--db", str(db_path), "--json")
 
     assert result["command"] == "report"
     assert result["total_files"] == 2

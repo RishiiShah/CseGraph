@@ -6,8 +6,8 @@ from typing import Iterable, List
 
 import pytest
 
-from csegraph_core.languages.registry import LanguageRegistry
-from csegraph_core.languages.types import ParsedFile
+from csegraph._core.languages.registry import LanguageRegistry
+from csegraph._core.languages.types import ParsedFile
 
 
 class RecordingTokenizer:
@@ -42,8 +42,8 @@ def patched_registry(monkeypatch):
     rec = RecordingTokenizer()
     reg = LanguageRegistry()
     reg.register(FakeParser(), rec)
-    monkeypatch.setattr("csegraph_core.retrieval.scoring.registry", reg)
-    monkeypatch.setattr("csegraph_core.cse.metrics.registry", reg)
+    monkeypatch.setattr("csegraph._core.retrieval.scoring.registry", reg)
+    monkeypatch.setattr("csegraph._core.cse.metrics.registry", reg)
     return rec
 
 
@@ -67,14 +67,14 @@ def _fake_symbols():
 
 
 def test_lexical_scores_uses_registry_tokenizer_for_source(patched_registry):
-    from csegraph_core.retrieval.scoring import lexical_scores
+    from csegraph._core.retrieval.scoring import lexical_scores
     symbols = _fake_symbols()
     lexical_scores("do_work", symbols, summaries={})
     assert len(patched_registry.calls) > 0
 
 
 def test_compute_metrics_uses_registry_tokenizer_for_source(patched_registry):
-    from csegraph_core.cse.metrics import compute_metrics
+    from csegraph._core.cse.metrics import compute_metrics
     symbols = _fake_symbols()
     target_id = list(symbols.keys())[0]
     compute_metrics(
@@ -109,16 +109,16 @@ def _unknown_lang_symbols():
 
 def test_unknown_language_raises_in_lexical_scores():
     """scoring.lexical_scores must raise (not silently fall back) for unknown language."""
-    from csegraph_core.languages.registry import UnsupportedLanguageError
-    from csegraph_core.retrieval.scoring import lexical_scores
+    from csegraph._core.languages.registry import UnsupportedLanguageError
+    from csegraph._core.retrieval.scoring import lexical_scores
     with pytest.raises(UnsupportedLanguageError):
         lexical_scores("foo task", _unknown_lang_symbols(), summaries={})
 
 
 def test_unknown_language_raises_in_compute_metrics():
     """metrics.compute_metrics must raise (not silently fall back) for unknown language."""
-    from csegraph_core.languages.registry import UnsupportedLanguageError
-    from csegraph_core.cse.metrics import compute_metrics
+    from csegraph._core.languages.registry import UnsupportedLanguageError
+    from csegraph._core.cse.metrics import compute_metrics
     symbols = _unknown_lang_symbols()
     target_id = list(symbols.keys())[0]
     with pytest.raises(UnsupportedLanguageError):

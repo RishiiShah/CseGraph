@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 
 from csegraph import ContextService, IndexService
-from csegraph_core.core.serializer import to_dict
-from csegraph_core.retrieval.constants import VALID_REASONS
+from csegraph._core.core.serializer import to_dict
+from csegraph._core.retrieval.constants import VALID_REASONS
 
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "context_contract_v2_shape.json"
@@ -41,16 +41,7 @@ def test_context_json_contract_is_canonical_only(tmp_path):
     for key in expected["sufficiency_fields"]:
         assert key in payload["sufficiency"]
 
-    removed_fields = {
-        "task",
-        "target_node_id",
-        "estimated_tokens",
-        "metrics",
-        "thresholds",
-        "is_sufficient",
-        "context_nodes",
-    }
-    assert removed_fields.isdisjoint(payload)
+    assert set(payload) == {"schema_version", *expected["canonical_fields"]}
 
     assert payload["query"] == "Implement create_user with clean_name"
     assert payload["target"] == "symbol::service.py::function::create_user"
@@ -65,11 +56,17 @@ def test_context_json_contract_is_canonical_only(tmp_path):
 
     assert payload["nodes"][0]["id"] == "symbol::service.py::function::create_user"
 
+    assert payload["target_resolution"] == "resolved"
+    assert payload["target_candidates"] == []
+
     for node in payload["nodes"]:
         for key in expected["canonical_node_fields"]:
             assert key in node
         assert node["language"] == "python"
         assert set(node["reason"]).issubset(VALID_REASONS)
+        assert node["reason_details"]
+        assert {d["code"] for d in node["reason_details"]}.issubset(VALID_REASONS)
+        assert all("confidence_tier" in d and "score_contribution" in d for d in node["reason_details"])
         assert "source_text" not in node
         assert "explanation" not in node
 

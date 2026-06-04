@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from csegraph_core.config.profiles import get_profile, load_profile
-from csegraph_core.cse.metrics import SufficiencyMetrics, all_pass, raw_code_nodes
+from csegraph._core.config.profiles import get_profile, load_profile
+from csegraph._core.cse.metrics import SufficiencyMetrics, all_pass, raw_code_nodes
 
 
 class TestDefaultsMatchConstants:
@@ -47,28 +47,6 @@ class TestLoadProfile:
         config_file.write_text(json.dumps({"bogus_key": 42}), encoding="utf-8")
         with pytest.raises(ValueError, match="Unknown config keys"):
             load_profile(config_path=str(config_file))
-
-    def test_deprecated_keys_are_ignored(self, tmp_path):
-        config_file = tmp_path / "csegraph.json"
-        config_file.write_text(
-            json.dumps(
-                {
-                    "context_budget": 100,
-                    "import_budget": 999,
-                    "max_expansion_rounds": 999,
-                    "tier0_target": 0.1,
-                    "tier1_target": 0.1,
-                    "confidence_drop_threshold": 0.9,
-                    "compression_hub_count": 999,
-                    "compression_max_nodes_per_slice": 999,
-                    "compression_source_char_limit": 999,
-                }
-            ),
-            encoding="utf-8",
-        )
-        cfg = load_profile(config_path=str(config_file))
-        assert cfg.context_budget == 100
-        assert not hasattr(cfg, "import_budget")
 
     def test_explicit_name_wins_over_config_profile(self, tmp_path):
         config_file = tmp_path / "csegraph.json"

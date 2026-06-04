@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.change_detection import (
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.change_detection import (
     ChangeDetectionService,
     DiffRegion,
     _compute_risk,
     _parse_diff,
 )
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService
 
 
 def _git(repo: Path, *args: str) -> None:

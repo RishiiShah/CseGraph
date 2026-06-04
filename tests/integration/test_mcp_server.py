@@ -10,12 +10,13 @@ from __future__ import annotations
 import json
 import asyncio
 import subprocess
+import tempfile
 import pytest
 from pathlib import Path
 
 from mcp.types import ListPromptsRequest, ListToolsRequest
 
-from csegraph_core.server.app import (
+from csegraph._core.server.app import (
     CORE_TOOL_NAMES,
     create_server,
     _handle_prompt,
@@ -37,6 +38,10 @@ def _make_repo(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return repo
+
+
+def _scratch_db(repo: Path, name: str = "test.db") -> str:
+    return str(repo / ".scratch" / "csegraph" / name)
 
 
 async def _listed_tool_names(server) -> list[str]:
@@ -144,7 +149,7 @@ class TestHandlePrompt:
 class TestHandleTool:
     def test_index_and_context(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
 
         result = _handle_tool("csegraph_index", {
             "repo": str(repo),
@@ -166,9 +171,24 @@ class TestHandleTool:
         assert ctx["detail_level"] == "auto"
         assert ctx["returned_detail_level"] in {"minimal", "standard"}
 
+    def test_index_allows_repo_local_scratch_db_path(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = repo / ".scratch" / "csegraph" / "index.db"
+
+        result = _handle_tool(
+            "csegraph_index",
+            {
+                "repo": str(repo),
+                "db": str(db),
+                "profile": "small",
+            },
+        )
+
+        assert result["db_path"] == str(db.resolve())
+
     def test_refresh(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         (repo / "extra.py").write_text("x = 1\n", encoding="utf-8")
@@ -180,7 +200,7 @@ class TestHandleTool:
 
     def test_graph_neighborhood(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         result = _handle_tool("csegraph_graph", {
@@ -194,7 +214,7 @@ class TestHandleTool:
 
     def test_graph_minimal_is_default_and_strips_edges(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         result = _handle_tool("csegraph_graph", {
@@ -211,7 +231,7 @@ class TestHandleTool:
 
     def test_graph_standard_returns_full_data(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         result = _handle_tool("csegraph_graph", {
@@ -227,7 +247,7 @@ class TestHandleTool:
 
     def test_path_minimal_is_default_with_name_chain(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         result = _handle_tool("csegraph_path", {
@@ -258,7 +278,7 @@ class TestHandleTool:
 
     def test_path_found(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         result = _handle_tool("csegraph_path", {
@@ -278,7 +298,7 @@ class TestHandleTool:
         repo.mkdir()
         (repo / "a.py").write_text("def alpha(): pass\n", encoding="utf-8")
         (repo / "b.py").write_text("def beta(): pass\n", encoding="utf-8")
-        db = str(tmp_path / "test2.db")
+        db = _scratch_db(repo, "test2.db")
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         result = _handle_tool("csegraph_path", {
@@ -296,7 +316,7 @@ class TestHandleTool:
 
     def test_result_is_json_serializable(self, tmp_path):
         repo = _make_repo(tmp_path)
-        db = str(tmp_path / "test.db")
+        db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         for tool_name, args in [
@@ -306,6 +326,22 @@ class TestHandleTool:
             result = _handle_tool(tool_name, args)
             serialized = json.dumps(result)
             assert isinstance(json.loads(serialized), dict)
+
+    def test_index_rejects_system_temp_db_path(self, tmp_path):
+        # Negative path policy: DB must live under the repo (e.g. .csegraph/ or
+        # .scratch/csegraph/). tempfile.gettempdir() is outside the repo on purpose.
+        repo = _make_repo(tmp_path)
+        db = Path(tempfile.gettempdir()) / f"{tmp_path.name}-csegraph-index.db"
+
+        with pytest.raises(ValueError):
+            _handle_tool(
+                "csegraph_index",
+                {
+                    "repo": str(repo),
+                    "db": str(db),
+                    "profile": "small",
+                },
+            )
 
 
 class TestServerCreation:

@@ -10,12 +10,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from csegraph_core.graph.queries import (
+from csegraph._core.graph.queries import (
     GraphQueryService,
     _confidence_breakdown,
     _confidence_note,
 )
-from csegraph_core.index.services import IndexService
+from csegraph._core.index.services import IndexService
 
 
 def _tiny_repo(tmp_path: Path) -> tuple[Path, str]:

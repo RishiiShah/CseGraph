@@ -9,9 +9,9 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from csegraph_core.daemon import DaemonService, _is_alive
-from csegraph_core.registry import RegistryService
-from csegraph_core.core.models import to_dict
+from csegraph._core.daemon import DaemonService, _is_alive
+from csegraph._core.registry import RegistryService
+from csegraph._core.core.models import to_dict
 
 
 def _setup_registry(tmp_path: Path, names: list[str]) -> Path:
@@ -76,7 +76,7 @@ class TestDaemonStart:
         with pytest.raises(ValueError, match="Unknown aliases"):
             svc.start(aliases=["nonexistent"])
 
-    @patch("csegraph_core.daemon.subprocess.Popen")
+    @patch("csegraph._core.daemon.subprocess.Popen")
     def test_start_spawns_process(self, mock_popen, tmp_path: Path):
         reg_file = _setup_registry(tmp_path, ["my-app"])
         pids_dir = tmp_path / "pids"
@@ -94,7 +94,7 @@ class TestDaemonStart:
         assert result.entries[0].pid == 12345
         assert (pids_dir / "my-app.pid").exists()
 
-    @patch("csegraph_core.daemon.subprocess.Popen")
+    @patch("csegraph._core.daemon.subprocess.Popen")
     def test_start_skips_already_running(self, mock_popen, tmp_path: Path):
         reg_file = _setup_registry(tmp_path, ["my-app"])
         pids_dir = tmp_path / "pids"
@@ -103,7 +103,7 @@ class TestDaemonStart:
         existing_pid = 54321
         (pids_dir / "my-app.pid").write_text(str(existing_pid), encoding="utf-8")
 
-        with patch("csegraph_core.daemon._is_alive", return_value=True):
+        with patch("csegraph._core.daemon._is_alive", return_value=True):
             svc = DaemonService(registry_path=reg_file, pids_dir=pids_dir)
             result = svc.start()
 
@@ -111,7 +111,7 @@ class TestDaemonStart:
         assert result.entries[0].status == "already_running"
         assert result.entries[0].pid == existing_pid
 
-    @patch("csegraph_core.daemon.subprocess.Popen")
+    @patch("csegraph._core.daemon.subprocess.Popen")
     def test_start_with_profile_override(self, mock_popen, tmp_path: Path):
         reg_file = _setup_registry(tmp_path, ["my-app"])
         pids_dir = tmp_path / "pids"
@@ -128,7 +128,7 @@ class TestDaemonStart:
         idx = call_args.index("--profile")
         assert call_args[idx + 1] == "large"
 
-    @patch("csegraph_core.daemon.subprocess.Popen")
+    @patch("csegraph._core.daemon.subprocess.Popen")
     def test_start_specific_aliases(self, mock_popen, tmp_path: Path):
         reg_file = _setup_registry(tmp_path, ["app-a", "app-b", "app-c"])
         pids_dir = tmp_path / "pids"
@@ -153,8 +153,8 @@ class TestDaemonStop:
         result = svc.stop()
         assert all(e.status == "not_running" for e in result.entries)
 
-    @patch("csegraph_core.daemon._kill_process", return_value=True)
-    @patch("csegraph_core.daemon._is_alive", return_value=True)
+    @patch("csegraph._core.daemon._kill_process", return_value=True)
+    @patch("csegraph._core.daemon._is_alive", return_value=True)
     def test_stop_kills_running(self, mock_alive, mock_kill, tmp_path: Path):
         reg_file = _setup_registry(tmp_path, ["my-app"])
         pids_dir = tmp_path / "pids"
@@ -180,7 +180,7 @@ class TestDaemonStop:
 
 
 class TestDaemonSerialization:
-    @patch("csegraph_core.daemon.subprocess.Popen")
+    @patch("csegraph._core.daemon.subprocess.Popen")
     def test_daemon_result_serializes(self, mock_popen, tmp_path: Path):
         reg_file = _setup_registry(tmp_path, ["my-app"])
         pids_dir = tmp_path / "pids"

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.hooks import (
+from csegraph._core.hooks import (
     HOOK_MARKER,
     HOOK_NAMES,
     install_hooks,

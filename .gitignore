@@ -28,6 +28,7 @@ junit.xml
 
 # Node
 node_modules/
+csegraph-vscode/out/
 *.vsix
 
 # IDEs
@@ -41,19 +42,24 @@ node_modules/
 Thumbs.db
 .python-version
 
+# Legacy experiment dirs (not part of the csegraph layout)
 data/
-reports/
-.csegraph/
-codermodel/
 
-# Docs
+# CseGraph runtime artifacts
+.csegraph/
+.scratch/
+
+# Unpacked wheel trees can shadow imports if left in the repo root
+csegraph-1.7.1/
+
+# Agent-local files (regenerate with `csegraph install --instructions`)
 CLAUDE.md
 AGENTS.md
-docs/
-# Added by code-review-graph
-.code-review-graph/
+GEMINI.md
+CODEX.md
 
 .claude/
 .mcp.json
 
+# Local maintainer scripts (not shipped; use tools/csegraph_dev.py)
 scripts/

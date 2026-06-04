@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from csegraph_core.graph.communities import detect_communities
-from csegraph_core.core.models import to_dict
-from csegraph_core.index.services import IndexService
+from csegraph._core.graph.communities import detect_communities
+from csegraph._core.core.models import to_dict
+from csegraph._core.index.services import IndexService
 
 
 def _index_repo(tmp_path: Path, files: dict[str, str]) -> str:

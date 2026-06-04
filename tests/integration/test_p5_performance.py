@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.index.services import IndexService, RefreshService
-from csegraph_core.postprocess import POSTPROCESS_LEVELS, PostprocessService
-from csegraph_core.retrieval.context import ContextService
-from csegraph_core.graph.queries import GraphQueryService
+from csegraph._core.index.services import IndexService, RefreshService
+from csegraph._core.postprocess import POSTPROCESS_LEVELS, PostprocessService
+from csegraph._core.retrieval.context import ContextService
+from csegraph._core.graph.queries import GraphQueryService
 
 
 def _make_repo(tmp_path: Path) -> Path:

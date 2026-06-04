@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.registry import RegistryService
-from csegraph_core.core.models import to_dict
+from csegraph._core.registry import RegistryService
+from csegraph._core.core.models import to_dict
 
 
 class TestRegistryRegister:

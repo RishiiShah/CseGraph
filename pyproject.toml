@@ -3,10 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "csegraph-core"
+name = "csegraph"
 version = "1.7.1"
-description = "Core repository context engine for coding agents. Distribution: csegraph-core; import: csegraph_core."
+description = "Repository context engine for coding agents with CLI, MCP server, and Python facade."
+authors = [
+    { name = "Rishabh Shah" }, 
+    { name = "Hitanshu Oza" }
+    ]
+license = "MIT"
 requires-python = ">=3.10"
+keywords = ["code graph", "context", "coding agents", "mcp", "tree-sitter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
 dependencies = [
     "mcp>=1.0.0,<2",
     "watchfiles>=1.0.0,<2",
@@ -43,13 +59,22 @@ embeddings = ["sentence-transformers>=1.7.1"]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"
+Issues = "https://github.com/RishiiShah/CseGraph/issues"
+
+[project.scripts]
+csegraph = "csegraph._cli.main:main"
 
 [tool.setuptools.packages.find]
-include = ["csegraph_core*"]
+include = ["csegraph*"]
 
 [tool.setuptools.package-data]
-"csegraph_core.graph.templates" = ["*.html"]
+"csegraph._core.graph.templates" = ["*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
 pythonpath = ["."]
+
+[tool.vulture]
+paths = ["csegraph", "tools"]
+min_confidence = 80
+exclude = ["csegraph/_core/core/models.py"]

@@ -10,8 +10,8 @@ from typing import List
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.embeddings import (
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.embeddings import (
     EMBEDDING_PROVIDERS,
     EmbeddingService,
     _blob_to_vector,
@@ -19,8 +19,8 @@ from csegraph_core.graph.embeddings import (
     _rrf_merge,
     _vector_to_blob,
 )
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService
 
 
 def _deterministic_embedder(dim: int = 8):
@@ -92,7 +92,7 @@ class TestEmbeddingCompute:
         svc = EmbeddingService(db, _embed_fn=_deterministic_embedder())
         svc.compute()
 
-        from csegraph_core.index.repository import ProjectIndex
+        from csegraph._core.index.repository import ProjectIndex
         index = ProjectIndex(db)
         try:
             index.initialize_schema()
@@ -112,7 +112,7 @@ class TestEmbeddingCompute:
         svc1.compute()
         svc2.compute()
 
-        from csegraph_core.index.repository import ProjectIndex
+        from csegraph._core.index.repository import ProjectIndex
         index = ProjectIndex(db)
         try:
             index.initialize_schema()
@@ -298,13 +298,13 @@ class TestEmbeddingSerialization:
 
 class TestEmbeddingMCP:
     def test_tool_is_cli_only(self):
-        from csegraph_core.server.app import _handle_tool
+        from csegraph._core.server.app import _handle_tool
 
         with pytest.raises(ValueError, match="Unknown tool"):
             _handle_tool("csegraph_embeddings", {})
 
     def test_prompt_is_not_agent_facing(self):
-        from csegraph_core.server.app import _handle_prompt
+        from csegraph._core.server.app import _handle_prompt
 
         with pytest.raises(ValueError, match="Unknown prompt"):
             _handle_prompt("csegraph-embeddings", {"repo": "/repo", "action": "compute"})

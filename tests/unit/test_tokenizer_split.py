@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from csegraph_core.languages.base import DefaultTokenizer
-from csegraph_core.text.tokens import code_tokenize
-from csegraph_core.languages.registry import UnsupportedLanguageError
-from csegraph_core.text.entities import extract_query_entities
+from csegraph._core.languages.base import DefaultTokenizer
+from csegraph._core.text.tokens import code_tokenize
+from csegraph._core.languages.registry import UnsupportedLanguageError
+from csegraph._core.text.entities import extract_query_entities
 
 
 def test_code_tokenize_splits_camel_case():
@@ -44,12 +44,12 @@ def test_extract_query_entities_substring_match():
 
 
 def test_tokenizer_for_python_returns_default_tokenizer():
-    from csegraph_core.languages import registry
+    from csegraph._core.languages import registry
     tokenizer = registry.tokenizer_for("python")
     assert isinstance(tokenizer, DefaultTokenizer)
 
 
 def test_tokenizer_for_unknown_raises():
-    from csegraph_core.languages import registry
+    from csegraph._core.languages import registry
     with pytest.raises(UnsupportedLanguageError):
         registry.tokenizer_for("javascript")

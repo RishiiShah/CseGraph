@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from csegraph_core.graph.queries import GraphQueryService
-from csegraph_core.index.services import IndexService
+from csegraph._core.graph.queries import GraphQueryService
+from csegraph._core.index.services import IndexService
 
 
 def _index_repo(tmp_path: Path, files: dict[str, str]) -> str:
@@ -63,7 +63,7 @@ class TestShortestPath:
 
     def test_result_serializes(self, tmp_path):
         import json
-        from csegraph_core.core.models import to_dict
+        from csegraph._core.core.models import to_dict
 
         db = _index_repo(tmp_path, {
             "x.py": "def one(): two()\ndef two(): pass\n",

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import tree_sitter
 
-from csegraph_core.languages.treesitter.languages import make_typescript_config
-from csegraph_core.languages.treesitter.parser import TreeSitterParser
+from csegraph._core.languages.treesitter.languages import make_typescript_config
+from csegraph._core.languages.treesitter.parser import TreeSitterParser
 
 
 @pytest.fixture

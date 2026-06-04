@@ -2,7 +2,7 @@
 
 CseGraph is a **context engine for coding agents**. Its only job is to hand an agent the accurate, minimal slice of code context needed to make a correct retrieval or edit, so the agent spends fewer tokens and skips tool calls it would otherwise make (broad grep, full-file read, repeated lookups).
 
-It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits. Product philosophy, benchmarks, and drift guardrails: [`learn.md`](learn.md).
+It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits.
 
 The product loop is:
 
@@ -12,26 +12,35 @@ index -> refresh -> context -> optional inspect/path/analyze
 
 Use csegraph when you want an agent to see the target code, direct dependencies, imports, nearby tests, and a short explanation of why each node was selected without repeatedly scanning the repository.
 
-## Packages
+## Package Layout
 
 | Package | Location | Purpose |
 |---|---|---|
-| `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
-| `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
-| `csegraph-cli` | `packages/csegraph-cli/` | Public CLI with setup, indexing, refresh, retrieval, graph inspection, analysis, export, maintenance, multi-repo operation, and MCP stdio serving. |
-| `csegraph-vscode` | `packages/csegraph-vscode/` | VS Code extension: commands, status bar, auto-refresh on save, right-click inspect. See [extension README](packages/csegraph-vscode/README.md) for CLI discovery and troubleshooting. |
+| `csegraph` | repo root | One Python distribution containing the public CLI, MCP server, SDK facade, and private engine internals. |
+| `csegraph-vscode` | `csegraph-vscode/` | VS Code extension source: commands, status bar, auto-refresh on save, right-click inspect. See [extension README](csegraph-vscode/README.md) for CLI discovery and troubleshooting. |
 
-Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
+Public Python imports use `csegraph`. Internal implementation modules live under `csegraph._core` and `csegraph._cli`; they are not documented as public API.
 
 ## Install From Source
 
 ```bash
 env/bin/pip install -e .
-env/bin/pip install -e packages/csegraph/
-env/bin/pip install -e packages/csegraph-cli/
 ```
 
-`requirements.txt` contains the same product-only editable installs.
+`requirements.txt` contains the same product-only editable install.
+
+This repository is source-first. The public project is distributed as one Python
+package and the VS Code extension source; generated binaries, local graph
+databases, build outputs, and dashboard artifacts are not committed.
+
+## Project Hygiene
+
+- Security policy: [SECURITY.md](SECURITY.md)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Release checklist: [RELEASE.md](RELEASE.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Maintainer command reference: [docs/csegraph.md](docs/csegraph.md)
+- Architecture reference: [docs/architecture.md](docs/architecture.md)
 
 ## Base Commands
 
@@ -71,11 +80,13 @@ csegraph daemon status
 
 By default, the index is stored at `<repo>/.csegraph/index.db`.
 
+Codex-safe temporary artifacts should live under `<repo>/.scratch/csegraph/`, not OS temp directories such as `/tmp` or `/private/tmp`. Use that repo-local scratch area for throwaway DBs, exports, and test fixtures, and clean up generated artifacts before handoff.
+
 Use `--profile small|medium|large` to trade retrieval breadth against speed and token budget. Use `csegraph.json`, `csegraph.toml`, or `--config` to tune thresholds without editing source.
 
 AI assistants can call these MCP tools after `csegraph serve` is configured by the client. `csegraph install` writes stdio MCP configuration for supported clients; use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot|vscode` to target one client. Use `--platform vscode` to write VS Code settings, tasks, and extension recommendations for the csegraph-vscode extension. Add `--instructions` to generate platform instruction files that tell agents to use csegraph first. Add `--hooks` to install agent hooks for automatic index refresh after file edits.
 
-`csegraph serve --tools` accepts `core` or a comma-separated subset of the six core tool names. It does not expose CLI operations such as `analyze`, `export`, `registry`, or `daemon`, and it does not expose maintainer-only benchmark/eval tools.
+`csegraph serve --tools` accepts `core` or a comma-separated subset of the six core tool names. The MCP surface is explicitly limited to these six tools; it does not expose CLI operations such as `analyze`, `export`, `registry`, or `daemon`, and it does not expose maintainer-only benchmark/eval tools.
 
 | Tool | Description | Key args |
 |---|---|---|
@@ -86,7 +97,7 @@ AI assistants can call these MCP tools after `csegraph serve` is configured by t
 | `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
 | `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS via SQLite recursive CTE with relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
 
-The MCP surface stays focused on context delivery to agents. Public operational commands such as `analyze`, `export`, `registry`, and `daemon` remain local CLI commands.
+The MCP surface stays focused on the six core context-engine tools for index, refresh, retrieval, and inspection. Public operational commands such as `analyze`, `export`, `registry`, and `daemon` remain local CLI commands.
 
 Note: `csegraph_context` supports both `max_tokens` (a soft budgeting hint used during retrieval to decide how much source material to include) and `max_bytes` (a hard ceiling enforced on the serialized JSON response; when exceeded the server drops `source_text`, then `explanation`, then trims `nodes`/`edges`).
 
@@ -154,11 +165,20 @@ env/bin/python tools/csegraph_dev.py report . --json
 env/bin/python tools/csegraph_dev.py embeddings status .
 ```
 
-There is no packaged `csegraph-dev` console script. These services remain importable from their module paths under `csegraph_core`, but they are not re-exported by the top-level `csegraph_core` package or the public `csegraph` SDK facade.
+There is no packaged `csegraph-dev` console script. These maintainer-only benchmark, eval, and development-analytics surfaces stay repo-local behind `tools/csegraph_dev.py` rather than being part of the public CLI, SDK, or MCP surface.
 
-## .csegraphignore
+## Discovery and `.csegraphignore`
 
-Place a `.csegraphignore` file in the repository root to exclude files and directories from indexing. Supports a `.gitignore`-like subset: blank lines, `#` comments, glob patterns (`*.generated.py`), directory patterns (`data/`), rooted patterns (`/scripts/`), and negation (`!important.py`).
+In a git repository, CseGraph indexes only paths in the git index (`git ls-files`:
+committed or staged, including submodules by default). Untracked local files are
+skipped until you `git add` them. Set `CSEGRAPH_RECURSE_SUBMODULES=0` to omit
+submodule paths. SVN working copies use `svn list -R` instead; with neither VCS,
+CseGraph walks the project directory.
+
+Place a `.csegraphignore` file in the repository root to exclude paths from that
+candidate set. Supports a `.gitignore`-like subset: blank lines, `#` comments,
+glob patterns (`*.generated.py`), directory patterns (`data/`), rooted patterns
+(`/scripts/`), and negation (`!important.py`).
 
 ## SDK
 
@@ -213,6 +233,10 @@ pytest                              # Full test suite
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet
-python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
+python -m compileall -q csegraph tools csegraph-vscode
 csegraph --help
 ```
+
+## License
+
+CseGraph is released under the MIT License. See [LICENSE](LICENSE).

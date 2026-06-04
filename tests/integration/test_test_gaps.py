@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.test_gaps import TestGapService
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.test_gaps import TestGapService
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService
 
 
 def _index_repo(tmp_path: Path, repo: Path) -> str:

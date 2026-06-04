@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable, List
 
 import pytest
 
-from csegraph_core.languages.registry import LanguageRegistry, UnsupportedLanguageError
+from csegraph._core.languages.registry import LanguageRegistry, UnsupportedLanguageError
 
 
 class FakeTokenizer:
@@ -23,6 +23,23 @@ class FakeParser:
 
     def iter_files(self, root: Path) -> Iterable[Path]:
         return []
+
+    def excludes_rel_path(self, rel_path: str) -> bool:
+        if not self.excluded_dirs:
+            return False
+        dirs = PurePosixPath(rel_path).parts[:-1]
+        return any(part in self.excluded_dirs for part in dirs)
+
+
+class FakePythonParser(FakeParser):
+    language = "fake_python"
+    extensions = (".py",)
+
+
+class FakeCSharpParser(FakeParser):
+    language = "fake_csharp"
+    extensions = (".cs",)
+    excluded_dirs = frozenset({"packages"})
 
 
 def test_register_and_dispatch_by_extension():
@@ -47,22 +64,22 @@ def test_tokenizer_for_unknown_raises():
 
 
 def test_python_parser_registered_on_import():
-    from csegraph_core.languages import registry
-    from csegraph_core.languages.treesitter.parser import TreeSitterParser
+    from csegraph._core.languages import registry
+    from csegraph._core.languages.treesitter.parser import TreeSitterParser
     parser = registry.for_extension(".py")
     assert isinstance(parser, TreeSitterParser)
     assert parser.language == "python"
 
 
 def test_python_tokenizer_registered_on_import():
-    from csegraph_core.languages import registry
-    from csegraph_core.languages.base import DefaultTokenizer
+    from csegraph._core.languages import registry
+    from csegraph._core.languages.base import DefaultTokenizer
     tokenizer = registry.tokenizer_for("python")
     assert isinstance(tokenizer, DefaultTokenizer)
 
 
 def test_iter_files_yields_parser_path_pairs(tmp_path):
-    from csegraph_core.languages import registry
+    from csegraph._core.languages import registry
     (tmp_path / "a.py").write_text("x = 1")
     (tmp_path / "b.txt").write_text("not python")
     pairs = list(registry.iter_files(tmp_path))
@@ -71,9 +88,27 @@ def test_iter_files_yields_parser_path_pairs(tmp_path):
     assert all(p.name != "b.txt" for p in paths)
 
 
+def test_parser_specific_excluded_dirs_do_not_prune_other_languages(tmp_path):
+    reg = LanguageRegistry()
+    python_parser = FakePythonParser()
+    csharp_parser = FakeCSharpParser()
+    reg.register(python_parser, FakeTokenizer())
+    reg.register(csharp_parser, FakeTokenizer())
+
+    package_dir = tmp_path / "packages" / "app"
+    package_dir.mkdir(parents=True)
+    (package_dir / "main.py").write_text("x = 1", encoding="utf-8")
+    (package_dir / "Program.cs").write_text("class Program {}", encoding="utf-8")
+
+    pairs = list(reg.iter_files(tmp_path))
+
+    assert (python_parser, package_dir / "main.py") in pairs
+    assert (csharp_parser, package_dir / "Program.cs") not in pairs
+
+
 def test_python_parser_satisfies_widened_protocol():
-    from csegraph_core.languages.base import Parser
-    from csegraph_core.languages import registry
+    from csegraph._core.languages.base import Parser
+    from csegraph._core.languages import registry
     parser = registry.for_extension(".py")
     assert isinstance(parser, Parser)
     assert hasattr(parser, "module_name_from_relpath")
@@ -81,8 +116,8 @@ def test_python_parser_satisfies_widened_protocol():
 
 
 def test_typescript_parser_registered():
-    from csegraph_core.languages import registry
-    from csegraph_core.languages.treesitter.parser import TreeSitterParser
+    from csegraph._core.languages import registry
+    from csegraph._core.languages.treesitter.parser import TreeSitterParser
     parser = registry.for_extension(".ts")
     assert isinstance(parser, TreeSitterParser)
     assert parser.language == "typescript"
@@ -92,8 +127,8 @@ def test_typescript_parser_registered():
 
 
 def test_all_supported_extensions_registered_on_import():
-    from csegraph_core.languages import registry
-    from csegraph_core.languages.treesitter.languages import LANGUAGE_SPECS
+    from csegraph._core.languages import registry
+    from csegraph._core.languages.treesitter.languages import LANGUAGE_SPECS
 
     expected = {
         extension

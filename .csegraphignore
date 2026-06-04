@@ -1,0 +1,24 @@
+# CseGraph runtime (exclude from agent context)
+.csegraph/
+.scratch/
+
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+*.egg-info/
+csegraph-vscode/out/
+
+# Local environment and secrets
+.env
+.venv/
+venv/
+
+# IDE and agent metadata
+.vscode/
+.cursor/
+.claude/
+
+# Large or non-source artifacts
+*.pdf
+*.zip

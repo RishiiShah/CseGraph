@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Publish Python artifacts to PyPI via trusted publishing"
+        required: true
+        default: false
+        type: boolean
+      publish_vscode:
+        description: "Publish VSIX to VS Code Marketplace when VSCE_PAT is configured"
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-python:
+    name: Build Python distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Inspect Python artifacts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile
+          import zipfile
+
+          wheels = sorted(Path("dist").glob("csegraph-*.whl"))
+          sdists = sorted(Path("dist").glob("csegraph-*.tar.gz"))
+          assert len(wheels) == 1, wheels
+          assert len(sdists) == 1, sdists
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              wheel_names = wheel.namelist()
+          assert any(name.startswith("csegraph/") for name in wheel_names)
+          assert all(
+              name.startswith(("csegraph/", "csegraph-1.7.1.dist-info/"))
+              for name in wheel_names
+          )
+          with tarfile.open(sdists[0]) as sdist:
+              sdist_names = sdist.getnames()
+          assert any("/csegraph/" in name for name in sdist_names)
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error
+
+  build-vscode:
+    name: Build VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: csegraph-vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: csegraph-vscode
+        run: npm ci
+
+      - name: Verify extension
+        working-directory: csegraph-vscode
+        run: |
+          npm audit --audit-level=high
+          npm run lint
+          npm run compile
+          npm run package
+
+      - name: Inspect VSIX
+        working-directory: csegraph-vscode
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          vsix = Path("csegraph-vscode-1.7.1.vsix")
+          assert vsix.exists()
+          with zipfile.ZipFile(vsix) as archive:
+              names = archive.namelist()
+          assert "extension/out/extension.js" in names
+          assert not any(name.startswith("extension/src/") for name in names)
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vscode-vsix
+          path: csegraph-vscode/csegraph-vscode-*.vsix
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish Python distribution to PyPI
+    needs: build-python
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_pypi == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-dist
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-vscode:
+    name: Publish VS Code extension
+    needs: build-vscode
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_vscode == 'true' }}
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: vscode-vsix
+          path: csegraph-vscode
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Publish to VS Code Marketplace
+        if: ${{ env.VSCE_PAT != '' }}
+        working-directory: csegraph-vscode
+        run: npx @vscode/vsce publish --packagePath csegraph-vscode-*.vsix
+
+      - name: Skip VS Code Marketplace publish without token
+        if: ${{ env.VSCE_PAT == '' }}
+        run: |
+          echo "VSCE_PAT is not configured; VSIX artifact was built but not published."

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from csegraph_core.index.cache import ExtractionCache
-from csegraph_core.index.services import IndexService, RefreshService
-from csegraph_core.languages.types import ParsedFile
+from csegraph._core.index.cache import ExtractionCache
+from csegraph._core.index.services import IndexService, RefreshService
+from csegraph._core.languages.types import ParsedFile
 
 
 class TestExtractionCache:
@@ -62,7 +62,7 @@ class TestExtractionCache:
         cache.close()
 
     def test_preserves_symbols(self, tmp_path):
-        from csegraph_core.languages.types import ParsedSymbol
+        from csegraph._core.languages.types import ParsedSymbol
         cache = ExtractionCache(str(tmp_path / "cache.db"))
         sym = ParsedSymbol(
             node_id="symbol::test.py::function::foo",
