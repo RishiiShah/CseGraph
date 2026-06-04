@@ -1,0 +1,29 @@
+# Local Environment & Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Graph & Tool Metadata
+.code-review-graph/
+.cursor/
+.claude/
+.vscode/
+
+# Dependencies & Build Artifacts
+node_modules/
+dist/
+build/
+bin/
+obj/
+*.exe
+*.dll
+
+# Secrets & Large Data
+.env
+*.log
+*.sqlite
+*.json (if > 1MB)
+*.pdf
+*.zip
