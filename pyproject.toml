@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "csegraph"
 version = "1.7.1"
 description = "Repository context engine for coding agents with CLI, MCP server, and Python facade."
+authors = [{ name = "Rishabh Shah" }]
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
