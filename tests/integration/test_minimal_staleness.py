@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from csegraph_core.server.app import _handle_tool
+from csegraph._core.server.app import _handle_tool
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -21,7 +21,7 @@ def test_minimal_warns_when_index_stale(tmp_path: Path):
 
     # Force nodes.updated_at to >24 hours ago
     old = time.time() - (25 * 3600)
-    from csegraph_core.index.repository import ProjectIndex
+    from csegraph._core.index.repository import ProjectIndex
 
     idx = ProjectIndex(db)
     try:

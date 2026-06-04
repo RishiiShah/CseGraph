@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 
 from csegraph import ContextService, IndexService
-from csegraph_core.core.serializer import to_dict
-from csegraph_core.retrieval.constants import VALID_REASONS
+from csegraph._core.core.serializer import to_dict
+from csegraph._core.retrieval.constants import VALID_REASONS
 
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "context_contract_v2_shape.json"

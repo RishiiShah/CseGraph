@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-from csegraph_core.mcp_install import McpInstallService
+from csegraph._core.mcp_install import McpInstallService
 
 
 def _read_json(path: Path) -> dict:

@@ -9,10 +9,10 @@ from csegraph import (
     IndexService,
     RefreshService,
 )
-from csegraph_core.benchmark import BenchmarkService
-from csegraph_core.core.errors import UnsupportedSchemaError
-from csegraph_core.index.repository import ProjectIndex
-from csegraph_core.retrieval.constants import VALID_REASONS
+from csegraph._core.benchmark import BenchmarkService
+from csegraph._core.core.errors import UnsupportedSchemaError
+from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.retrieval.constants import VALID_REASONS
 
 
 def _write_sample_repo(root: Path) -> None:
@@ -399,7 +399,7 @@ def test_unsupported_schema_version_raises_structured_error(tmp_path):
         idx.close()
 
     assert exc_info.value.error_code == "unsupported_schema"
-    assert exc_info.value.hint == "Rebuild the index with the current csegraph-core version."
+    assert exc_info.value.hint == "Rebuild the index with the current csegraph version."
 
 
 def test_malformed_schema_metadata_raises_structured_error(tmp_path):

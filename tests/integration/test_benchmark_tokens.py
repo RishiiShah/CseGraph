@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 import subprocess
 
-from csegraph_core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
-from csegraph_core.core.models import to_dict
+from csegraph._core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
+from csegraph._core.core.models import to_dict
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -196,7 +196,7 @@ class TestBenchmarkTokenReduction:
             profile="small",
             graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
         )
-        from csegraph_core.core.models import to_dict
+        from csegraph._core.core.models import to_dict
         payload = to_dict(result)
         serialized = json.dumps(payload)
         assert "token_reduction" in serialized

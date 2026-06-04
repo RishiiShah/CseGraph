@@ -16,7 +16,7 @@ from pathlib import Path
 
 from mcp.types import ListPromptsRequest, ListToolsRequest
 
-from csegraph_core.server.app import (
+from csegraph._core.server.app import (
     CORE_TOOL_NAMES,
     create_server,
     _handle_prompt,

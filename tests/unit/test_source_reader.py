@@ -1,6 +1,6 @@
 import pytest
 
-from csegraph_core.text.source_reader import read_source_lines
+from csegraph._core.text.source_reader import read_source_lines
 
 
 def test_reads_correct_line_range(tmp_path):

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from csegraph_core.languages.base import Tokenizer
-from csegraph_core.text.tokens import code_tokenize
-from csegraph_core.text.query_tokenizer import QueryTokenizer, query_tokenizer
+from csegraph._core.languages.base import Tokenizer
+from csegraph._core.text.tokens import code_tokenize
+from csegraph._core.text.query_tokenizer import QueryTokenizer, query_tokenizer
 
 _CORPUS = [
     "Implement shortest_path for graph_analytics module",

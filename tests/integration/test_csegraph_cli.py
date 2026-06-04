@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 import pytest
-import csegraph_cli.main as cli_main
-from csegraph_core.retrieval.constants import VALID_REASONS
+import csegraph._cli.main as cli_main
+from csegraph._core.retrieval.constants import VALID_REASONS
 
 from tests.conftest import run_cli, run_dev_cli
 
@@ -183,7 +183,7 @@ def test_index_default_output_is_human_summary(tmp_path):
     _write_repo(repo)
 
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", "index", str(repo)],
+        [sys.executable, "-m", "csegraph._cli", "index", str(repo)],
         check=True,
         capture_output=True,
         text=True,
@@ -210,7 +210,7 @@ def test_refresh_default_output_is_human_summary(tmp_path):
     run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", "refresh", str(repo)],
+        [sys.executable, "-m", "csegraph._cli", "refresh", str(repo)],
         check=True,
         capture_output=True,
         text=True,
@@ -286,7 +286,7 @@ def test_context_detail_level_full_adds_explanations(tmp_path):
 
 def test_help_lists_canonical_index_and_refresh_without_aliases():
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", "--help"],
+        [sys.executable, "-m", "csegraph._cli", "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -301,7 +301,7 @@ def test_help_lists_canonical_index_and_refresh_without_aliases():
 def test_build_and_update_are_not_public_commands():
     for command in ("build", "update"):
         proc = subprocess.run(
-            [sys.executable, "-m", "csegraph_cli", command, "--help"],
+            [sys.executable, "-m", "csegraph._cli", command, "--help"],
             capture_output=True,
             text=True,
         )
@@ -700,7 +700,7 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
         [
             sys.executable,
             "-m",
-            "csegraph_cli",
+            "csegraph._cli",
             "context",
             "Implement create_user",
             "--target",
@@ -738,7 +738,7 @@ def test_context_cli_minimal_markdown_shows_expand_context(tmp_path):
         [
             sys.executable,
             "-m",
-            "csegraph_cli",
+            "csegraph._cli",
             "context",
             "Implement create_user",
             "--target",
@@ -771,7 +771,7 @@ def test_context_cli_json_markdown_conflict_fails_clearly(tmp_path):
         [
             sys.executable,
             "-m",
-            "csegraph_cli",
+            "csegraph._cli",
             "context",
             "Implement create_user",
             "--target",
@@ -809,7 +809,7 @@ def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
         [
             sys.executable,
             "-m",
-            "csegraph_cli",
+            "csegraph._cli",
             "context",
             "Implement create_user",
             "--repo",
@@ -826,13 +826,13 @@ def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
     assert err == {
         "error": "Unsupported csegraph index schema",
         "error_code": "unsupported_schema",
-        "hint": "Rebuild the index with the current csegraph-core version.",
+        "hint": "Rebuild the index with the current csegraph version.",
     }
 
 
 def test_cli_help_lists_only_product_commands():
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", "--help"],
+        [sys.executable, "-m", "csegraph._cli", "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -898,7 +898,7 @@ def test_fragmented_commands_are_not_public():
         "hooks",
     ):
         proc = subprocess.run(
-            [sys.executable, "-m", "csegraph_cli", command, "--help"],
+            [sys.executable, "-m", "csegraph._cli", command, "--help"],
             capture_output=True,
             text=True,
         )
@@ -1083,12 +1083,12 @@ def test_detect_changes_no_changes(tmp_path):
     assert result["high_risk"] == []
 
 
-def test_install_matrix_cli_works_without_sdk(tmp_path):
-    """CLI should run with root csegraph-core + csegraph-cli, no SDK package."""
+def test_single_package_install_exposes_cli_and_sdk(tmp_path):
+    """Root csegraph install should expose CLI and SDK facade from one distribution."""
     repo_root = Path(__file__).resolve().parents[2]
     if not (repo_root / "pyproject.toml").exists():
         import pytest
-        pytest.skip("root csegraph-core package not present in this checkout")
+        pytest.skip("root csegraph package not present in this checkout")
 
     venv = tmp_path / "v"
     _create_test_venv(venv)
@@ -1098,26 +1098,31 @@ def test_install_matrix_cli_works_without_sdk(tmp_path):
 
     subprocess.run(
         [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation", "--no-deps",
-         "-e", str(repo_root),
-         "-e", str(repo_root / "packages" / "csegraph-cli")],
+         "-e", str(repo_root)],
         check=True,
         env=_offline_pip_env(),
     )
 
-    # SDK must NOT be installed in this venv.
     listing = subprocess.run([str(pip), "list"], check=True, capture_output=True, text=True).stdout
-    assert "csegraph-core" in listing
-    assert "csegraph-cli" in listing
-    sdk_lines = [
-        line for line in listing.splitlines()
-        if line.startswith("csegraph ") or line.split()[0:1] == ["csegraph"]
-    ]
-    assert sdk_lines == [], f"SDK should not be installed: {sdk_lines}"
-    # Core packaged CLI commands must work without installing the SDK package.
+    assert "csegraph " in listing
+    assert "csegraph-core" not in listing
+    assert "csegraph-cli" not in listing
+    import_check = subprocess.run(
+        [
+            str(bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")),
+            "-c",
+            "import csegraph; from csegraph import ContextService; assert ContextService is not None",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_offline_pip_env(),
+    )
+    assert import_check.returncode == 0
+
     sample = tmp_path / "repo"
     _write_repo(sample)
     _env = _offline_pip_env()
-    _env["PYTHONPATH"] = os.pathsep.join(site.getsitepackages())
     proc = subprocess.run(
         [str(csegraph_bin), "index", str(sample), "--json"],
         check=True, capture_output=True, text=True, env=_env,

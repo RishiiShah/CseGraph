@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from csegraph_core.server.app import _TOOLS, _apply_byte_cap, _handle_tool
+from csegraph._core.server.app import _TOOLS, _apply_byte_cap, _handle_tool
 
 
 def _indexed(tmp_path: Path) -> tuple[Path, str]:
@@ -100,7 +100,7 @@ class TestByteCapHelper:
 
     def test_small_cap_validated_by_handle_tool(self, tmp_path):
         """Validation of max_bytes < 256 is done in _handle_tool, not _apply_byte_cap."""
-        from csegraph_core.server.app import _handle_tool
+        from csegraph._core.server.app import _handle_tool
         import pytest
         repo = tmp_path / "repo"
         repo.mkdir()

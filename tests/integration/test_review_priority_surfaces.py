@@ -7,12 +7,12 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from csegraph_core.core.models import PostprocessResult, StatusResult, to_dict
-from csegraph_core.index.repository import ProjectIndex, json_dumps
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
-from csegraph_core.repo_state import _run_git, git_head_state
-from csegraph_core.status import StatusService, _build_warnings, _epoch_to_iso
+from csegraph._core.core.models import PostprocessResult, StatusResult, to_dict
+from csegraph._core.index.repository import ProjectIndex, json_dumps
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService
+from csegraph._core.repo_state import _run_git, git_head_state
+from csegraph._core.status import StatusService, _build_warnings, _epoch_to_iso
 
 
 def _write_repo(root: Path) -> None:
@@ -199,7 +199,7 @@ def test_status_metadata_clears_stale_git_fields_when_repo_is_not_git(tmp_path: 
 
     plain_repo = tmp_path / "plain_repo"
     _write_repo(plain_repo)
-    with patch("csegraph_core.index.repository.git_head_state", return_value=(None, None)):
+    with patch("csegraph._core.index.repository.git_head_state", return_value=(None, None)):
         IndexService(db).index(str(plain_repo), profile="small")
 
     result = StatusService(db).status()

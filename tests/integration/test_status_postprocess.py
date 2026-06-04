@@ -12,16 +12,16 @@ from unittest.mock import patch
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService, _read_source_slice
-from csegraph_core.status import StatusService
+from csegraph._core.core.models import to_dict
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService, _read_source_slice
+from csegraph._core.status import StatusService
 
 
 def _run_cli(*args: str) -> tuple[int, str, str]:
-    """Run csegraph_cli and return (exit_code, stdout, stderr)."""
+    """Run csegraph._cli and return (exit_code, stdout, stderr)."""
     result = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
+        [sys.executable, "-m", "csegraph._cli", *args],
         capture_output=True,
         text=True,
     )
@@ -94,7 +94,7 @@ class TestStatusService:
         assert "python" in parsed["languages"]
 
     def test_status_text_output_contains_expected_labels(self, tmp_path):
-        from csegraph_cli.renderer import render_status_summary
+        from csegraph._cli.renderer import render_status_summary
 
         _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
         result = StatusService(db).status()
@@ -153,7 +153,7 @@ class TestStatusService:
 
 class TestStatusRendering:
     def test_render_status_verbose_includes_parse_errors(self, tmp_path):
-        from csegraph_cli.renderer import render_status_summary
+        from csegraph._cli.renderer import render_status_summary
 
         # Create a repo with an invalid Python file
         repo = tmp_path / "repo"
@@ -209,7 +209,7 @@ class TestStatusGitMetadata:
         new_repo.mkdir()
         (new_repo / "b.py").write_text("def g(): pass\n")
 
-        with patch("csegraph_core.index.repository.git_head_state", return_value=(None, None)):
+        with patch("csegraph._core.index.repository.git_head_state", return_value=(None, None)):
             IndexService(db).index(str(new_repo), profile="small")
         result2 = StatusService(db).status()
         assert result2.built_branch is None
@@ -310,7 +310,7 @@ class TestReadSourceSliceTraversal:
 
 class TestPostprocessRenderer:
     def test_render_postprocess(self, tmp_path):
-        from csegraph_cli.renderer import render_postprocess_summary
+        from csegraph._cli.renderer import render_postprocess_summary
 
         _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
         result = PostprocessService(db).postprocess()

@@ -6,8 +6,8 @@ import sys
 import pytest
 
 from csegraph import ContextService, IndexService
-from csegraph_core.core.models import ContextNode
-from csegraph_core.core.serializer import to_dict
+from csegraph._core.core.models import ContextNode
+from csegraph._core.core.serializer import to_dict
 
 
 def _write_repo(root):
@@ -57,7 +57,7 @@ def test_markdown_output_uses_language_fence(tmp_path):
 
     proc = subprocess.run(
         [
-            sys.executable, "-m", "csegraph_cli",
+            sys.executable, "-m", "csegraph._cli",
             "context", "Implement run",
             "--target", "run",
             "--db", str(db_path),
@@ -113,7 +113,7 @@ def test_context_node_with_empty_language_raises():
 
 def test_schema_v5_language_column_notnull(tmp_path):
     import sqlite3
-    from csegraph_core.index.repository import ProjectIndex
+    from csegraph._core.index.repository import ProjectIndex
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     db_path = _scratch_path(repo, "test.db")
@@ -159,9 +159,9 @@ def test_no_empty_language_in_fresh_index(tmp_path):
 def test_writer_guard_fires_before_file_insert(tmp_path):
     """IndexService must raise before writing any nodes when language is empty."""
     import sqlite3
-    from csegraph_core.index.repository import ProjectIndex
-    from csegraph_core.index.services import _write_parsed_files
-    from csegraph_core.languages.types import ParsedFile
+    from csegraph._core.index.repository import ProjectIndex
+    from csegraph._core.index.services import _write_parsed_files
+    from csegraph._core.languages.types import ParsedFile
 
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)

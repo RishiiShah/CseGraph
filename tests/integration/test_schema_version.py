@@ -2,8 +2,8 @@ import sqlite3
 
 import pytest
 
-from csegraph_core.core.errors import UnsupportedSchemaError
-from csegraph_core.index.repository import ProjectIndex
+from csegraph._core.core.errors import UnsupportedSchemaError
+from csegraph._core.index.repository import ProjectIndex
 
 
 def test_old_schema_version_is_rejected(tmp_path):

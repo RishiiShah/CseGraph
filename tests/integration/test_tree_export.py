@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.graph.tree import TreeExportService
-from csegraph_core.index.services import IndexService
+from csegraph._core.graph.tree import TreeExportService
+from csegraph._core.index.services import IndexService
 
 
 def _index_repo(tmp_path: Path) -> str:

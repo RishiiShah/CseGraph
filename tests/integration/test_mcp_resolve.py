@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from csegraph_core.mcp_resolve import build_mcp_server_entry
+from csegraph._core.mcp_resolve import build_mcp_server_entry
 
 
 def test_build_entry_uses_project_venv_cli(tmp_path: Path) -> None:
@@ -31,7 +31,7 @@ def test_build_entry_falls_back_to_python_module(tmp_path: Path) -> None:
     entry = build_mcp_server_entry(repo)
 
     assert entry["command"] == "env/bin/python"
-    assert entry["args"] == ["-m", "csegraph_cli", "serve"]
+    assert entry["args"] == ["-m", "csegraph._cli", "serve"]
 
 
 def test_custom_command_is_not_rewritten(tmp_path: Path) -> None:

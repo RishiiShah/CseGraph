@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.review_questions import ReviewQuestionsService
-from csegraph_core.index.services import IndexService
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.review_questions import ReviewQuestionsService
+from csegraph._core.index.services import IndexService
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -150,7 +150,7 @@ class TestReviewQuestions:
         _git(repo, "commit", "-m", "modify both")
 
         db = _index_repo(tmp_path, repo)
-        from csegraph_core.postprocess import PostprocessService
+        from csegraph._core.postprocess import PostprocessService
         PostprocessService(db).postprocess()
 
         result = ReviewQuestionsService(db).generate(base_ref="HEAD~1")

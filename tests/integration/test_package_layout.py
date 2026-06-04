@@ -81,42 +81,36 @@ def _create_test_venv(path: Path) -> None:
         target.symlink_to(entry)
 
 
-def test_v200_package_layout_and_versions():
+def test_one_distribution_package_layout_and_versions():
     repo_root = Path(__file__).resolve().parents[2]
 
     root_project = _project_metadata(repo_root)
-    sdk_project = _project_metadata(repo_root / "packages" / "csegraph")
-    cli_project = _project_metadata(repo_root / "packages" / "csegraph-cli")
 
-    assert root_project["name"] == "csegraph-core"
+    assert root_project["name"] == "csegraph"
     assert root_project["version"] == "1.7.1"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
     assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
-    assert "import: csegraph_core" in root_project["description"]
+    assert "context engine" in root_project["description"]
+    assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
 
-    assert sdk_project["name"] == "csegraph"
-    assert sdk_project["version"] == "1.7.1"
-    assert sdk_project["dependencies"] == ["csegraph-core>=1.7.1"]
-
-    assert cli_project["name"] == "csegraph-cli"
-    assert cli_project["version"] == "1.7.1"
-    assert cli_project["dependencies"] == ["csegraph-core>=1.7.1"]
-
-    assert (repo_root / "csegraph_core" / "__init__.py").exists()
-    assert (repo_root / "packages" / "csegraph" / "csegraph" / "__init__.py").exists()
-    assert not (repo_root / "packages" / "csegraph-core").exists()
+    assert (repo_root / "csegraph" / "__init__.py").exists()
+    assert (repo_root / "csegraph" / "_core" / "__init__.py").exists()
+    assert (repo_root / "csegraph" / "_cli" / "__init__.py").exists()
+    assert (repo_root / "csegraph-vscode" / "package.json").exists()
+    assert not (repo_root / "csegraph._core").exists()
+    assert not (repo_root / "packages").exists()
     removed_addon = "code" + "gen"
-    assert not (repo_root / "packages" / "csegraph" / "csegraph" / removed_addon).exists()
-    assert not (repo_root / "packages" / f"csegraph-{removed_addon}").exists()
+    assert not (repo_root / "csegraph" / removed_addon).exists()
 
 
-def test_install_matrix_sdk_is_separate_from_core(tmp_path):
+def test_root_install_exposes_cli_sdk_and_private_modules(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     venv = tmp_path / "v"
     _create_test_venv(venv)
     bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
     pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
     python = bin_dir / ("python.exe" if sys.platform.startswith("win") else "python")
+    csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
 
     subprocess.run(
         [
@@ -132,40 +126,19 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
         check=True,
         env=_offline_pip_env(),
     )
-    core_only = subprocess.run(
-        [str(python), "-c", "import csegraph_core; import importlib.util; assert importlib.util.find_spec('csegraph') is None"],
-        check=True,
-        capture_output=True,
-        env=_offline_pip_env(),
-        text=True,
-    )
-    assert core_only.returncode == 0
-
-    subprocess.run(
-        [
-            str(pip),
-            "install",
-            "--quiet",
-            "--no-index",
-            "--no-build-isolation",
-            "--no-deps",
-            "-e",
-            str(repo_root),
-            "-e",
-            str(repo_root / "packages" / "csegraph"),
-        ],
-        check=True,
-        env=_offline_pip_env(),
-    )
-    sdk = subprocess.run(
+    import_check = subprocess.run(
         [
             str(python),
             "-c",
             (
-                "import csegraph; "
-                "from csegraph import ContextService; "
                 "import importlib.util; "
+                "import csegraph; "
+                "import csegraph._core; "
+                "import csegraph._cli; "
+                "from csegraph import ContextService; "
                 "assert ContextService is not None; "
+                "assert importlib.util.find_spec('csegraph_core') is None; "
+                "assert importlib.util.find_spec('csegraph_cli') is None; "
                 "assert importlib.util.find_spec('csegraph.languages') is None"
             ),
         ],
@@ -174,33 +147,16 @@ def test_install_matrix_sdk_is_separate_from_core(tmp_path):
         env=_offline_pip_env(),
         text=True,
     )
-    assert sdk.returncode == 0
+    assert import_check.returncode == 0
 
-
-def test_cli_package_source_install_exposes_base_commands(tmp_path):
-    repo_root = Path(__file__).resolve().parents[2]
-    venv = tmp_path / "v"
-    _create_test_venv(venv)
-    bin_dir = venv / ("Scripts" if sys.platform.startswith("win") else "bin")
-    pip = bin_dir / ("pip.exe" if sys.platform.startswith("win") else "pip")
-    csegraph = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
-
-    subprocess.run(
-        [
-            str(pip),
-            "install",
-            "--quiet",
-            "--no-index",
-            "--no-build-isolation",
-            "--no-deps",
-            "-e",
-            str(repo_root),
-            "-e",
-            str(repo_root / "packages" / "csegraph-cli"),
-        ],
+    help_proc = subprocess.run(
+        [str(csegraph_bin), "--help"],
         check=True,
+        capture_output=True,
         env=_offline_pip_env(),
+        text=True,
     )
+    assert "usage: csegraph" in help_proc.stdout
 
     base_commands = [
         "index",
@@ -214,7 +170,7 @@ def test_cli_package_source_install_exposes_base_commands(tmp_path):
     ]
     for command in base_commands:
         proc = subprocess.run(
-            [str(csegraph), command, "--help"],
+            [str(csegraph_bin), command, "--help"],
             check=True,
             capture_output=True,
             env=_offline_pip_env(),
@@ -223,7 +179,7 @@ def test_cli_package_source_install_exposes_base_commands(tmp_path):
         assert f"usage: csegraph {command}" in proc.stdout
 
 
-def test_core_module_entrypoint_points_to_cli_package(tmp_path):
+def test_private_core_module_entrypoint_points_to_public_cli(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     venv = tmp_path / "v"
     _create_test_venv(venv)
@@ -247,20 +203,20 @@ def test_core_module_entrypoint_points_to_cli_package(tmp_path):
     )
 
     proc = subprocess.run(
-        [str(python), "-m", "csegraph_core"],
+        [str(python), "-m", "csegraph._core"],
         capture_output=True,
         env=_offline_pip_env(),
         text=True,
     )
 
     assert proc.returncode == 1
-    assert "python -m csegraph_core` is not the CLI" in proc.stderr
-    assert "pip install -e . -e packages/csegraph-cli/" in proc.stderr
-    assert "python -m csegraph_cli <command>" in proc.stderr
+    assert "python -m csegraph._core` is not the CLI" in proc.stderr
+    assert "pip install csegraph" in proc.stderr
+    assert "python -m csegraph._cli <command>" in proc.stderr
 
 
 def test_status_and_postprocess_exports():
-    from csegraph_core import StatusService, StatusResult, PostprocessService, PostprocessResult
+    from csegraph._core import StatusService, StatusResult, PostprocessService, PostprocessResult
     from csegraph import StatusService as SDKStatusService
     from csegraph import PostprocessService as SDKPostprocessService
     from csegraph import StatusResult as SDKStatusResult
@@ -273,7 +229,7 @@ def test_status_and_postprocess_exports():
 
 
 def test_sdk_exports_context_engine_facade_only():
-    import csegraph_core
+    import csegraph._core as core
     import csegraph
 
     sdk_all = set(csegraph.__all__)
@@ -317,17 +273,17 @@ def test_sdk_exports_context_engine_facade_only():
     for name in sorted(sdk_all):
         if name == "__version__":
             continue
-        assert getattr(csegraph, name) is getattr(csegraph_core, name), (
+        assert getattr(csegraph, name) is getattr(core, name), (
             f"SDK re-export {name} is not the same object as core"
         )
 
 
 def test_diagnostic_services_are_module_path_only():
-    import csegraph_core
+    import csegraph._core as core
     import csegraph
-    from csegraph_core.benchmark import BenchmarkService
-    from csegraph_core.graph.test_gaps import TestGapService
-    from csegraph_core.graph.review_questions import ReviewQuestionsService
+    from csegraph._core.benchmark import BenchmarkService
+    from csegraph._core.graph.test_gaps import TestGapService
+    from csegraph._core.graph.review_questions import ReviewQuestionsService
 
     assert BenchmarkService is not None
     assert TestGapService is not None
@@ -347,4 +303,51 @@ def test_diagnostic_services_are_module_path_only():
     }
     for name in private_names:
         assert not hasattr(csegraph, name)
-        assert not hasattr(csegraph_core, name)
+        assert not hasattr(core, name)
+
+
+def test_source_first_package_guard():
+    repo_root = Path(__file__).resolve().parents[2]
+    publishable_pyprojects = sorted(
+        path.relative_to(repo_root).as_posix()
+        for path in repo_root.rglob("pyproject.toml")
+        if "csegraph-vscode" not in path.relative_to(repo_root).as_posix()
+    )
+    assert publishable_pyprojects == ["pyproject.toml"]
+
+    tracked = subprocess.check_output(
+        ["git", "-C", str(repo_root), "ls-files"],
+        text=True,
+    ).splitlines()
+    forbidden_suffixes = (
+        ".egg-info/PKG-INFO",
+        ".egg-info/SOURCES.txt",
+        ".pyc",
+        ".pyo",
+        ".db",
+        ".sqlite",
+        ".vsix",
+    )
+    forbidden_prefixes = (
+        ".csegraph/",
+        ".scratch/",
+        "build/",
+        "dist/",
+        "csegraph-vscode/out/",
+        "packages/",
+    )
+    forbidden_exact = {
+        "build.py",
+        "scripts/verify_binary.py",
+    }
+    violations = [
+        path
+        for path in tracked
+        if (repo_root / path).exists()
+        and (
+            path in forbidden_exact
+            or path.startswith(forbidden_prefixes)
+            or path.endswith(forbidden_suffixes)
+        )
+    ]
+    assert violations == []

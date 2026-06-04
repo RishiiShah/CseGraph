@@ -6,10 +6,10 @@
       "query": "How does ContextService build graph-backed context for a target?",
       "target": "ContextService.build_context",
       "expected_files": [
-        "csegraph_core/retrieval/context.py",
-        "csegraph_core/retrieval/scoring.py",
-        "csegraph_core/cse/metrics.py",
-        "csegraph_core/index/loaders.py"
+        "csegraph/_core/retrieval/context.py",
+        "csegraph/_core/retrieval/scoring.py",
+        "csegraph/_core/cse/metrics.py",
+        "csegraph/_core/index/loaders.py"
       ],
       "expected_symbols": [
         "ContextService.build_context",
@@ -25,10 +25,10 @@
       "query": "How does indexing discover files, parse them, and write graph rows?",
       "target": "IndexService.index",
       "expected_files": [
-        "csegraph_core/index/services.py",
-        "csegraph_core/index/cache.py",
-        "csegraph_core/index/repository.py",
-        "csegraph_core/languages/base.py"
+        "csegraph/_core/index/services.py",
+        "csegraph/_core/index/cache.py",
+        "csegraph/_core/index/repository.py",
+        "csegraph/_core/languages/base.py"
       ],
       "expected_symbols": [
         "IndexService.index",
@@ -43,10 +43,10 @@
       "query": "How does BenchmarkService measure token reduction and expected-node quality?",
       "target": "BenchmarkService.run",
       "expected_files": [
-        "csegraph_core/benchmark.py",
-        "csegraph_core/core/models.py",
-        "csegraph_core/retrieval/context.py",
-        "csegraph_core/index/services.py"
+        "csegraph/_core/benchmark.py",
+        "csegraph/_core/core/models.py",
+        "csegraph/_core/retrieval/context.py",
+        "csegraph/_core/index/services.py"
       ],
       "expected_symbols": [
         "BenchmarkService.run",

@@ -1,4 +1,4 @@
-from csegraph_cli.renderer import render_index_summary
+from csegraph._cli.renderer import render_index_summary
 
 
 def test_render_index_summary_with_parse_errors():

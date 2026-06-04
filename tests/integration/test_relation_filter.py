@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from csegraph_core.graph.queries import GraphQueryService
-from csegraph_core.index.services import IndexService
-from csegraph_core.server.app import _TOOLS, _handle_tool
+from csegraph._core.graph.queries import GraphQueryService
+from csegraph._core.index.services import IndexService
+from csegraph._core.server.app import _TOOLS, _handle_tool
 
 
 def _multi_relation_repo(tmp_path: Path) -> tuple[Path, str]:

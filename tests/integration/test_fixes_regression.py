@@ -5,16 +5,16 @@ import os
 import pytest
 from pathlib import Path
 
-from csegraph_core.index.services import IndexService, RefreshService, _parse_one_cached, _pick_call_target
-from csegraph_core.index.cache import ExtractionCache
-from csegraph_core.index.repository import ProjectIndex
-from csegraph_core.languages.registry import registry
-from csegraph_core.retrieval.context import ContextService, _resolve_target, _build_detail_pass
-from csegraph_core.graph.queries import _node_view_from_row, _path_step_from_row, _resolve_graph_node
-from csegraph_core.retrieval.scoring import lexical_scores
-from csegraph_core.text.entities import extract_query_entities
-from csegraph_core.hooks import uninstall_hooks, install_hooks, HOOK_MARKER
-from csegraph_core.languages.treesitter.languages import make_cpp_config
+from csegraph._core.index.services import IndexService, RefreshService, _parse_one_cached, _pick_call_target
+from csegraph._core.index.cache import ExtractionCache
+from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.languages.registry import registry
+from csegraph._core.retrieval.context import ContextService, _resolve_target, _build_detail_pass
+from csegraph._core.graph.queries import _node_view_from_row, _path_step_from_row, _resolve_graph_node
+from csegraph._core.retrieval.scoring import lexical_scores
+from csegraph._core.text.entities import extract_query_entities
+from csegraph._core.hooks import uninstall_hooks, install_hooks, HOOK_MARKER
+from csegraph._core.languages.treesitter.languages import make_cpp_config
 
 def test_symlink_dos_protection(tmp_path):
     repo_root = tmp_path / "repo"
@@ -92,7 +92,7 @@ def test_cross_file_method_linkage(tmp_path):
     index.conn.commit()
 
     # Run resolution
-    from csegraph_core.index.services import _resolve_cross_file_methods
+    from csegraph._core.index.services import _resolve_cross_file_methods
     _resolve_cross_file_methods(index)
 
     # Check parent_id updated to the class node

@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from csegraph_core.server.app import _PROMPTS, _TOOLS
+from csegraph._core.server.app import _PROMPTS, _TOOLS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,7 +46,7 @@ def _readme_source_install_lines() -> list[str]:
 
 def test_readme_base_commands_are_real_cli_commands():
     help_proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", "--help"],
+        [sys.executable, "-m", "csegraph._cli", "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -90,7 +90,7 @@ def test_base_commands_expose_help_from_source_install():
 
     for command in base_commands:
         proc = subprocess.run(
-            [sys.executable, "-m", "csegraph_cli", command, "--help"],
+            [sys.executable, "-m", "csegraph._cli", command, "--help"],
             check=True,
             capture_output=True,
             text=True,
@@ -105,7 +105,7 @@ def test_documented_base_command_dependencies_are_runtime_dependencies():
 
 
 def test_watch_dependency_message_matches_base_install_contract():
-    watch_source = _read("csegraph_core/watch.py")
+    watch_source = _read("csegraph/_core/watch.py")
 
     assert "csegraph-core[watch]" not in watch_source
 

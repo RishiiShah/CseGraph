@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.review_eval import ReviewEvalService
-from csegraph_core.index.services import IndexService
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.review_eval import ReviewEvalService
+from csegraph._core.index.services import IndexService
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -34,7 +34,7 @@ def _index_repo(tmp_path: Path, repo: Path) -> str:
 
 
 def _get_node_id(db: str, name: str) -> str:
-    from csegraph_core.index.repository import ProjectIndex
+    from csegraph._core.index.repository import ProjectIndex
     idx = ProjectIndex(db)
     try:
         idx.initialize_schema()

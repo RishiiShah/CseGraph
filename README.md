@@ -12,29 +12,25 @@ index -> refresh -> context -> optional inspect/path/analyze
 
 Use csegraph when you want an agent to see the target code, direct dependencies, imports, nearby tests, and a short explanation of why each node was selected without repeatedly scanning the repository.
 
-## Packages
+## Package Layout
 
 | Package | Location | Purpose |
 |---|---|---|
-| `csegraph-core` | repo root | Parser, SQLite index, graph traversal, retrieval, and CSE metrics. Imported as `csegraph_core`. |
-| `csegraph` | `packages/csegraph/` | Slim SDK facade over `csegraph_core`. |
-| `csegraph-cli` | `packages/csegraph-cli/` | Public CLI with setup, indexing, refresh, retrieval, graph inspection, analysis, export, maintenance, multi-repo operation, and MCP stdio serving. |
-| `csegraph-vscode` | `packages/csegraph-vscode/` | VS Code extension: commands, status bar, auto-refresh on save, right-click inspect. See [extension README](packages/csegraph-vscode/README.md) for CLI discovery and troubleshooting. |
+| `csegraph` | repo root | One Python distribution containing the public CLI, MCP server, SDK facade, and private engine internals. |
+| `csegraph-vscode` | `csegraph-vscode/` | VS Code extension source: commands, status bar, auto-refresh on save, right-click inspect. See [extension README](csegraph-vscode/README.md) for CLI discovery and troubleshooting. |
 
-Python imports use underscores, not distribution hyphens: install `csegraph-core`, import `csegraph_core`.
+Public Python imports use `csegraph`. Internal implementation modules live under `csegraph._core` and `csegraph._cli`; they are not documented as public API.
 
 ## Install From Source
 
 ```bash
 env/bin/pip install -e .
-env/bin/pip install -e packages/csegraph/
-env/bin/pip install -e packages/csegraph-cli/
 ```
 
-`requirements.txt` contains the same product-only editable installs.
+`requirements.txt` contains the same product-only editable install.
 
-This repository is source-first. The public project is distributed as Python
-packages and the VS Code extension source; generated binaries, local graph
+This repository is source-first. The public project is distributed as one Python
+package and the VS Code extension source; generated binaries, local graph
 databases, build outputs, and dashboard artifacts are not committed.
 
 ## Base Commands
@@ -219,7 +215,7 @@ pytest                              # Full test suite
 pytest tests/unit/                  # Unit tests only
 pytest tests/integration/           # Integration tests only
 pytest -x -q                        # Stop on first failure, quiet
-python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
+python -m compileall -q csegraph tools csegraph-vscode
 csegraph --help
 ```
 

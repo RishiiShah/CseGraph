@@ -2,8 +2,8 @@ from pathlib import Path
 import tomllib
 
 import csegraph
-import csegraph_cli
-import csegraph_core
+import csegraph._cli
+import csegraph._core
 
 
 EXPECTED_VERSION = "1.7.1"
@@ -19,11 +19,9 @@ def test_all_package_versions_match_module_versions():
 
     versions = {
         "root_pyproject": _project_version(repo_root),
-        "sdk_pyproject": _project_version(repo_root / "packages" / "csegraph"),
-        "cli_pyproject": _project_version(repo_root / "packages" / "csegraph-cli"),
-        "csegraph_core": csegraph_core.__version__,
+        "csegraph._core": csegraph._core.__version__,
         "csegraph": csegraph.__version__,
-        "csegraph_cli": csegraph_cli.__version__,
+        "csegraph._cli": csegraph._cli.__version__,
     }
 
     assert set(versions.values()) == {EXPECTED_VERSION}

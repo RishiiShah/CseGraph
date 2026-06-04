@@ -6,10 +6,10 @@ import json
 import sqlite3
 from pathlib import Path
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.index.services import IndexService
-from csegraph_core.retrieval.minimal import MinimalService
-from csegraph_core.server.app import _TOOLS, _handle_tool
+from csegraph._core.core.models import to_dict
+from csegraph._core.index.services import IndexService
+from csegraph._core.retrieval.minimal import MinimalService
+from csegraph._core.server.app import _TOOLS, _handle_tool
 
 
 def _make_repo(tmp_path: Path) -> Path:

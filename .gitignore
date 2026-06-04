@@ -28,6 +28,7 @@ junit.xml
 
 # Node
 node_modules/
+csegraph-vscode/out/
 *.vsix
 
 # IDEs

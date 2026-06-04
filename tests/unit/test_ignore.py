@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from csegraph_core.ignore import IgnoreFilter, load_ignore_filter
+from csegraph._core.ignore import IgnoreFilter, load_ignore_filter
 
 
 def _filter(lines):

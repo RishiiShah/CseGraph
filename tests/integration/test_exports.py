@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.exports import EXPORT_FORMATS, ExportService
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.exports import EXPORT_FORMATS, ExportService
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService
 
 
 def _index_repo(tmp_path: Path, files: dict[str, str]) -> str:
@@ -220,13 +220,13 @@ class TestExportGeneral:
 
 class TestExportMCP:
     def test_tool_is_cli_only(self):
-        from csegraph_core.server.app import _handle_tool
+        from csegraph._core.server.app import _handle_tool
 
         with pytest.raises(ValueError, match="Unknown tool"):
             _handle_tool("csegraph_export", {})
 
     def test_prompt_is_not_agent_facing(self):
-        from csegraph_core.server.app import _handle_prompt
+        from csegraph._core.server.app import _handle_prompt
 
         with pytest.raises(ValueError, match="Unknown prompt"):
             _handle_prompt("csegraph-export", {"repo": "/repo"})

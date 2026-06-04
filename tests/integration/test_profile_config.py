@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from csegraph_core.config.profiles import get_profile, load_profile
-from csegraph_core.cse.metrics import SufficiencyMetrics, all_pass, raw_code_nodes
+from csegraph._core.config.profiles import get_profile, load_profile
+from csegraph._core.cse.metrics import SufficiencyMetrics, all_pass, raw_code_nodes
 
 
 class TestDefaultsMatchConstants:

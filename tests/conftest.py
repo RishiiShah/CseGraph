@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.graph.queries import clear_hub_cache
-from csegraph_core.server.session import _SESSION
+from csegraph._core.graph.queries import clear_hub_cache
+from csegraph._core.server.session import _SESSION
 
 
 @pytest.fixture(autouse=True)
@@ -38,9 +38,9 @@ def sample_repo(tmp_path: Path) -> Path:
 
 
 def run_cli(*args: str) -> dict:
-    """Run csegraph_cli as a subprocess and return parsed JSON output."""
+    """Run csegraph._cli as a subprocess and return parsed JSON output."""
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
+        [sys.executable, "-m", "csegraph._cli", *args],
         check=True,
         capture_output=True,
         text=True,
@@ -49,9 +49,9 @@ def run_cli(*args: str) -> dict:
 
 
 def run_cli_text(*args: str) -> str:
-    """Run csegraph_cli as a subprocess and return raw stdout."""
+    """Run csegraph._cli as a subprocess and return raw stdout."""
     proc = subprocess.run(
-        [sys.executable, "-m", "csegraph_cli", *args],
+        [sys.executable, "-m", "csegraph._cli", *args],
         check=True,
         capture_output=True,
         text=True,

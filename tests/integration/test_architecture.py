@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from csegraph_core.core.models import to_dict
-from csegraph_core.graph.architecture import ArchitectureService
-from csegraph_core.graph.communities import detect_communities
-from csegraph_core.index.services import IndexService
-from csegraph_core.postprocess import PostprocessService
+from csegraph._core.core.models import to_dict
+from csegraph._core.graph.architecture import ArchitectureService
+from csegraph._core.graph.communities import detect_communities
+from csegraph._core.index.services import IndexService
+from csegraph._core.postprocess import PostprocessService
 
 
 def _index_and_postprocess(tmp_path: Path, files: dict[str, str]) -> str:
@@ -167,13 +167,13 @@ class TestArchitectureOverview:
 
 class TestArchitectureMCP:
     def test_tool_is_cli_only(self):
-        from csegraph_core.server.app import _handle_tool
+        from csegraph._core.server.app import _handle_tool
 
         with pytest.raises(ValueError, match="Unknown tool"):
             _handle_tool("csegraph_architecture", {})
 
     def test_prompt_is_not_agent_facing(self):
-        from csegraph_core.server.app import _handle_prompt
+        from csegraph._core.server.app import _handle_prompt
 
         with pytest.raises(ValueError, match="Unknown prompt"):
             _handle_prompt("csegraph-architecture", {"repo": "/repo"})
