@@ -1,10 +1,22 @@
+import subprocess
+
 import pytest
 
-from csegraph_core.ignore import IgnoreFilter
+from csegraph_core.ignore import IgnoreFilter, load_ignore_filter
 
 
 def _filter(lines):
     return IgnoreFilter.from_lines(lines)
+
+
+def _git(repo, *args):
+    subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 class TestBlankAndComments:
@@ -105,3 +117,88 @@ class TestFromFile:
         assert f.is_ignored("app.log")
         assert f.is_ignored("data", is_dir=True)
         assert not f.is_ignored("app.py")
+
+
+class TestGitAwareFilter:
+    def test_gitignore_excludes_untracked_files(self, tmp_path):
+        _git(tmp_path, "init")
+        (tmp_path / ".gitignore").write_text("generated.py\ndata/\n", encoding="utf-8")
+        (tmp_path / "app.py").write_text("def app():\n    pass\n", encoding="utf-8")
+        (tmp_path / "generated.py").write_text("def generated():\n    pass\n", encoding="utf-8")
+        (tmp_path / "data").mkdir()
+        (tmp_path / "data" / "seed.py").write_text("def seed():\n    pass\n", encoding="utf-8")
+        _git(tmp_path, "add", ".gitignore", "app.py")
+
+        f = load_ignore_filter(tmp_path)
+
+        assert not f.is_ignored("app.py")
+        assert f.is_ignored("generated.py")
+        assert f.is_ignored("data", is_dir=True)
+        assert f.is_ignored("data/seed.py")
+
+    def test_tracked_gitignored_file_is_not_ignored_by_gitignore(self, tmp_path):
+        _git(tmp_path, "init")
+        (tmp_path / ".gitignore").write_text("*.py\n", encoding="utf-8")
+        (tmp_path / "tracked.py").write_text("def tracked():\n    pass\n", encoding="utf-8")
+        (tmp_path / "untracked.py").write_text("def untracked():\n    pass\n", encoding="utf-8")
+        _git(tmp_path, "add", ".gitignore")
+        _git(tmp_path, "add", "-f", "tracked.py")
+
+        f = load_ignore_filter(tmp_path)
+
+        assert not f.is_ignored("tracked.py")
+        assert f.is_ignored("untracked.py")
+
+    def test_csegraphignore_overrides_gitignore_for_untracked_file(self, tmp_path):
+        _git(tmp_path, "init")
+        (tmp_path / ".gitignore").write_text("*.py\n", encoding="utf-8")
+        (tmp_path / ".csegraphignore").write_text("!keep.py\n", encoding="utf-8")
+        (tmp_path / "keep.py").write_text("def keep():\n    pass\n", encoding="utf-8")
+        (tmp_path / "drop.py").write_text("def drop():\n    pass\n", encoding="utf-8")
+        _git(tmp_path, "add", ".gitignore", ".csegraphignore")
+
+        f = load_ignore_filter(tmp_path)
+
+        assert not f.is_ignored("keep.py")
+        assert f.is_ignored("drop.py")
+
+    def test_csegraphignore_excludes_tracked_file(self, tmp_path):
+        _git(tmp_path, "init")
+        (tmp_path / ".gitignore").write_text("*.py\n", encoding="utf-8")
+        (tmp_path / ".csegraphignore").write_text("tracked.py\n", encoding="utf-8")
+        (tmp_path / "tracked.py").write_text("def tracked():\n    pass\n", encoding="utf-8")
+        _git(tmp_path, "add", ".gitignore", ".csegraphignore")
+        _git(tmp_path, "add", "-f", "tracked.py")
+
+        f = load_ignore_filter(tmp_path)
+
+        assert f.is_ignored("tracked.py")
+
+    def test_should_descend_into_gitignored_dir_with_tracked_descendant(self, tmp_path):
+        _git(tmp_path, "init")
+        (tmp_path / ".gitignore").write_text("data/\n", encoding="utf-8")
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "tracked.py").write_text("def tracked():\n    pass\n", encoding="utf-8")
+        (data / "untracked.py").write_text("def untracked():\n    pass\n", encoding="utf-8")
+        _git(tmp_path, "add", ".gitignore")
+        _git(tmp_path, "add", "-f", "data/tracked.py")
+
+        f = load_ignore_filter(tmp_path)
+
+        assert f.should_descend("data")
+        assert not f.is_ignored("data/tracked.py")
+        assert f.is_ignored("data/untracked.py")
+
+    def test_csegraphignored_dir_blocks_tracked_descendant_without_negation(self, tmp_path):
+        _git(tmp_path, "init")
+        (tmp_path / ".csegraphignore").write_text("data/\n", encoding="utf-8")
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "tracked.py").write_text("def tracked():\n    pass\n", encoding="utf-8")
+        _git(tmp_path, "add", ".csegraphignore", "data/tracked.py")
+
+        f = load_ignore_filter(tmp_path)
+
+        assert not f.should_descend("data")
+        assert f.is_ignored("data/tracked.py")

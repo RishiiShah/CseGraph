@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
+import pytest
 import subprocess
 
 from csegraph_core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
+from csegraph_core.core.models import to_dict
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -26,6 +29,77 @@ def _make_repo(tmp_path: Path) -> Path:
 
 def _scratch_path(repo: Path, name: str) -> Path:
     return repo / ".scratch" / "csegraph" / name
+
+
+def _make_corpus_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "corpus_repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "from helpers import format_name\n"
+        "from storage import save_user\n\n"
+        "def create_user(name: str) -> dict:\n"
+        "    user = {'name': format_name(name)}\n"
+        "    save_user(user)\n"
+        "    return user\n",
+        encoding="utf-8",
+    )
+    (repo / "helpers.py").write_text(
+        "def normalize_name(value: str) -> str:\n"
+        "    return value.strip()\n\n"
+        "def format_name(value: str) -> str:\n"
+        "    return normalize_name(value).title()\n",
+        encoding="utf-8",
+    )
+    (repo / "storage.py").write_text(
+        "def save_user(user: dict) -> None:\n"
+        "    user['saved'] = True\n",
+        encoding="utf-8",
+    )
+    return repo
+
+
+def _write_corpus(path: Path, tasks: list[dict]) -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "csegraph-context-benchmark-v1",
+                "tasks": tasks,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _perfect_corpus(path: Path) -> Path:
+    return _write_corpus(
+        path,
+        [
+            {
+                "id": "create-user-pipeline",
+                "query": "How does create_user format and save a user?",
+                "target": "create_user",
+                "expected_nodes": ["symbol::app.py::function::create_user"],
+                "expected_files": ["app.py", "helpers.py", "storage.py"],
+                "expected_symbols": ["create_user", "format_name", "save_user"],
+            },
+            {
+                "id": "format-name",
+                "query": "How is a user name normalized before formatting?",
+                "target": "format_name",
+                "expected_files": ["helpers.py"],
+                "expected_symbols": ["format_name", "normalize_name"],
+            },
+            {
+                "id": "save-user",
+                "query": "Where is a user marked as saved?",
+                "target": "save_user",
+                "expected_files": ["storage.py"],
+                "expected_symbols": ["save_user"],
+            },
+        ],
+    )
 
 
 class TestCountRawTokens:
@@ -202,3 +276,124 @@ class TestBenchmarkContextQuality:
         assert refresh.elapsed_ms >= 0
         assert refresh.stats["changed_files"] == 0
         assert refresh.stats["deleted_files"] == 0
+
+
+class TestBenchmarkCorpusQuality:
+    def test_corpus_reports_perfect_quality_metrics(self, tmp_path):
+        repo = _make_corpus_repo(tmp_path)
+        corpus = _perfect_corpus(tmp_path / "corpus.json")
+        db = str(_scratch_path(repo, "corpus.db"))
+
+        result = BenchmarkService(db).run_corpus(repo, corpus, profile="small")
+
+        assert result.command == "benchmark-corpus"
+        assert result.corpus_path == str(corpus.resolve())
+        assert result.profile == "small"
+        assert result.index_stats["files"] == 3
+        assert result.index_stats["symbols"] == 4
+        assert result.summary.task_count == 3
+        assert result.summary.passed_task_count == 3
+        assert result.summary.failed_task_count == 0
+        assert result.summary.overall_hit_rate == 1.0
+        assert result.summary.task_pass_rate == 1.0
+        assert result.summary.total_tool_call_count == 3
+        assert result.summary.total_context_tokens > 0
+        assert result.summary.avg_context_tokens > 0
+        assert result.summary.total_response_bytes > 0
+        assert result.summary.avg_response_bytes > 0
+
+        by_id = {task.task_id: task for task in result.tasks}
+        create = by_id["create-user-pipeline"]
+        assert create.hit_rate == 1.0
+        assert create.expected_node_total == 1
+        assert create.file_hit_rate == 1.0
+        assert create.symbol_hit_rate == 1.0
+        assert create.node_hit_rate == 1.0
+        assert create.tool_call_count == 1
+        assert create.context_tokens > 0
+        assert create.response_bytes > 0
+        assert create.returned_node_count >= 3
+        assert create.returned_target == "symbol::app.py::function::create_user"
+        assert create.returned_detail_level in {"minimal", "standard"}
+        assert create.sufficient in {True, False}
+        assert create.missing_expected_files == []
+        assert create.missing_expected_symbols == []
+        assert create.error is None
+
+    def test_corpus_records_partial_misses_without_aborting(self, tmp_path):
+        repo = _make_corpus_repo(tmp_path)
+        corpus = _write_corpus(
+            tmp_path / "corpus.json",
+            [
+                {
+                    "id": "partial",
+                    "query": "How does create_user format and save a user?",
+                    "target": "create_user",
+                    "expected_files": ["app.py", "missing.py"],
+                    "expected_symbols": ["create_user", "missing_symbol"],
+                }
+            ],
+        )
+        db = str(_scratch_path(repo, "partial.db"))
+
+        result = BenchmarkService(db).run_corpus(repo, corpus, profile="small")
+
+        task = result.tasks[0]
+        assert task.hit_rate == 0.5
+        assert task.file_hit_rate == 0.5
+        assert task.symbol_hit_rate == 0.5
+        assert task.missing_expected_files == ["missing.py"]
+        assert task.missing_expected_symbols == ["missing_symbol"]
+        assert result.summary.task_count == 1
+        assert result.summary.passed_task_count == 0
+        assert result.summary.failed_task_count == 1
+        assert result.summary.overall_hit_rate == 0.5
+        assert result.summary.task_pass_rate == 0.0
+
+    @pytest.mark.parametrize(
+        ("payload", "message"),
+        [
+            ({"schema_version": "csegraph-context-benchmark-v1", "tasks": []}, "at least one task"),
+            (
+                {
+                    "schema_version": "csegraph-context-benchmark-v1",
+                    "tasks": [{"query": "Explain create_user", "expected_symbols": ["create_user"]}],
+                },
+                "non-empty id",
+            ),
+            (
+                {
+                    "schema_version": "csegraph-context-benchmark-v1",
+                    "tasks": [{"id": "missing-query", "expected_symbols": ["create_user"]}],
+                },
+                "non-empty query",
+            ),
+            (
+                {
+                    "schema_version": "csegraph-context-benchmark-v1",
+                    "tasks": [{"id": "missing-expectations", "query": "Explain create_user"}],
+                },
+                "expected_nodes, expected_files, or expected_symbols",
+            ),
+        ],
+    )
+    def test_corpus_validation_errors_are_clear(self, tmp_path, payload, message):
+        repo = _make_corpus_repo(tmp_path)
+        corpus = tmp_path / "bad-corpus.json"
+        corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match=message):
+            BenchmarkService(_scratch_path(repo, "bad.db")).run_corpus(repo, corpus)
+
+    def test_corpus_result_is_json_serializable(self, tmp_path):
+        repo = _make_corpus_repo(tmp_path)
+        corpus = _perfect_corpus(tmp_path / "corpus.json")
+        db = str(_scratch_path(repo, "serializable.db"))
+
+        result = BenchmarkService(db).run_corpus(repo, corpus, profile="small")
+        payload = to_dict(result)
+        serialized = json.dumps(payload)
+
+        assert payload["command"] == "benchmark-corpus"
+        assert payload["summary"]["task_count"] == 3
+        assert "create-user-pipeline" in serialized

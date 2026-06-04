@@ -7,11 +7,19 @@ import time
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar
 
-from csegraph_core.core.models import BenchmarkResult, BenchmarkStep
+from csegraph_core.core.models import (
+    BenchmarkCorpusResult,
+    BenchmarkCorpusSummary,
+    BenchmarkCorpusTask,
+    BenchmarkCorpusTaskResult,
+    BenchmarkResult,
+    BenchmarkStep,
+)
 from csegraph_core.core.serializer import to_dict
 
 
 _DEFAULT_QUERY = "Benchmark context retrieval"
+_CORPUS_SCHEMA_VERSION = "csegraph-context-benchmark-v1"
 _T = TypeVar("_T")
 
 
@@ -262,11 +270,274 @@ class BenchmarkService:
             steps=steps,
         )
 
+    def run_corpus(
+        self,
+        repo: str | Path,
+        corpus_path: str | Path,
+        *,
+        profile: str = "medium",
+    ) -> BenchmarkCorpusResult:
+        repo_root = str(Path(repo).resolve())
+        corpus_file = Path(corpus_path).resolve()
+        tasks = _load_corpus(corpus_file)
+
+        total_start = time.perf_counter()
+
+        from csegraph_core.index.services import IndexService
+        from csegraph_core.retrieval.context import ContextService
+
+        index_result, index_elapsed = _time_call(
+            lambda: IndexService(self.db_path).index(repo_root, profile=profile)
+        )
+        index_stats = {
+            "files": index_result.files_indexed,
+            "symbols": index_result.symbols_indexed,
+            "edges": index_result.edges_indexed,
+            "parse_errors": len(index_result.parse_errors),
+            "elapsed_ms": index_elapsed,
+            "phases": index_result.timings_ms,
+        }
+
+        task_results: list[BenchmarkCorpusTaskResult] = []
+        for task in tasks:
+            task_results.append(
+                _run_corpus_task(
+                    ContextService(self.db_path),
+                    task,
+                    profile=profile,
+                )
+            )
+
+        summary = _summarize_corpus(task_results)
+        return BenchmarkCorpusResult(
+            command="benchmark-corpus",
+            db_path=self.db_path,
+            repo_root=repo_root,
+            profile=profile,
+            corpus_path=str(corpus_file),
+            total_elapsed_ms=_elapsed_ms(total_start),
+            index_stats=index_stats,
+            summary=summary,
+            tasks=task_results,
+        )
+
 
 def _time_call(callback: Callable[[], _T]) -> tuple[_T, float]:
     start = time.perf_counter()
     result = callback()
     return result, _elapsed_ms(start)
+
+
+def _load_corpus(path: Path) -> list[BenchmarkCorpusTask]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Benchmark corpus not found: {path}") from None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Benchmark corpus is not valid JSON: {path}") from exc
+
+    schema_version = payload.get("schema_version")
+    if schema_version != _CORPUS_SCHEMA_VERSION:
+        raise ValueError(
+            f"Unsupported benchmark corpus schema_version {schema_version!r}. "
+            f"Expected {_CORPUS_SCHEMA_VERSION!r}."
+        )
+
+    raw_tasks = payload.get("tasks")
+    if not isinstance(raw_tasks, list) or not raw_tasks:
+        raise ValueError("Benchmark corpus must contain at least one task.")
+
+    tasks: list[BenchmarkCorpusTask] = []
+    for index, raw_task in enumerate(raw_tasks, start=1):
+        if not isinstance(raw_task, dict):
+            raise ValueError(f"Benchmark corpus task {index} must be an object.")
+        task_id = _required_non_empty_string(raw_task, "id", index)
+        query = _required_non_empty_string(raw_task, "query", index)
+        target = raw_task.get("target")
+        if target is not None:
+            if not isinstance(target, str):
+                raise ValueError(f"Benchmark corpus task {task_id!r} target must be a string.")
+            target = target.strip() or None
+
+        expected_nodes = _string_list(raw_task, "expected_nodes", task_id)
+        expected_files = [_normalize_rel_path(p) for p in _string_list(raw_task, "expected_files", task_id)]
+        expected_symbols = _string_list(raw_task, "expected_symbols", task_id)
+
+        if not (expected_nodes or expected_files or expected_symbols):
+            raise ValueError(
+                f"Benchmark corpus task {task_id!r} must define at least one of "
+                "expected_nodes, expected_files, or expected_symbols."
+            )
+        tasks.append(
+            BenchmarkCorpusTask(
+                id=task_id,
+                query=query,
+                target=target,
+                expected_nodes=expected_nodes,
+                expected_files=expected_files,
+                expected_symbols=expected_symbols,
+            )
+        )
+    return tasks
+
+
+def _required_non_empty_string(raw_task: dict, field: str, index: int) -> str:
+    value = raw_task.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Benchmark corpus task {index} must define a non-empty {field}.")
+    return value.strip()
+
+
+def _string_list(raw_task: dict, field: str, task_id: str) -> list[str]:
+    value = raw_task.get(field, [])
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"Benchmark corpus task {task_id!r} field {field} must be a list.")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"Benchmark corpus task {task_id!r} field {field} must contain non-empty strings."
+            )
+        result.append(item.strip())
+    return result
+
+
+def _run_corpus_task(
+    service,
+    task: BenchmarkCorpusTask,
+    *,
+    profile: str,
+) -> BenchmarkCorpusTaskResult:
+    try:
+        context = service.build_context(
+            task=task.query,
+            target=task.target,
+            profile=profile,
+            include_source="never",
+        )
+    except Exception as exc:
+        expected_total = (
+            len(task.expected_nodes)
+            + len(task.expected_files)
+            + len(task.expected_symbols)
+        )
+        return BenchmarkCorpusTaskResult(
+            task_id=task.id,
+            query=task.query,
+            target=task.target,
+            returned_target=None,
+            returned_detail_level=None,
+            sufficient=False,
+            returned_node_count=0,
+            context_tokens=0,
+            response_bytes=0,
+            tool_call_count=1,
+            hit_rate=0.0,
+            node_hit_rate=0.0 if task.expected_nodes else 1.0,
+            file_hit_rate=0.0 if task.expected_files else 1.0,
+            symbol_hit_rate=0.0 if task.expected_symbols else 1.0,
+            expected_node_total=len(task.expected_nodes),
+            expected_file_total=len(task.expected_files),
+            expected_symbol_total=len(task.expected_symbols),
+            expected_hit_count=0,
+            expected_total=expected_total,
+            missing_expected_nodes=list(task.expected_nodes),
+            missing_expected_files=list(task.expected_files),
+            missing_expected_symbols=list(task.expected_symbols),
+            error=str(exc),
+        )
+
+    payload = to_dict(context)
+    response_bytes = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+    returned_ids = {node.id for node in context.nodes}
+    returned_files = {_normalize_rel_path(node.path) for node in context.nodes}
+    returned_symbols = _returned_symbol_names(context.nodes)
+
+    missing_nodes = [node_id for node_id in task.expected_nodes if node_id not in returned_ids]
+    missing_files = [path for path in task.expected_files if _normalize_rel_path(path) not in returned_files]
+    missing_symbols = [
+        symbol for symbol in task.expected_symbols
+        if symbol not in returned_symbols
+    ]
+
+    node_hits = len(task.expected_nodes) - len(missing_nodes)
+    file_hits = len(task.expected_files) - len(missing_files)
+    symbol_hits = len(task.expected_symbols) - len(missing_symbols)
+    expected_total = (
+        len(task.expected_nodes)
+        + len(task.expected_files)
+        + len(task.expected_symbols)
+    )
+    expected_hit_count = node_hits + file_hits + symbol_hits
+
+    return BenchmarkCorpusTaskResult(
+        task_id=task.id,
+        query=task.query,
+        target=task.target,
+        returned_target=context.target,
+        returned_detail_level=context.returned_detail_level,
+        sufficient=context.sufficiency.sufficient,
+        returned_node_count=len(context.nodes),
+        context_tokens=context.total_estimated_tokens,
+        response_bytes=response_bytes,
+        tool_call_count=1,
+        hit_rate=_rate(expected_hit_count, expected_total),
+        node_hit_rate=_rate(node_hits, len(task.expected_nodes)),
+        file_hit_rate=_rate(file_hits, len(task.expected_files)),
+        symbol_hit_rate=_rate(symbol_hits, len(task.expected_symbols)),
+        expected_node_total=len(task.expected_nodes),
+        expected_file_total=len(task.expected_files),
+        expected_symbol_total=len(task.expected_symbols),
+        expected_hit_count=expected_hit_count,
+        expected_total=expected_total,
+        missing_expected_nodes=missing_nodes,
+        missing_expected_files=missing_files,
+        missing_expected_symbols=missing_symbols,
+        error=None,
+    )
+
+
+def _returned_symbol_names(nodes) -> set[str]:
+    names: set[str] = set()
+    for node in nodes:
+        names.add(node.name)
+        if "." in node.name:
+            names.add(node.name.rsplit(".", 1)[-1])
+    return names
+
+
+def _summarize_corpus(tasks: list[BenchmarkCorpusTaskResult]) -> BenchmarkCorpusSummary:
+    task_count = len(tasks)
+    passed = sum(1 for task in tasks if task.error is None and task.hit_rate == 1.0)
+    total_expected = sum(task.expected_total for task in tasks)
+    total_hits = sum(task.expected_hit_count for task in tasks)
+    total_tokens = sum(task.context_tokens for task in tasks)
+    total_bytes = sum(task.response_bytes for task in tasks)
+    total_tool_calls = sum(task.tool_call_count for task in tasks)
+    return BenchmarkCorpusSummary(
+        task_count=task_count,
+        passed_task_count=passed,
+        failed_task_count=task_count - passed,
+        overall_hit_rate=_rate(total_hits, total_expected),
+        task_pass_rate=_rate(passed, task_count),
+        total_context_tokens=total_tokens,
+        avg_context_tokens=round(total_tokens / task_count, 2) if task_count else 0.0,
+        total_response_bytes=total_bytes,
+        avg_response_bytes=round(total_bytes / task_count, 2) if task_count else 0.0,
+        total_tool_call_count=total_tool_calls,
+    )
+
+
+def _rate(hits: int, total: int) -> float:
+    if total <= 0:
+        return 1.0
+    return round(hits / total, 4)
+
+
+def _normalize_rel_path(path: str) -> str:
+    return Path(path).as_posix().lstrip("./")
 
 
 def _elapsed_ms(start: float) -> float:

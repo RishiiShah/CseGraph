@@ -25,6 +25,17 @@ class FakeParser:
         return []
 
 
+class FakePythonParser(FakeParser):
+    language = "fake_python"
+    extensions = (".py",)
+
+
+class FakeCSharpParser(FakeParser):
+    language = "fake_csharp"
+    extensions = (".cs",)
+    excluded_dirs = frozenset({"packages"})
+
+
 def test_register_and_dispatch_by_extension():
     reg = LanguageRegistry()
     parser = FakeParser()
@@ -69,6 +80,24 @@ def test_iter_files_yields_parser_path_pairs(tmp_path):
     paths = [p for _, p in pairs]
     assert any(p.name == "a.py" for p in paths)
     assert all(p.name != "b.txt" for p in paths)
+
+
+def test_parser_specific_excluded_dirs_do_not_prune_other_languages(tmp_path):
+    reg = LanguageRegistry()
+    python_parser = FakePythonParser()
+    csharp_parser = FakeCSharpParser()
+    reg.register(python_parser, FakeTokenizer())
+    reg.register(csharp_parser, FakeTokenizer())
+
+    package_dir = tmp_path / "packages" / "app"
+    package_dir.mkdir(parents=True)
+    (package_dir / "main.py").write_text("x = 1", encoding="utf-8")
+    (package_dir / "Program.cs").write_text("class Program {}", encoding="utf-8")
+
+    pairs = list(reg.iter_files(tmp_path))
+
+    assert (python_parser, package_dir / "main.py") in pairs
+    assert (csharp_parser, package_dir / "Program.cs") not in pairs
 
 
 def test_python_parser_satisfies_widened_protocol():

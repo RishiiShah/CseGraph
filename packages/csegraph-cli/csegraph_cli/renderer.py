@@ -19,25 +19,39 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
     db = _display_path(str(payload.get("db_path", "")), str(payload.get("repo_root", "")))
     cache_hits = payload.get("cache_hits", 0)
     cache_misses = payload.get("cache_misses", 0)
+    graph_totals = payload.get("graph_totals") or {}
+    postprocess = payload.get("postprocess") or {}
+    postprocess_level = payload.get("postprocess_level") or "none"
 
-    progress = [f"Parsing: {files:,} files"]
     indexing = f"Indexing: {symbols:,} symbols, {edges:,} edges"
     if parse_errors:
-        indexing += f" ({len(parse_errors)} parse errors)"
-    progress.append(indexing)
-
-    detail = [
-        "",
-        f"  Files:   {files:,}",
-        f"  Symbols: {symbols:,}",
-        f"  Edges:   {edges:,}",
-        f"  Cache:   {cache_hits:,} hits, {cache_misses:,} misses",
-        f"  Profile: {payload.get('profile', '')}",
-        f"  DB:      {db}",
+        indexing += f" ({len(parse_errors):,} parse errors)"
+    lines = [
+        f"Parsing: {files:,} files",
+        indexing,
+        _postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason")),
     ]
-    detail.extend(_render_parse_errors(parse_errors))
-
-    return "\n".join(progress + detail) + "\n"
+    if graph_totals:
+        label = "Full index" if postprocess_level == "full" else "Index"
+        lines.append(
+            f"{label}: {graph_totals.get('files', files):,} files, "
+            f"{graph_totals.get('nodes', files + symbols):,} nodes, "
+            f"{graph_totals.get('edges', edges):,} edges "
+            f"({_postprocess_detail(postprocess_level, postprocess, payload.get('postprocess_skipped_reason'))})"
+        )
+    else:
+        lines.append(
+            f"Index: {files:,} files, {symbols:,} symbols, {edges:,} edges "
+            f"({_postprocess_detail(postprocess_level, postprocess, payload.get('postprocess_skipped_reason'))})"
+        )
+    lines.append(
+        f"Cache: {cache_hits:,} hits, {cache_misses:,} misses | "
+        f"Profile: {payload.get('profile', '')} | DB: {db}"
+    )
+    errors = _render_parse_errors(parse_errors)
+    if errors:
+        lines.extend(["", *errors])
+    return "\n".join(lines) + "\n"
 
 
 def render_refresh_summary(payload: Dict[str, Any]) -> str:
@@ -50,34 +64,40 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
     db = _display_path(str(payload.get("db_path", "")), str(payload.get("repo_root", "")))
     cache_hits = payload.get("cache_hits", 0)
     cache_misses = payload.get("cache_misses", 0)
+    graph_totals = payload.get("graph_totals") or {}
+    postprocess = payload.get("postprocess") or {}
+    postprocess_level = payload.get("postprocess_level") or "none"
 
-    progress = [f"Scanning: {changed + deleted + unchanged:,} files"]
-    if changed or deleted:
-        progress.append(f"Indexing: {symbols:,} symbols, {edges:,} edges")
-
-    detail = [
-        "",
-        f"  Changed:   {changed:,}",
-        f"  Deleted:   {deleted:,}",
-        f"  Unchanged: {unchanged:,}",
+    lines = [
+        f"Scanning: {changed + deleted + unchanged:,} files "
+        f"({changed:,} changed, {deleted:,} deleted, {unchanged:,} unchanged)"
     ]
     if changed or deleted:
-        detail.extend(
-            [
-                f"  Symbols:   {symbols:,}",
-                f"  Edges:     {edges:,}",
-            ]
+        indexing = f"Indexing: {symbols:,} symbols, {edges:,} edges"
+        if parse_errors:
+            indexing += f" ({len(parse_errors):,} parse errors)"
+        lines.append(indexing)
+    lines.append(_postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason")))
+    if graph_totals:
+        lines.append(
+            f"Refresh: {graph_totals.get('files', 0):,} files, "
+            f"{graph_totals.get('nodes', 0):,} nodes, "
+            f"{graph_totals.get('edges', 0):,} edges "
+            f"({_postprocess_detail(postprocess_level, postprocess, payload.get('postprocess_skipped_reason'))})"
         )
-    detail.extend(
-        [
-            f"  Cache:     {cache_hits:,} hits, {cache_misses:,} misses",
-            f"  Profile:   {payload.get('profile', '')}",
-            f"  DB:        {db}",
-        ]
+    else:
+        lines.append(
+            f"Refresh: {changed:,} changed, {deleted:,} deleted, {unchanged:,} unchanged "
+            f"({_postprocess_detail(postprocess_level, postprocess, payload.get('postprocess_skipped_reason'))})"
+        )
+    lines.append(
+        f"Cache: {cache_hits:,} hits, {cache_misses:,} misses | "
+        f"Profile: {payload.get('profile', '')} | DB: {db}"
     )
-    detail.extend(_render_parse_errors(parse_errors))
-
-    return "\n".join(progress + detail) + "\n"
+    errors = _render_parse_errors(parse_errors)
+    if errors:
+        lines.extend(["", *errors])
+    return "\n".join(lines) + "\n"
 
 
 def render_visual_export_summary(payload: Dict[str, Any]) -> str:
@@ -109,6 +129,9 @@ def render_analyze_summary(payload: Dict[str, Any]) -> str:
 
 
 def render_benchmark_summary(payload: Dict[str, Any]) -> str:
+    if payload.get("command") == "benchmark-corpus":
+        return _render_benchmark_corpus_summary(payload)
+
     repo = _display_path(str(payload.get("repo_root", "")), str(payload.get("repo_root", "")))
     lines = [
         f"Benchmark: {repo}",
@@ -132,6 +155,77 @@ def render_benchmark_summary(payload: Dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def _render_benchmark_corpus_summary(payload: Dict[str, Any]) -> str:
+    repo_root = str(payload.get("repo_root", ""))
+    repo = _display_path(repo_root, repo_root)
+    summary = payload.get("summary") or {}
+    index_stats = payload.get("index_stats") or {}
+    lines = [
+        f"Context Quality Benchmark: {repo}",
+        f"Corpus: {_display_path(str(payload.get('corpus_path', '')), repo_root)}",
+        "",
+        (
+            f"Tasks: {summary.get('task_count', 0)} "
+            f"({summary.get('passed_task_count', 0)} passed, "
+            f"{summary.get('failed_task_count', 0)} failed)"
+        ),
+        f"Overall hit rate: {_pct(summary.get('overall_hit_rate', 0.0))}",
+        f"Task pass rate: {_pct(summary.get('task_pass_rate', 0.0))}",
+        (
+            f"Tokens: total={summary.get('total_context_tokens', 0)}, "
+            f"avg={summary.get('avg_context_tokens', 0)}"
+        ),
+        (
+            f"Bytes: total={summary.get('total_response_bytes', 0)}, "
+            f"avg={summary.get('avg_response_bytes', 0)}"
+        ),
+        f"Tool calls: {summary.get('total_tool_call_count', 0)}",
+        (
+            "Index: "
+            f"files={index_stats.get('files', 0)}, "
+            f"symbols={index_stats.get('symbols', 0)}, "
+            f"edges={index_stats.get('edges', 0)}, "
+            f"parse_errors={index_stats.get('parse_errors', 0)}"
+        ),
+        "",
+        "Tasks:",
+    ]
+    for task in payload.get("tasks", []):
+        line = (
+            f"  {task.get('task_id', '')}: "
+            f"hit={_pct(task.get('hit_rate', 0.0))}, "
+            f"tokens={task.get('context_tokens', 0)}, "
+            f"bytes={task.get('response_bytes', 0)}, "
+            f"tool_calls={task.get('tool_call_count', 0)}"
+        )
+        if task.get("error"):
+            line += f", error={task['error']}"
+        else:
+            missing = (
+                len(task.get("missing_expected_nodes") or [])
+                + len(task.get("missing_expected_files") or [])
+                + len(task.get("missing_expected_symbols") or [])
+            )
+            if missing:
+                line += f", missing={missing}"
+        lines.append(line)
+    lines.extend(
+        [
+            "",
+            f"Total: {payload.get('total_elapsed_ms', 0):.3f} ms",
+            f"DB: {_display_path(str(payload.get('db_path', '')), repo_root)}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _pct(value: Any) -> str:
+    try:
+        return f"{float(value) * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "0.0%"
 
 
 def render_detect_changes_summary(payload: Dict[str, Any]) -> str:
@@ -737,6 +831,39 @@ def _render_questions(lines: List[str], payload: Dict[str, Any]) -> None:
     for question in payload["suggested_questions"]:
         lines.append(f"- {question}")
     lines.append("")
+
+
+def _postprocess_detail(level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]) -> str:
+    if skipped_reason:
+        return f"postprocess=skipped ({skipped_reason})"
+    if postprocess:
+        return f"postprocess={postprocess.get('level') or level}"
+    return f"postprocess={level}"
+
+
+def _postprocess_line(level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]) -> str:
+    if skipped_reason:
+        return f"Postprocess: skipped ({skipped_reason})"
+    if not postprocess:
+        return f"Postprocess: {level}"
+    metrics = _postprocess_metrics(postprocess)
+    if metrics:
+        return f"Postprocess: {', '.join(metrics)}"
+    return f"Postprocess: {postprocess.get('level') or level}"
+
+
+def _postprocess_metrics(postprocess: Dict[str, Any]) -> List[str]:
+    if not postprocess:
+        return []
+    metrics: List[str] = []
+    skipped = postprocess.get("skipped") or []
+    if "fts" not in skipped:
+        metrics.append(f"FTS {postprocess.get('fts_entries', 0):,} rows")
+    if "resolvers" not in skipped:
+        metrics.append(f"{postprocess.get('resolvers_edges_added', 0):,} inferred edges")
+    if "communities" not in skipped:
+        metrics.append(f"{postprocess.get('communities_detected', 0):,} communities")
+    return metrics
 
 
 def _display_path(path: str, repo_root: str) -> str:

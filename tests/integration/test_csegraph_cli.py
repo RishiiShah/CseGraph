@@ -189,17 +189,19 @@ def test_index_default_output_is_human_summary(tmp_path):
         text=True,
     )
 
-    assert "Parsing:" in proc.stdout
-    assert "2 files" in proc.stdout
+    assert proc.stdout.startswith("Parsing: 2 files")
     assert "Indexing:" in proc.stdout
+    assert "Postprocess:" in proc.stdout
+    assert "Full index: 2 files," in proc.stdout
     assert "symbols" in proc.stdout
     assert "edges" in proc.stdout
-    assert "  Files:" in proc.stdout
-    assert "  Symbols:" in proc.stdout
-    assert "  Edges:" in proc.stdout
-    assert "  Cache:" in proc.stdout
-    assert "  Profile:" in proc.stdout
-    assert "  DB:" in proc.stdout
+    assert "postprocess=full" in proc.stdout
+    assert "FTS" in proc.stdout
+    assert "inferred edges" in proc.stdout
+    assert "communities" in proc.stdout
+    assert "Cache:" in proc.stdout
+    assert "Profile: medium" in proc.stdout
+    assert "DB: .csegraph/index.db" in proc.stdout
 
 
 def test_refresh_default_output_is_human_summary(tmp_path):
@@ -214,12 +216,15 @@ def test_refresh_default_output_is_human_summary(tmp_path):
         text=True,
     )
 
-    assert "Scanning:" in proc.stdout
-    assert "  Changed:" in proc.stdout
-    assert "  Unchanged:" in proc.stdout
-    assert "  Cache:" in proc.stdout
-    assert "  Profile:" in proc.stdout
-    assert "  DB:" in proc.stdout
+    assert proc.stdout.startswith("Scanning:")
+    assert "0 changed" in proc.stdout
+    assert "2 unchanged" in proc.stdout
+    assert "Postprocess: skipped" in proc.stdout
+    assert "Refresh:" in proc.stdout
+    assert "postprocess=skipped" in proc.stdout
+    assert "Cache:" in proc.stdout
+    assert "Profile: medium" in proc.stdout
+    assert "DB: .csegraph/index.db" in proc.stdout
 
 
 def test_index_json_flag_returns_parseable_json(tmp_path):
@@ -232,6 +237,11 @@ def test_index_json_flag_returns_parseable_json(tmp_path):
     assert result["files_indexed"] == 2
     assert result["cache_hits"] == 0
     assert result["cache_misses"] == 2
+    assert result["postprocess_level"] == "full"
+    assert result["postprocess"]["level"] == "full"
+    assert result["graph_totals"]["files"] == 2
+    assert result["graph_totals"]["nodes"] >= result["files_indexed"]
+    assert result["graph_totals"]["edges"] >= result["edges_indexed"]
     assert isinstance(result["changed_files"], list)
 
 
@@ -245,6 +255,9 @@ def test_refresh_json_flag_returns_parseable_json(tmp_path):
     assert result["command"] == "refresh"
     assert result["cache_hits"] == 2
     assert result["cache_misses"] == 0
+    assert result["postprocess_level"] == "full"
+    assert result["postprocess_skipped_reason"] == "unchanged"
+    assert result["graph_totals"]["files"] == 2
     assert isinstance(result["unchanged_files"], list)
 
 
@@ -463,6 +476,92 @@ def test_benchmark_default_output_is_human_summary(tmp_path):
     assert "hit_rate=100.0%" in proc.stdout
     assert "Total:" in proc.stdout
     assert "DB:" in proc.stdout
+
+
+def test_benchmark_corpus_json_reports_quality_scoreboard(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(
+        json.dumps(
+            {
+                "schema_version": "csegraph-context-benchmark-v1",
+                "tasks": [
+                    {
+                        "id": "create-user",
+                        "query": "How does create_user clean a name?",
+                        "target": "create_user",
+                        "expected_files": ["service.py", "helpers.py"],
+                        "expected_symbols": ["create_user", "clean_name"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_dev_cli(
+        "benchmark",
+        str(repo),
+        "--corpus",
+        str(corpus),
+        "--json",
+    )
+
+    assert result["command"] == "benchmark-corpus"
+    assert result["corpus_path"] == str(corpus.resolve())
+    assert result["summary"]["task_count"] == 1
+    assert result["summary"]["passed_task_count"] == 1
+    assert result["summary"]["overall_hit_rate"] == 1.0
+    assert result["summary"]["total_tool_call_count"] == 1
+    assert result["tasks"][0]["task_id"] == "create-user"
+    assert result["tasks"][0]["hit_rate"] == 1.0
+    assert result["tasks"][0]["context_tokens"] > 0
+    assert result["tasks"][0]["response_bytes"] > 0
+
+
+def test_benchmark_corpus_default_output_is_human_summary(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(
+        json.dumps(
+            {
+                "schema_version": "csegraph-context-benchmark-v1",
+                "tasks": [
+                    {
+                        "id": "create-user",
+                        "query": "How does create_user clean a name?",
+                        "target": "create_user",
+                        "expected_files": ["service.py", "helpers.py"],
+                        "expected_symbols": ["create_user", "clean_name"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "tools/csegraph_dev.py",
+            "benchmark",
+            str(repo),
+            "--corpus",
+            str(corpus),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Context Quality Benchmark:" in proc.stdout
+    assert "Tasks: 1" in proc.stdout
+    assert "Overall hit rate: 100.0%" in proc.stdout
+    assert "Tool calls: 1" in proc.stdout
+    assert "create-user" in proc.stdout
+    assert "hit=100.0%" in proc.stdout
 
 
 def test_custom_db_flags_work(tmp_path):

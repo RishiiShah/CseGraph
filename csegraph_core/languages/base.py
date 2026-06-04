@@ -79,9 +79,8 @@ class BaseParser(abc.ABC):
                 name for name in dirs
                 if name not in excluded
                 and not name.startswith(".")
-                and not ignore.is_ignored(
+                and ignore.should_descend(
                     f"{rel_root}/{name}" if rel_root != "." else name,
-                    is_dir=True,
                 )
             )
             for filename in sorted(files):

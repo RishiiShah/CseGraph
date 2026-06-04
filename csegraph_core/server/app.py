@@ -777,8 +777,13 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         result = IndexService(db).index(repo, profile=profile)
         pp_level = arguments.get("postprocess_level", "full")
+        pp_result = None
+        skipped_reason = None
         if pp_level != "none":
-            PostprocessService(db).postprocess(level=pp_level)
+            pp_result = PostprocessService(db).postprocess(level=pp_level)
+        else:
+            skipped_reason = "disabled"
+        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         clear_hub_cache()
         return to_dict(result)
 
@@ -792,8 +797,15 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         db = _db_path(repo, arguments.get("db"))
         result = RefreshService(db).refresh(profile=profile)
         pp_level = arguments.get("postprocess_level", "full")
+        pp_result = None
+        skipped_reason = None
         if pp_level != "none" and result.files_indexed > 0:
-            PostprocessService(db).postprocess(level=pp_level)
+            pp_result = PostprocessService(db).postprocess(level=pp_level)
+        elif pp_level == "none":
+            skipped_reason = "disabled"
+        else:
+            skipped_reason = "unchanged"
+        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         clear_hub_cache()
         return to_dict(result)
 
@@ -864,6 +876,30 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         )
 
     raise ValueError(f"Unknown tool: {name}")
+
+
+def _attach_postprocess_metadata(
+    result: Any,
+    db: str,
+    level: str,
+    postprocess_result: Any | None,
+    skipped_reason: str | None,
+) -> None:
+    result.postprocess_level = level
+    if postprocess_result is not None:
+        result.postprocess = to_dict(postprocess_result)
+    result.postprocess_skipped_reason = skipped_reason
+    try:
+        from csegraph_core.status import StatusService
+
+        status = StatusService(db).status()
+        result.graph_totals = {
+            "files": status.total_files,
+            "nodes": status.total_nodes,
+            "edges": status.total_edges,
+        }
+    except Exception:
+        result.graph_totals = {}
 
 
 def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPromptResult:

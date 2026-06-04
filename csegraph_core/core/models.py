@@ -37,6 +37,10 @@ class IndexResult:
     deleted_files: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
     timings_ms: Dict[str, float] = field(default_factory=dict)
+    postprocess_level: str = "none"
+    postprocess: Dict[str, Any] = field(default_factory=dict)
+    postprocess_skipped_reason: Optional[str] = None
+    graph_totals: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -58,6 +62,10 @@ class RefreshResult:
     dependents_expanded: int = 0
     dependents_cap_hit: bool = False
     timings_ms: Dict[str, float] = field(default_factory=dict)
+    postprocess_level: str = "none"
+    postprocess: Dict[str, Any] = field(default_factory=dict)
+    postprocess_skipped_reason: Optional[str] = None
+    graph_totals: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -211,6 +219,70 @@ class BenchmarkResult:
     graph_output_path: str
     total_elapsed_ms: float
     steps: List[BenchmarkStep] = field(default_factory=list)
+
+
+@dataclass
+class BenchmarkCorpusTask:
+    id: str
+    query: str
+    target: Optional[str] = None
+    expected_nodes: List[str] = field(default_factory=list)
+    expected_files: List[str] = field(default_factory=list)
+    expected_symbols: List[str] = field(default_factory=list)
+
+
+@dataclass
+class BenchmarkCorpusTaskResult:
+    task_id: str
+    query: str
+    target: Optional[str]
+    returned_target: Optional[str]
+    returned_detail_level: Optional[str]
+    sufficient: bool
+    returned_node_count: int
+    context_tokens: int
+    response_bytes: int
+    tool_call_count: int
+    hit_rate: float
+    node_hit_rate: float
+    file_hit_rate: float
+    symbol_hit_rate: float
+    expected_node_total: int
+    expected_file_total: int
+    expected_symbol_total: int
+    expected_hit_count: int
+    expected_total: int
+    missing_expected_nodes: List[str] = field(default_factory=list)
+    missing_expected_files: List[str] = field(default_factory=list)
+    missing_expected_symbols: List[str] = field(default_factory=list)
+    error: Optional[str] = None
+
+
+@dataclass
+class BenchmarkCorpusSummary:
+    task_count: int
+    passed_task_count: int
+    failed_task_count: int
+    overall_hit_rate: float
+    task_pass_rate: float
+    total_context_tokens: int
+    avg_context_tokens: float
+    total_response_bytes: int
+    avg_response_bytes: float
+    total_tool_call_count: int
+
+
+@dataclass
+class BenchmarkCorpusResult:
+    command: str
+    db_path: str
+    repo_root: str
+    profile: str
+    corpus_path: str
+    total_elapsed_ms: float
+    index_stats: Dict[str, Any]
+    summary: BenchmarkCorpusSummary
+    tasks: List[BenchmarkCorpusTaskResult] = field(default_factory=list)
 
 
 @dataclass

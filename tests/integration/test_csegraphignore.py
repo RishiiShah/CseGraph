@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 from tests.conftest import run_cli
@@ -23,6 +24,16 @@ def _write_repo(root: Path) -> None:
     (scripts / "deploy.py").write_text(
         "def deploy():\n    pass\n",
         encoding="utf-8",
+    )
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -123,3 +134,46 @@ def test_no_csegraphignore_indexes_everything(tmp_path):
 
     result = run_cli("index", str(repo), "--json")
     assert result["files_indexed"] == 4
+
+
+def test_gitignore_excludes_untracked_files_from_index(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _git(repo, "init")
+    (repo / ".gitignore").write_text("generated.py\nscripts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "helpers.py", "service.py")
+
+    result = run_cli("index", str(repo), "--json")
+
+    indexed_files = result["changed_files"]
+    assert "helpers.py" in indexed_files
+    assert "service.py" in indexed_files
+    assert "generated.py" not in indexed_files
+    assert all("scripts/" not in path for path in indexed_files)
+
+
+def test_tracked_gitignored_file_stays_indexed(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _git(repo, "init")
+    (repo / ".gitignore").write_text("generated.py\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "helpers.py", "service.py")
+    _git(repo, "add", "-f", "generated.py")
+
+    result = run_cli("index", str(repo), "--json")
+
+    indexed_files = result["changed_files"]
+    assert "generated.py" in indexed_files
+
+
+def test_csegraphignore_excludes_tracked_git_file(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _git(repo, "init")
+    (repo / ".csegraphignore").write_text("generated.py\n", encoding="utf-8")
+    _git(repo, "add", ".csegraphignore", "helpers.py", "service.py", "generated.py")
+
+    result = run_cli("index", str(repo), "--json")
+
+    indexed_files = result["changed_files"]
+    assert "generated.py" not in indexed_files

@@ -456,6 +456,7 @@ def _build_dev_parser() -> argparse.ArgumentParser:
     _add_repo_positional(benchmark)
     _add_db(benchmark)
     _add_profile(benchmark)
+    benchmark.add_argument("--corpus", default=None, help="Path to a context quality benchmark corpus JSON file.")
     benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
     benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
     benchmark.add_argument(
@@ -477,8 +478,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db = _db_arg(args, repo)
         result = IndexService(db).index(repo, profile=args.profile)
         pp_level = getattr(args, "postprocess", "full")
+        pp_result = None
+        skipped_reason = None
         if pp_level != "none":
-            PostprocessService(db).postprocess(level=pp_level)
+            pp_result = PostprocessService(db).postprocess(level=pp_level)
+        else:
+            skipped_reason = "disabled"
+        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         return result
     if args.command == "refresh":
         from csegraph_core.index.services import RefreshService
@@ -487,8 +493,15 @@ def _dispatch(args: argparse.Namespace) -> Any:
         db = _db_arg(args, repo)
         result = RefreshService(db).refresh(profile=args.profile)
         pp_level = getattr(args, "postprocess", "full")
+        pp_result = None
+        skipped_reason = None
         if pp_level != "none" and result.files_indexed > 0:
-            PostprocessService(db).postprocess(level=pp_level)
+            pp_result = PostprocessService(db).postprocess(level=pp_level)
+        elif pp_level == "none":
+            skipped_reason = "disabled"
+        else:
+            skipped_reason = "unchanged"
+        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         return result
     if args.command == "context":
         from csegraph_core.retrieval.context import ContextService
@@ -701,6 +714,12 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph_core.benchmark import BenchmarkService
         repo = _repo_arg(args)
         db_path = _db_arg(args, repo)
+        if getattr(args, "corpus", None):
+            return BenchmarkService(db_path).run_corpus(
+                repo,
+                args.corpus,
+                profile=args.profile,
+            )
         return BenchmarkService(db_path).run(
             repo,
             profile=args.profile,
@@ -741,6 +760,30 @@ def _dispatch(args: argparse.Namespace) -> Any:
             return svc.status()
         raise ValueError(f"Unknown daemon subcommand: {args.daemon_command}")
     raise ValueError(f"Unknown command: {args.command}")
+
+
+def _attach_postprocess_metadata(
+    result: Any,
+    db: str,
+    level: str,
+    postprocess_result: Any | None,
+    skipped_reason: str | None,
+) -> None:
+    result.postprocess_level = level
+    if postprocess_result is not None:
+        result.postprocess = to_dict(postprocess_result)
+    result.postprocess_skipped_reason = skipped_reason
+    try:
+        from csegraph_core.status import StatusService
+
+        status = StatusService(db).status()
+        result.graph_totals = {
+            "files": status.total_files,
+            "nodes": status.total_nodes,
+            "edges": status.total_edges,
+        }
+    except Exception:
+        result.graph_totals = {}
 
 
 def _run_analyze(repo: str, db: str, *, base_ref: str, limit: int) -> dict[str, Any]:

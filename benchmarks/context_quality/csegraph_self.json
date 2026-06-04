@@ -1,0 +1,62 @@
+{
+  "schema_version": "csegraph-context-benchmark-v1",
+  "tasks": [
+    {
+      "id": "context-build-context",
+      "query": "How does ContextService build graph-backed context for a target?",
+      "target": "ContextService.build_context",
+      "expected_files": [
+        "csegraph_core/retrieval/context.py",
+        "csegraph_core/retrieval/scoring.py",
+        "csegraph_core/cse/metrics.py",
+        "csegraph_core/index/loaders.py"
+      ],
+      "expected_symbols": [
+        "ContextService.build_context",
+        "_build_detail_pass",
+        "_select_context_ids",
+        "apply_graph_expansion",
+        "compute_metrics",
+        "load_symbols"
+      ]
+    },
+    {
+      "id": "index-pipeline",
+      "query": "How does indexing discover files, parse them, and write graph rows?",
+      "target": "IndexService.index",
+      "expected_files": [
+        "csegraph_core/index/services.py",
+        "csegraph_core/index/cache.py",
+        "csegraph_core/index/repository.py",
+        "csegraph_core/languages/base.py"
+      ],
+      "expected_symbols": [
+        "IndexService.index",
+        "ExtractionCache",
+        "ProjectIndex",
+        "_parse_with_cache",
+        "_write_parsed_files"
+      ]
+    },
+    {
+      "id": "benchmark-pipeline",
+      "query": "How does BenchmarkService measure token reduction and expected-node quality?",
+      "target": "BenchmarkService.run",
+      "expected_files": [
+        "csegraph_core/benchmark.py",
+        "csegraph_core/core/models.py",
+        "csegraph_core/retrieval/context.py",
+        "csegraph_core/index/services.py"
+      ],
+      "expected_symbols": [
+        "BenchmarkService.run",
+        "BenchmarkResult",
+        "BenchmarkStep",
+        "ContextService",
+        "IndexService",
+        "_count_raw_tokens",
+        "_count_diff_tokens"
+      ]
+    }
+  ]
+}
