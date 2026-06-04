@@ -395,6 +395,7 @@ def test_graph_visual_export_allows_repo_local_scratch_output(tmp_path):
 
 
 def test_graph_visual_export_rejects_tmp_output(tmp_path):
+    # Negative path policy: CLI export --output must be repo-local, not OS temp.
     repo = tmp_path / "repo"
     _write_repo(repo)
     run_cli("index", str(repo), "--json")

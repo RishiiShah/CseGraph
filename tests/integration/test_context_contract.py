@@ -56,11 +56,17 @@ def test_context_json_contract_is_canonical_only(tmp_path):
 
     assert payload["nodes"][0]["id"] == "symbol::service.py::function::create_user"
 
+    assert payload["target_resolution"] == "resolved"
+    assert payload["target_candidates"] == []
+
     for node in payload["nodes"]:
         for key in expected["canonical_node_fields"]:
             assert key in node
         assert node["language"] == "python"
         assert set(node["reason"]).issubset(VALID_REASONS)
+        assert node["reason_details"]
+        assert {d["code"] for d in node["reason_details"]}.issubset(VALID_REASONS)
+        assert all("confidence_tier" in d and "score_contribution" in d for d in node["reason_details"])
         assert "source_text" not in node
         assert "explanation" not in node
 

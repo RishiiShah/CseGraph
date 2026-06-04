@@ -17,7 +17,12 @@ from csegraph._core.cse.metrics import (
 )
 from csegraph._core.index.loaders import load_edge_maps, load_summaries, load_symbols
 from csegraph._core.index.repository import ProjectIndex
-from csegraph._core.retrieval.explain import build_explanation, normalize_reasons
+from csegraph._core.retrieval.explain import (
+    build_explanation,
+    build_reason_details,
+    normalize_reasons,
+)
+from csegraph._core.retrieval.target_resolution import TargetResolution, resolve_target
 from csegraph._core.retrieval.helpers import is_small_helper_row
 from csegraph._core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
 from csegraph._core.text.source_reader import read_source_lines
@@ -65,7 +70,24 @@ class ContextService:
                 raise ValueError("No symbols are indexed in this database.")
 
             t0 = time.perf_counter()
-            target_id = _resolve_target(target, task, symbols, summaries, index, repo_root=repo_root)
+            resolution = resolve_target(
+                target, task, symbols, summaries, index, repo_root=repo_root
+            )
+            timings["target_resolution"] = _elapsed_ms(t0)
+            if resolution.status == "ambiguous":
+                return _ambiguous_context_result(
+                    db_path=self.db_path,
+                    repo_root=repo_root,
+                    profile=config.name,
+                    query=task,
+                    detail_level=detail_level,
+                    resolution=resolution,
+                    timings=timings,
+                )
+            if resolution.status == "unresolved":
+                label = resolution.requested or target or ""
+                raise ValueError(f"Target '{label}' did not match any indexed symbol.")
+            target_id = resolution.target_id
             fts_seed = fts_lexical_scores(index.conn, task)
             scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
             if target_id:
@@ -198,6 +220,8 @@ class ContextService:
                 profile=config.name,
                 query=task,
                 target=target_id,
+                target_resolution=resolution.status,
+                target_candidates=list(resolution.candidates),
                 detail_level=detail_level,
                 returned_detail_level=returned_detail_level,
                 sufficiency=SufficiencyResult(
@@ -263,6 +287,15 @@ def _assemble_context_nodes(
             symbols=symbols,
             raw_nodes=raw_nodes,
         )
+        node_score = round(scores.get(node_id, 0.0), 4)
+        reason_details = build_reason_details(
+            reasons=reason,
+            node_id=node_id,
+            target_id=target_id,
+            score=node_score,
+            outgoing=outgoing,
+            incoming=incoming,
+        )
         nodes.append(
             ContextNode(
                 id=node_id,
@@ -270,7 +303,7 @@ def _assemble_context_nodes(
                 name=row["name"],
                 path=row["file_path"],
                 line_range=_line_range(row["start_line"], row["end_line"]),
-                score=round(scores.get(node_id, 0.0), 4),
+                score=node_score,
                 language=row["language"],
                 raw_code=node_id in raw_nodes and source_text is not None,
                 evidence=clean_evidence,
@@ -279,6 +312,7 @@ def _assemble_context_nodes(
                 source_text=source_text,
                 estimated_tokens=estimated_tokens,
                 reason=reason,
+                reason_details=reason_details,
                 explanation=build_explanation(reason) if explain else None,
             )
         )
@@ -293,52 +327,69 @@ def _resolve_target(
     index: Optional[ProjectIndex] = None,
     repo_root: str = "",
 ) -> str:
-    if target:
-        if target in symbols:
-            return target
-        if index is not None:
-            if not repo_root:
-                try:
-                    metadata = index.metadata()
-                    repo_root = metadata.get("root_dir", "")
-                except Exception:
-                    pass
-            lowered = target.lower()
-            if repo_root:
-                try:
-                    abs_target_path = Path(target).resolve()
-                    resolved_root = Path(repo_root).resolve()
-                    if abs_target_path.is_relative_to(resolved_root):
-                        rel_path = abs_target_path.relative_to(resolved_root).as_posix()
-                        row = index.conn.execute(
-                            "SELECT id FROM nodes WHERE LOWER(path) = ?"
-                            " ORDER BY type = 'file' DESC LIMIT 1",
-                            (rel_path.lower(),),
-                        ).fetchone()
-                        if row is not None:
-                            return row["id"]
-                except Exception:
-                    pass
+    """Backward-compatible helper returning a single resolved node id."""
+    resolution = resolve_target(target, task, symbols, summaries, index, repo_root=repo_root)
+    if resolution.status == "ambiguous":
+        raise ValueError(
+            f"Target '{resolution.requested}' matched {len(resolution.candidates)} symbols; "
+            "pass a qualified name or node id."
+        )
+    if resolution.status == "unresolved":
+        label = resolution.requested or target or ""
+        raise ValueError(f"Target '{label}' did not match any indexed symbol.")
+    return resolution.target_id
 
-            row = index.conn.execute(
-                "SELECT id FROM nodes WHERE type IN ('class','function','method')"
-                " AND (LOWER(name) = ? OR LOWER(path) = ?)"
-                " ORDER BY (LOWER(name) = ?) DESC, length(name) ASC LIMIT 1",
-                (lowered, lowered, lowered),
-            ).fetchone()
-            if row is not None:
-                return row["id"]
-            row = index.conn.execute(
-                "SELECT id FROM nodes WHERE type IN ('class','function','method')"
-                " AND (LOWER(name) LIKE ? OR LOWER(path) LIKE ?)"
-                " ORDER BY length(name) ASC LIMIT 1",
-                (f"%{lowered}%", f"%{lowered}%"),
-            ).fetchone()
-            if row is not None:
-                return row["id"]
-        raise ValueError(f"Target '{target}' did not match any indexed symbol.")
-    scores, _ = lexical_scores(task, symbols, summaries, fts_seed=None)
-    return max(scores.items(), key=lambda item: item[1])[0]
+
+def _ambiguous_context_result(
+    *,
+    db_path: str,
+    repo_root: str,
+    profile: str,
+    query: str,
+    detail_level: str,
+    resolution: TargetResolution,
+    timings: Dict[str, float],
+) -> ContextResult:
+    label = resolution.requested or ""
+    candidates = resolution.candidates
+    return ContextResult(
+        command="context",
+        db_path=db_path,
+        repo_root=repo_root,
+        profile=profile,
+        query=query,
+        target=label,
+        target_resolution="ambiguous",
+        target_candidates=list(candidates),
+        detail_level=detail_level,
+        returned_detail_level="minimal",
+        sufficiency=SufficiencyResult(
+            sufficient=False,
+            metrics=SufficiencyMetrics(
+                dependency_completeness=0.0,
+                entity_coverage=0.0,
+                semantic_overlap=0.0,
+                model_confidence=0.0,
+            ),
+            thresholds={},
+        ),
+        total_estimated_tokens=0,
+        nodes=[],
+        raw_code_nodes=[],
+        next_actions=[
+            {
+                "action": "resolve_target",
+                "reason": "Multiple symbols matched; pass node id or qualified name before editing.",
+                "candidates": candidates,
+            }
+        ],
+        warnings=[
+            f"Target '{label}' matched {len(candidates)} indexed symbols. "
+            "Re-run csegraph_context with a specific target from target_candidates."
+        ],
+        confidence_breakdown={},
+        timings_ms=timings,
+    )
 
 
 def _select_context_ids(

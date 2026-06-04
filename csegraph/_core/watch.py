@@ -33,7 +33,7 @@ def watch(
         from csegraph._core.languages.registry import registry
         extensions = set(registry.supported_extensions())
 
-    def _should_watch(change: Change, path: str) -> bool:
+    def _should_watch(_change: Change, path: str) -> bool:
         p = Path(path)
         if ".csegraph" in p.parts:
             return False

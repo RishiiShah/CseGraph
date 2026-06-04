@@ -42,20 +42,26 @@ csegraph-vscode/out/
 Thumbs.db
 .python-version
 
+# Legacy experiment dirs (not part of the csegraph layout)
 data/
-reports/
+
+# CseGraph runtime artifacts
 .csegraph/
 .scratch/
-codermodel/
+
+# Unpacked wheel trees can shadow imports if left in the repo root
+csegraph-1.7.1/
 
 # Docs
 CLAUDE.md
 AGENTS.md
 docs/
+
 # Added by code-review-graph
 .code-review-graph/
 
 .claude/
 .mcp.json
 
+# Local maintainer scripts (not shipped; use tools/csegraph_dev.py)
 scripts/

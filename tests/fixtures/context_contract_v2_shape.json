@@ -7,6 +7,8 @@
     "profile",
     "query",
     "target",
+    "target_resolution",
+    "target_candidates",
     "detail_level",
     "returned_detail_level",
     "total_estimated_tokens",
@@ -27,6 +29,7 @@
     "line_range",
     "score",
     "reason",
+    "reason_details",
     "summary",
     "estimated_tokens"
   ],

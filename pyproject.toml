@@ -58,3 +58,8 @@ include = ["csegraph*"]
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
 pythonpath = ["."]
+
+[tool.vulture]
+paths = ["csegraph", "tools"]
+min_confidence = 80
+exclude = ["csegraph/_core/core/models.py"]

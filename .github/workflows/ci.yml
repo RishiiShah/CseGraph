@@ -114,6 +114,10 @@ jobs:
             tests/integration/test_cli.py \
             tests/integration/test_mcp_install.py \
             tests/integration/test_mcp_server.py \
+            tests/integration/test_mcp_surface_guardrails.py \
+            tests/integration/test_agent_workflow_benchmark.py \
+            tests/integration/test_target_disambiguation.py \
+            tests/integration/test_context_quality_corpus.py \
             -q
 
       - name: Run full test suite

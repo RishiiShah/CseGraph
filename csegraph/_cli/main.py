@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from csegraph._core.config.profiles import PROFILES
+from csegraph._core.postprocess import attach_postprocess_metadata
 from csegraph._core.core.models import to_dict
 from csegraph._core.core.paths import assert_safe_db_path
 from csegraph._cli.errors import CsegraphCLIError, error_payload
@@ -464,6 +465,11 @@ def _build_dev_parser() -> argparse.ArgumentParser:
         default=[],
         help="Expected context node ID for benchmark quality checks. May be repeated.",
     )
+    benchmark.add_argument(
+        "--agent-workflows",
+        action="store_true",
+        help="Run multi-step agent workflow benchmarks (minimal → context → optional graph).",
+    )
     _add_json(benchmark)
 
     return parser
@@ -483,7 +489,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             pp_result = PostprocessService(db).postprocess(level=pp_level)
         else:
             skipped_reason = "disabled"
-        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
+        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         return result
     if args.command == "refresh":
         from csegraph._core.index.services import RefreshService
@@ -500,7 +506,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             skipped_reason = "disabled"
         else:
             skipped_reason = "unchanged"
-        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
+        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         return result
     if args.command == "context":
         from csegraph._core.retrieval.context import ContextService
@@ -719,6 +725,11 @@ def _dispatch(args: argparse.Namespace) -> Any:
                 args.corpus,
                 profile=args.profile,
             )
+        if getattr(args, "agent_workflows", False):
+            return BenchmarkService(db_path).run_agent_workflows(
+                repo,
+                profile=args.profile,
+            )
         return BenchmarkService(db_path).run(
             repo,
             profile=args.profile,
@@ -759,30 +770,6 @@ def _dispatch(args: argparse.Namespace) -> Any:
             return svc.status()
         raise ValueError(f"Unknown daemon subcommand: {args.daemon_command}")
     raise ValueError(f"Unknown command: {args.command}")
-
-
-def _attach_postprocess_metadata(
-    result: Any,
-    db: str,
-    level: str,
-    postprocess_result: Any | None,
-    skipped_reason: str | None,
-) -> None:
-    result.postprocess_level = level
-    if postprocess_result is not None:
-        result.postprocess = to_dict(postprocess_result)
-    result.postprocess_skipped_reason = skipped_reason
-    try:
-        from csegraph._core.status import StatusService
-
-        status = StatusService(db).status()
-        result.graph_totals = {
-            "files": status.total_files,
-            "nodes": status.total_nodes,
-            "edges": status.total_edges,
-        }
-    except Exception:
-        result.graph_totals = {}
 
 
 def _run_analyze(repo: str, db: str, *, base_ref: str, limit: int) -> dict[str, Any]:

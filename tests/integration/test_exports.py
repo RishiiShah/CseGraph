@@ -89,6 +89,7 @@ class TestGraphMLExport:
         assert output.exists()
 
     def test_graphml_rejects_tmp_output(self, tmp_path):
+        # Negative path policy: exports must stay repo-local; OS temp is rejected.
         db = _index_repo(tmp_path, _SAMPLE_FILES)
         temp_output = Path(tempfile.gettempdir()) / f"{tmp_path.name}-graph.graphml"
 

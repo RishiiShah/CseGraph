@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -10,7 +11,9 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent, Tool
 
 from csegraph._core.core.models import to_dict
+from csegraph._core.postprocess import attach_postprocess_metadata
 from csegraph._core.core.paths import assert_safe_db_path
+from csegraph._core.server.mcp_surface import is_blocking_mcp_tool
 from csegraph._core.server.session import _SESSION
 
 logger = logging.getLogger("csegraph.mcp")
@@ -783,7 +786,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             pp_result = PostprocessService(db).postprocess(level=pp_level)
         else:
             skipped_reason = "disabled"
-        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
+        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         clear_hub_cache()
         return to_dict(result)
 
@@ -805,7 +808,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             skipped_reason = "disabled"
         else:
             skipped_reason = "unchanged"
-        _attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
+        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
         clear_hub_cache()
         return to_dict(result)
 
@@ -876,30 +879,6 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         )
 
     raise ValueError(f"Unknown tool: {name}")
-
-
-def _attach_postprocess_metadata(
-    result: Any,
-    db: str,
-    level: str,
-    postprocess_result: Any | None,
-    skipped_reason: str | None,
-) -> None:
-    result.postprocess_level = level
-    if postprocess_result is not None:
-        result.postprocess = to_dict(postprocess_result)
-    result.postprocess_skipped_reason = skipped_reason
-    try:
-        from csegraph._core.status import StatusService
-
-        status = StatusService(db).status()
-        result.graph_totals = {
-            "files": status.total_files,
-            "nodes": status.total_nodes,
-            "edges": status.total_edges,
-        }
-    except Exception:
-        result.graph_totals = {}
 
 
 def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPromptResult:
@@ -993,7 +972,7 @@ def _handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPro
                 "Step 2: Call `csegraph_context` with detail_level=auto on the highest-risk areas mentioned.",
                 "Step 3 (only if needed): Call `csegraph_graph` with depth=1 on one critical symbol.",
                 "Report: sufficiency metrics, stale-index warnings, and whether more context is needed.",
-                "Do not invoke review-only MCP tools; use CLI diagnostics only if the user asks.",
+                "Use only the six core csegraph MCP tools; run `csegraph analyze` via CLI if the user asks for diagnostics.",
                 "Stop after at most 3 csegraph MCP tool calls.",
             ],
             args,
@@ -1097,7 +1076,10 @@ def create_server(*, allowed_tools: list[str] | None = None) -> Server:
         try:
             if name not in allowed_tool_names:
                 raise ValueError(f"Tool '{name}' is not enabled for this server")
-            result = _handle_tool(name, arguments)
+            if is_blocking_mcp_tool(name):
+                result = await asyncio.to_thread(_handle_tool, name, arguments)
+            else:
+                result = _handle_tool(name, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         except Exception as exc:
             logger.exception("Tool %s failed", name)

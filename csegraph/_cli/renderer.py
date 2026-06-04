@@ -100,10 +100,6 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_visual_export_summary(payload: Dict[str, Any]) -> str:
-    return f"Graph file created at: {payload['output_path']}\n"
-
-
 def render_analyze_summary(payload: Dict[str, Any]) -> str:
     lines = ["Analysis:", ""]
     for section in payload.get("sections", []):
@@ -131,6 +127,8 @@ def render_analyze_summary(payload: Dict[str, Any]) -> str:
 def render_benchmark_summary(payload: Dict[str, Any]) -> str:
     if payload.get("command") == "benchmark-corpus":
         return _render_benchmark_corpus_summary(payload)
+    if payload.get("command") == "benchmark-agent-workflows":
+        return _render_agent_workflow_benchmark_summary(payload)
 
     repo = _display_path(str(payload.get("repo_root", "")), str(payload.get("repo_root", "")))
     lines = [
@@ -154,6 +152,29 @@ def render_benchmark_summary(payload: Dict[str, Any]) -> str:
             f"Graph: {_display_path(str(payload.get('graph_output_path', '')), str(payload.get('repo_root', '')))}",
         ]
     )
+    return "\n".join(lines) + "\n"
+
+
+def _render_agent_workflow_benchmark_summary(payload: Dict[str, Any]) -> str:
+    repo_root = str(payload.get("repo_root", ""))
+    repo = _display_path(repo_root, repo_root)
+    lines = [
+        f"Agent Workflow Benchmark: {repo}",
+        "",
+        "Workflow summary (≤3 MCP tool calls per workflow):",
+    ]
+    for step in payload.get("steps", []):
+        if not step["name"].endswith(":summary"):
+            continue
+        stats = step.get("stats") or {}
+        workflow_id = step["name"].removeprefix("workflow:").removesuffix(":summary")
+        lines.append(
+            f"  {workflow_id}: {stats.get('tool_calls', 0)} calls, "
+            f"{stats.get('total_estimated_tokens', 0)} est. tokens, "
+            f"{stats.get('total_mcp_response_bytes', 0)} bytes"
+            + (" OK" if stats.get("within_turn_budget") else " OVER BUDGET")
+        )
+    lines.append(f"\nTotal: {payload.get('total_elapsed_ms', 0):.3f} ms")
     return "\n".join(lines) + "\n"
 
 
@@ -446,21 +467,6 @@ def render_communities_summary(payload: Dict[str, Any]) -> str:
     ]
     for comm in payload.get("communities", []):
         lines.append(f"  [{comm['id']}] {comm['size']:,} nodes — {comm.get('label', '')}")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def render_hooks_summary(payload: Dict[str, Any]) -> str:
-    installed = payload.get("installed") or []
-    skipped = payload.get("skipped") or []
-    cmd = payload.get("command", "hooks")
-    lines = [f"Hooks {cmd.split()[-1] if ' ' in cmd else cmd}:"]
-    if installed:
-        verb = "Installed" if "install" in cmd else "Removed"
-        lines.append(f"  {verb}: {', '.join(installed)}")
-    if skipped:
-        lines.append(f"  Skipped:   {', '.join(skipped)}")
-    lines.append(f"  Hooks dir: {payload.get('hooks_dir', '')}")
     lines.append("")
     return "\n".join(lines)
 

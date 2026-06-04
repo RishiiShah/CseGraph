@@ -321,6 +321,32 @@ class BenchmarkService:
             tasks=task_results,
         )
 
+    def run_agent_workflows(
+        self,
+        repo: str | Path,
+        *,
+        profile: str = "medium",
+    ) -> BenchmarkResult:
+        """Benchmark multi-step MCP workflows used for code-change tasks."""
+        from csegraph._core.benchmark_workflows import run_agent_workflow_benchmarks
+        from csegraph._core.index.services import IndexService
+        from csegraph._core.server.app import _handle_tool
+        from csegraph._core.server.session import _SESSION
+
+        repo_root = str(Path(repo).resolve())
+
+        def ensure_indexed() -> None:
+            IndexService(self.db_path).index(repo_root, profile=profile)
+
+        return run_agent_workflow_benchmarks(
+            repo_root,
+            self.db_path,
+            profile=profile,
+            handle_tool=_handle_tool,
+            reset_session=_SESSION.reset,
+            ensure_indexed=ensure_indexed,
+        )
+
 
 def _time_call(callback: Callable[[], _T]) -> tuple[_T, float]:
     start = time.perf_counter()

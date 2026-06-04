@@ -84,6 +84,7 @@ class ContextNode:
     source_text: Optional[str] = None
     estimated_tokens: int = 0
     reason: List[str] = field(default_factory=list)
+    reason_details: List[Dict[str, Any]] = field(default_factory=list)
     explanation: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -117,6 +118,8 @@ class ContextResult:
     run_id: Optional[int] = None
     confidence_breakdown: Dict[str, int] = field(default_factory=dict)
     timings_ms: Dict[str, float] = field(default_factory=dict)
+    target_resolution: str = "resolved"
+    target_candidates: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

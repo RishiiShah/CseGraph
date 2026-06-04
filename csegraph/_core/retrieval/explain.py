@@ -84,6 +84,81 @@ def build_explanation(reasons: Sequence[str]) -> str:
     return "Included because " + " ".join(clauses)
 
 
+def build_reason_details(
+    *,
+    reasons: Sequence[str],
+    node_id: str,
+    target_id: str,
+    score: float,
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Structured explainability payload (v2): reason code, edge confidence, score."""
+    details: List[Dict[str, Any]] = []
+    for code in reasons:
+        tier = _confidence_tier_for_reason(
+            code=code,
+            node_id=node_id,
+            target_id=target_id,
+            outgoing=outgoing,
+            incoming=incoming,
+        )
+        details.append(
+            {
+                "code": code,
+                "confidence_tier": tier,
+                "score_contribution": round(score, 4),
+            }
+        )
+    return details
+
+
+def _confidence_tier_for_reason(
+    *,
+    code: str,
+    node_id: str,
+    target_id: str,
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+) -> str:
+    if code == "target":
+        return "EXTRACTED"
+    if code in {"direct_call", "caller"}:
+        edge = _relation_edge(
+            code,
+            node_id=node_id,
+            target_id=target_id,
+            outgoing=outgoing,
+            incoming=incoming,
+        )
+        if edge is not None:
+            return str(edge.get("confidence_tier") or "EXTRACTED")
+    if code == "import_dependency":
+        return "INFERRED"
+    if code in {"lexical_match", "graph_neighbor", "raw_code_fallback"}:
+        return "EXTRACTED"
+    return "EXTRACTED"
+
+
+def _relation_edge(
+    code: str,
+    *,
+    node_id: str,
+    target_id: str,
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, Any] | None:
+    if code == "direct_call":
+        for edge in outgoing.get(target_id, []):
+            if edge.get("relation") == "calls" and edge.get("target_id") == node_id:
+                return edge
+    if code == "caller":
+        for edge in incoming.get(target_id, []):
+            if edge.get("relation") == "calls" and edge.get("source_id") == node_id:
+                return edge
+    return None
+
+
 def _edge_exists(
     edges: Sequence[Dict[str, Any]],
     other_node_id: str,

@@ -70,6 +70,7 @@ class TestTreeExport:
         assert output.exists()
 
     def test_rejects_system_tempdir_output(self, tmp_path):
+        # Negative path policy: tree HTML must be under the repo, not OS temp.
         db = _index_repo(tmp_path)
         output = Path(tempfile.gettempdir()) / f"{tmp_path.name}-tree.html"
 

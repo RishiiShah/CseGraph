@@ -328,6 +328,8 @@ class TestHandleTool:
             assert isinstance(json.loads(serialized), dict)
 
     def test_index_rejects_system_temp_db_path(self, tmp_path):
+        # Negative path policy: DB must live under the repo (e.g. .csegraph/ or
+        # .scratch/csegraph/). tempfile.gettempdir() is outside the repo on purpose.
         repo = _make_repo(tmp_path)
         db = Path(tempfile.gettempdir()) / f"{tmp_path.name}-csegraph-index.db"
 

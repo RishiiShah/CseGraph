@@ -12,7 +12,7 @@
 - Historical broad command set before the extension was reduced to index, refresh, status, context, and inspect.
 - Status bar with node/edge count and warning indicator
 - Auto-refresh on save with configurable debounce
-- Right-click context menu for Inspect and Trace Flow
+- Right-click context menu for Inspect (Trace Flow was removed before 1.7.1)
 - Keybindings: `Ctrl+Shift+G` (context), `Ctrl+Shift+I` (inspect)
 - CLI auto-discovery from local virtualenvs (`venv/`, `.venv/`, `env/`, `.env/`)
 - Configurable CLI path, profile, and status bar visibility

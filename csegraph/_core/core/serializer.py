@@ -42,6 +42,8 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         "warnings": to_dict(result.warnings),
         "run_id": result.run_id,
         "nodes": [_canonical_context_node_to_dict(node) for node in result.nodes],
+        "target_resolution": result.target_resolution,
+        "target_candidates": to_dict(result.target_candidates),
     }
 
 
@@ -55,6 +57,7 @@ def _canonical_context_node_to_dict(node: Any) -> Dict[str, Any]:
         "line_range": node.line_range,
         "score": node.score,
         "reason": list(node.reason),
+        "reason_details": to_dict(node.reason_details),
         "summary": node.summary,
         "estimated_tokens": node.estimated_tokens,
     }

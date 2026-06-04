@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
-from csegraph._core.core.models import PostprocessResult
+from csegraph._core.core.models import PostprocessResult, to_dict
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 
@@ -185,3 +185,28 @@ def _read_source_slice(
 
 def _elapsed_ms(start: float) -> float:
     return round((time.perf_counter() - start) * 1000, 3)
+
+
+def attach_postprocess_metadata(
+    result: Any,
+    db: str,
+    level: str,
+    postprocess_result: Any | None,
+    skipped_reason: str | None,
+) -> None:
+    """Attach postprocess level/stats and best-effort graph totals to index/refresh results."""
+    result.postprocess_level = level
+    if postprocess_result is not None:
+        result.postprocess = to_dict(postprocess_result)
+    result.postprocess_skipped_reason = skipped_reason
+    try:
+        from csegraph._core.status import StatusService
+
+        status = StatusService(db).status()
+        result.graph_totals = {
+            "files": status.total_files,
+            "nodes": status.total_nodes,
+            "edges": status.total_edges,
+        }
+    except Exception:
+        result.graph_totals = {}
