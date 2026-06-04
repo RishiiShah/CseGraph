@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "csegraph-core"
 version = "1.7.1"
 description = "Core repository context engine for coding agents. Distribution: csegraph-core; import: csegraph_core."
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0,<2",
@@ -43,6 +44,7 @@ embeddings = ["sentence-transformers>=1.7.1"]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"
+Issues = "https://github.com/RishiiShah/CseGraph/issues"
 
 [tool.setuptools.packages.find]
 include = ["csegraph_core*"]

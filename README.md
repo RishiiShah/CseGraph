@@ -33,6 +33,10 @@ env/bin/pip install -e packages/csegraph-cli/
 
 `requirements.txt` contains the same product-only editable installs.
 
+This repository is source-first. The public project is distributed as Python
+packages and the VS Code extension source; generated binaries, local graph
+databases, build outputs, and dashboard artifacts are not committed.
+
 ## Base Commands
 
 ```bash
@@ -218,3 +222,7 @@ pytest -x -q                        # Stop on first failure, quiet
 python -m compileall -q csegraph_core packages/csegraph packages/csegraph-cli
 csegraph --help
 ```
+
+## License
+
+CseGraph is released under the MIT License. See [LICENSE](LICENSE).
