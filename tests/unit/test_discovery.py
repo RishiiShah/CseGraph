@@ -1,9 +1,8 @@
 import subprocess
-
 import pytest
 
 from csegraph._core.discovery import is_discoverable_rel_path, iter_discoverable_rel_paths
-from csegraph._core.ignore import load_ignore_filter
+from csegraph._core.ignore import load_ignore_filter, recurse_submodules_enabled
 from csegraph._core.languages.registry import registry
 
 
@@ -91,3 +90,92 @@ def test_is_discoverable_rel_path(tmp_path, rel, expected):
 
     ignore = load_ignore_filter(tmp_path)
     assert is_discoverable_rel_path(rel, ignore) is expected
+
+
+def _git_repo_with_submodule(tmp_path):
+    lib_repo = tmp_path / "lib"
+    lib_repo.mkdir()
+    _git(lib_repo, "init")
+    _git(lib_repo, "config", "user.email", "test@test.com")
+    _git(lib_repo, "config", "user.name", "Test")
+    (lib_repo / "util.py").write_text("def helper():\n    pass\n", encoding="utf-8")
+    _git(lib_repo, "add", "util.py")
+    _git(lib_repo, "commit", "-m", "lib initial")
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    _git(parent, "init")
+    _git(parent, "config", "user.email", "test@test.com")
+    _git(parent, "config", "user.name", "Test")
+    (parent / "main.py").write_text("def main():\n    pass\n", encoding="utf-8")
+    _git(parent, "add", "main.py")
+    _git(parent, "commit", "-m", "parent initial")
+    _git(
+        parent,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(lib_repo),
+        "lib",
+    )
+    _git(parent, "commit", "-m", "add lib submodule")
+    return parent
+
+
+def test_submodule_files_discovered_by_default(tmp_path):
+    parent = _git_repo_with_submodule(tmp_path)
+    ignore = load_ignore_filter(parent)
+    rels = list(iter_discoverable_rel_paths(parent, ignore=ignore))
+    assert "main.py" in rels
+    assert "lib/util.py" in rels
+
+
+def test_submodule_files_skipped_when_recurse_disabled(tmp_path):
+    parent = _git_repo_with_submodule(tmp_path)
+    ignore = load_ignore_filter(parent, recurse_submodules=False)
+    rels = list(iter_discoverable_rel_paths(parent, ignore=ignore))
+    assert "main.py" in rels
+    assert not any(path.startswith("lib/") for path in rels)
+
+
+def test_recurse_submodules_env_override(monkeypatch):
+    monkeypatch.delenv("CSEGRAPH_RECURSE_SUBMODULES", raising=False)
+    assert recurse_submodules_enabled() is True
+    monkeypatch.setenv("CSEGRAPH_RECURSE_SUBMODULES", "0")
+    assert recurse_submodules_enabled() is False
+    monkeypatch.setenv("CSEGRAPH_RECURSE_SUBMODULES", "yes")
+    assert recurse_submodules_enabled() is True
+
+
+def test_svn_list_paths_used_when_no_git(monkeypatch, tmp_path):
+    (tmp_path / ".svn").mkdir()
+    (tmp_path / "versioned.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "local_only.py").write_text("y = 2\n", encoding="utf-8")
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["svn", "list"]:
+            return subprocess.CompletedProcess(cmd, 0, "versioned.py\n", "")
+        raise FileNotFoundError
+
+    monkeypatch.setattr("csegraph._core.vcs.subprocess.run", fake_run)
+    monkeypatch.setattr("csegraph._core.ignore._git_root", lambda _root: None)
+
+    ignore = load_ignore_filter(tmp_path)
+    assert ignore.svn_repo
+    assert not ignore.git_repo
+    rels = list(iter_discoverable_rel_paths(tmp_path, ignore=ignore))
+    assert "versioned.py" in rels
+    assert "local_only.py" not in rels
+
+
+def test_git_takes_precedence_over_svn_marker(tmp_path):
+    _git(tmp_path, "init")
+    (tmp_path / ".svn").mkdir()
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "a.py")
+
+    ignore = load_ignore_filter(tmp_path)
+    assert ignore.git_repo
+    assert ignore.vcs == "git"
+    assert not ignore.svn_repo

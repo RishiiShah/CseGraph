@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from csegraph._core.discovery import iter_discoverable_rel_paths
 from csegraph._core.ignore import load_ignore_filter
@@ -32,8 +32,13 @@ class LanguageRegistry:
         except KeyError:
             raise UnsupportedLanguageError(f"No parser registered for extension {ext!r}")
 
-    def iter_files(self, root: Path) -> Iterable[Tuple[Parser, Path]]:
-        ignore = load_ignore_filter(root)
+    def iter_files(
+        self,
+        root: Path,
+        *,
+        exclude_patterns: Optional[Sequence[str]] = None,
+    ) -> Iterable[Tuple[Parser, Path]]:
+        ignore = load_ignore_filter(root, exclude_patterns=exclude_patterns)
         resolved_root = root.resolve()
         results: List[Tuple[Parser, Path]] = []
 

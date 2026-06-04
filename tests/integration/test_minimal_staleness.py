@@ -26,10 +26,17 @@ def test_minimal_warns_when_index_stale(tmp_path: Path):
     idx = ProjectIndex(db)
     try:
         idx.conn.execute("UPDATE nodes SET updated_at = ?", (old,))
+        idx.conn.execute(
+            "UPDATE metadata SET value = ? WHERE key = 'updated_at'",
+            (str(old),),
+        )
         idx.conn.commit()
     finally:
         idx.close()
 
     result = _handle_tool("csegraph_minimal", {"repo": str(repo), "db": db})
-    assert "Index is" in result["summary"]
-    assert "csegraph_refresh" in result["summary"]
+    assert "stale" in result["summary"].lower()
+    assert "csegraph_refresh" in result["summary"] or any(
+        s.get("tool") == "csegraph_refresh"
+        for s in result.get("next_tool_suggestions", [])
+    )

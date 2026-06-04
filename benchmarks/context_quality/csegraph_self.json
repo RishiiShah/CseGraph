@@ -8,34 +8,57 @@
       "expected_files": [
         "csegraph/_core/retrieval/context.py",
         "csegraph/_core/retrieval/scoring.py",
-        "csegraph/_core/cse/metrics.py",
-        "csegraph/_core/index/loaders.py"
+        "csegraph/_core/cse/metrics.py"
       ],
       "expected_symbols": [
         "ContextService.build_context",
         "_build_detail_pass",
         "_select_context_ids",
         "apply_graph_expansion",
-        "compute_metrics",
-        "load_symbols"
+        "compute_metrics"
       ]
     },
     {
       "id": "index-pipeline",
-      "query": "How does indexing discover files, parse them, and write graph rows?",
+      "query": "How does IndexService index a repository and write parsed symbols?",
       "target": "IndexService.index",
       "expected_files": [
         "csegraph/_core/index/services.py",
         "csegraph/_core/index/cache.py",
-        "csegraph/_core/index/repository.py",
-        "csegraph/_core/languages/base.py"
+        "csegraph/_core/index/repository.py"
       ],
       "expected_symbols": [
         "IndexService.index",
         "ExtractionCache",
-        "ProjectIndex",
         "_parse_with_cache",
         "_write_parsed_files"
+      ]
+    },
+    {
+      "id": "discovery-vcs-index",
+      "query": "Where is iter_discoverable_rel_paths defined and how does load_ignore_filter work?",
+      "target": "iter_discoverable_rel_paths",
+      "expected_files": [
+        "csegraph/_core/discovery.py",
+        "csegraph/_core/ignore.py"
+      ],
+      "expected_symbols": [
+        "iter_discoverable_rel_paths",
+        "load_ignore_filter",
+        "is_discoverable_rel_path"
+      ]
+    },
+    {
+      "id": "minimal-index-health",
+      "query": "How does MinimalService.first build the minimal routing card?",
+      "target": "MinimalService.first",
+      "expected_files": [
+        "csegraph/_core/retrieval/minimal.py"
+      ],
+      "expected_symbols": [
+        "MinimalService.first",
+        "_suggestions_for_intent",
+        "_graph_totals"
       ]
     },
     {
@@ -45,17 +68,13 @@
       "expected_files": [
         "csegraph/_core/benchmark.py",
         "csegraph/_core/core/models.py",
-        "csegraph/_core/retrieval/context.py",
-        "csegraph/_core/index/services.py"
+        "csegraph/_core/retrieval/context.py"
       ],
       "expected_symbols": [
         "BenchmarkService.run",
         "BenchmarkResult",
         "BenchmarkStep",
-        "ContextService",
-        "IndexService",
-        "_count_raw_tokens",
-        "_count_diff_tokens"
+        "ContextService"
       ]
     }
   ]

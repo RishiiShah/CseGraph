@@ -3,13 +3,19 @@ from __future__ import annotations
 import json
 import math
 import re
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from csegraph._core.core.models import KeyEntity, MinimalResult, NextToolSuggestion
+from csegraph._core.corpus_health import (
+    assess_index_health,
+    collect_index_metrics,
+    index_age_hours,
+)
 from csegraph._core.graph.queries import _compute_hub_threshold, _hub_node_ids
 from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.status import _build_warnings
+from csegraph._core.repo_state import git_head_state
 
 
 _KEY_ENTITY_LIMIT = 5
@@ -40,22 +46,25 @@ class MinimalService:
             languages = _top_languages(index)
 
             summary = _format_summary(totals, languages)
-            # Stale-index warning: if the newest node is older than 24 hours,
-            # prepend a short warning so agents know the index may be out of date.
-            try:
-                row = index.conn.execute("SELECT MAX(updated_at) as m FROM nodes").fetchone()
-                if row and row["m"] is not None:
-                    age = time.time() - float(row["m"])
-                    hours = int(age // 3600)
-                    if hours >= 24:
-                        summary = f"Index is {hours} hours stale; run `csegraph_refresh` to update.\n" + summary
-            except Exception:
-                # Non-fatal: if the query fails for any reason, continue without the warning.
-                pass
-            # Use a cached inferred intent when provided (session-level cache),
-            # otherwise detect from the task text.
+            metrics = collect_index_metrics(index.conn)
+            meta = metadata
+            current_branch, current_commit = (
+                git_head_state(repo_root) if repo_root and Path(repo_root).exists() else (None, None)
+            )
+            ext_warnings = _build_warnings(meta, repo_root, current_branch, current_commit)
+            age_h = index_age_hours(metadata_updated_at=meta.get("updated_at"), conn=index.conn)
+            health = assess_index_health(
+                metrics,
+                index_age_hours=age_h,
+                external_warnings=ext_warnings,
+            )
+            if health.verdict != "ok":
+                summary = health.summary + "\n" + summary
             intent = inferred_intent if inferred_intent is not None else _detect_intent(task)
-            suggestions = _suggestions_for_intent(intent, task)
+            suggested_queries = (
+                _explore_suggested_queries(key_entities) if intent == "explore" else []
+            )
+            suggestions = _suggestions_for_intent(intent, task, health)
 
             preview = MinimalResult(
                 command="minimal",
@@ -67,6 +76,8 @@ class MinimalService:
                 key_entities=key_entities,
                 next_tool_suggestions=suggestions,
                 estimated_tokens=0,
+                index_health=health,
+                suggested_queries=suggested_queries,
             )
             preview.estimated_tokens = _estimate_tokens(preview)
             return preview
@@ -147,6 +158,17 @@ def _format_summary(totals: Dict[str, int], languages: List[str]) -> str:
     )
 
 
+def _explore_suggested_queries(entities: List[KeyEntity], limit: int = 2) -> List[str]:
+    queries: List[str] = []
+    for entity in entities[:limit]:
+        name = entity.name or entity.id
+        path = entity.path or "this area"
+        queries.append(
+            f"How does {name} connect to the rest of the codebase (see {path})?"
+        )
+    return queries
+
+
 def _detect_intent(task: Optional[str]) -> str:
     if not task:
         return "general"
@@ -158,8 +180,25 @@ def _detect_intent(task: Optional[str]) -> str:
     return "general"
 
 
-def _suggestions_for_intent(intent: str, task: Optional[str]) -> List[NextToolSuggestion]:
+def _suggestions_for_intent(
+    intent: str,
+    task: Optional[str],
+    health: Optional[object] = None,
+) -> List[NextToolSuggestion]:
     task_arg = task or ""
+    if health and health.verdict in ("stale", "rebuild") and intent != "explore":
+        return [
+            NextToolSuggestion(
+                tool="csegraph_refresh" if health.verdict == "stale" else "csegraph_index",
+                reason=health.hints[0] if health.hints else health.summary,
+                args={},
+            ),
+            NextToolSuggestion(
+                tool="csegraph_context",
+                reason="After the index is current, fetch task context at detail_level=auto.",
+                args={"task": task_arg, "detail_level": "auto"},
+            ),
+        ]
     if intent == "review":
         return [
             NextToolSuggestion(

@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from mcp.types import Prompt, Tool
 
-# Locked counts for the agent context-engine loop (see learn.md).
+# Locked counts for the agent context-engine loop (see docs/architecture.md).
 EXPECTED_MCP_TOOL_COUNT = 6
 EXPECTED_MCP_PROMPT_COUNT = 9
 

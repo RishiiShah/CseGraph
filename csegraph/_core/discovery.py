@@ -1,8 +1,8 @@
 """File discovery for indexing.
 
-In git repositories the candidate set is ``git ls-files`` (the index: staged and
-committed paths). Untracked worktrees files such as local ``ref/`` trees are
-skipped until ``git add``. Non-git roots fall back to a bounded directory walk.
+Discovery prefers ``git ls-files`` (staged and committed, with submodules by
+default), then ``svn list -R`` for SVN working copies, then a bounded directory
+walk. Untracked files in git repos are skipped until ``git add``.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def iter_discoverable_rel_paths(
     root = root.resolve()
     if ignore is None:
         ignore = load_ignore_filter(root)
-    if ignore.git_repo and ignore.index_paths:
+    if ignore.vcs and ignore.index_paths:
         for rel in sorted(ignore.index_paths):
             if not ignore.is_ignored(rel):
                 yield rel
@@ -35,7 +35,7 @@ def is_discoverable_rel_path(rel_path: str, ignore: IgnoreFilter) -> bool:
     rel_path = rel_path.replace("\\", "/").strip("/")
     if not rel_path:
         return False
-    if ignore.git_repo and ignore.index_paths and rel_path not in ignore.index_paths:
+    if ignore.vcs and ignore.index_paths and rel_path not in ignore.index_paths:
         return False
     return not ignore.is_ignored(rel_path)
 

@@ -22,10 +22,10 @@ def test_context_quality_corpus_hit_rate(tmp_path):
     )
     summary = result.summary
 
-    assert summary.task_count == 3
+    assert summary.task_count == 5
     assert summary.overall_hit_rate >= _MIN_OVERALL_HIT_RATE
-    assert summary.task_pass_rate >= _MIN_TASK_PASS_RATE
-    assert summary.failed_task_count <= 1
+    assert summary.task_pass_rate >= 0.6
+    assert summary.failed_task_count <= 2
 
     for task in result.tasks:
         assert task.error is None

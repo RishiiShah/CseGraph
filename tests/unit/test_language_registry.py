@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable, List
 
 import pytest
@@ -23,6 +23,12 @@ class FakeParser:
 
     def iter_files(self, root: Path) -> Iterable[Path]:
         return []
+
+    def excludes_rel_path(self, rel_path: str) -> bool:
+        if not self.excluded_dirs:
+            return False
+        dirs = PurePosixPath(rel_path).parts[:-1]
+        return any(part in self.excluded_dirs for part in dirs)
 
 
 class FakePythonParser(FakeParser):

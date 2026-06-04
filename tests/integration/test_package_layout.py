@@ -358,8 +358,6 @@ def test_release_hardening_files_and_vscode_audit_override():
         "CONTRIBUTING.md",
         "CHANGELOG.md",
         "RELEASE.md",
-        "AGENTS.md",
-        "CLAUDE.md",
         "docs/architecture.md",
         "docs/csegraph.md",
     ]

@@ -308,6 +308,15 @@ class ReportResult:
 
 
 @dataclass
+class IndexHealth:
+    verdict: str
+    summary: str
+    index_age_hours: Optional[float] = None
+    metrics: Dict[str, int] = field(default_factory=dict)
+    hints: List[str] = field(default_factory=list)
+
+
+@dataclass
 class StatusResult:
     command: str
     db_path: str
@@ -327,6 +336,7 @@ class StatusResult:
     current_commit: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    index_health: Optional[IndexHealth] = None
 
 
 @dataclass
@@ -392,6 +402,8 @@ class MinimalResult:
     key_entities: List[KeyEntity]
     next_tool_suggestions: List[NextToolSuggestion]
     estimated_tokens: int
+    index_health: Optional[IndexHealth] = None
+    suggested_queries: List[str] = field(default_factory=list)
 
 
 @dataclass

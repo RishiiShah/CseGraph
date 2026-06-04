@@ -52,13 +52,11 @@ data/
 # Unpacked wheel trees can shadow imports if left in the repo root
 csegraph-1.7.1/
 
-# Docs
+# Agent-local files (regenerate with `csegraph install --instructions`)
 CLAUDE.md
 AGENTS.md
-docs/
-
-# Added by code-review-graph
-.code-review-graph/
+GEMINI.md
+CODEX.md
 
 .claude/
 .mcp.json

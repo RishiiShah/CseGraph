@@ -124,18 +124,24 @@ def test_documented_mcp_prompts_match_server_registry():
     assert documented_readme == prompt_names
 
 
-def test_docs_paths_remain_ignored():
-    docs_paths = [
-        Path("docs") / ("AGENT" + "_REFERENCE.md"),
-        Path("docs") / ("csegraph" + ".md"),
-        Path("docs") / "example.md",
-    ]
-
-    for path in docs_paths:
+def test_public_docs_are_not_gitignored():
+    for rel_path in ("docs/csegraph.md", "docs/architecture.md"):
         proc = subprocess.run(
-            ["git", "check-ignore", "-q", str(path)],
+            ["git", "check-ignore", "-q", rel_path],
             cwd=ROOT,
             capture_output=True,
             text=True,
         )
-        assert proc.returncode == 0, f"{path} must remain gitignored"
+        assert proc.returncode != 0, f"{rel_path} must be tracked for open source"
+
+
+def test_local_only_paths_remain_gitignored():
+    ignored_paths = ["learn.md", "ref/", "CLAUDE.md", "AGENTS.md"]
+    for rel_path in ignored_paths:
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", rel_path],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, f"{rel_path} must remain gitignored"

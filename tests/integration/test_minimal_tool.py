@@ -43,6 +43,14 @@ class TestMinimalServiceShape:
         assert result.task_intent == "review"
         assert result.estimated_tokens > 0
         assert len(result.key_entities) >= 1
+        assert result.index_health is not None
+        assert result.index_health.verdict
+
+    def test_explore_intent_includes_suggested_queries(self, tmp_path):
+        _, db = _indexed(tmp_path)
+        result = MinimalService(db).first(task="explore the architecture")
+        assert result.task_intent == "explore"
+        assert len(result.suggested_queries) >= 1
 
     def test_payload_is_compact(self, tmp_path):
         repo, db = _indexed(tmp_path)

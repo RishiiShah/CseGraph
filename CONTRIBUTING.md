@@ -63,7 +63,6 @@ npm run package
 - `CLAUDE.md` / `AGENTS.md`: agent-facing setup and repo rules.
 - `docs/csegraph.md`: command and flag reference.
 - `docs/architecture.md`: private-module architecture and data flow.
-- `learn.md`: brief learning backlog for what to add next.
 - `RELEASE.md`, `SECURITY.md`, `CHANGELOG.md`: release hygiene.
 
 ## Generated Artifacts

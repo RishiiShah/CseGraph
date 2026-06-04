@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from csegraph._core.core.models import StatusResult
+from csegraph._core.corpus_health import (
+    assess_index_health,
+    collect_index_metrics,
+    index_age_hours,
+)
 from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.repo_state import git_head_state
 
@@ -72,6 +77,16 @@ class StatusService:
                 git_head_state(repo_root) if Path(repo_root).exists() else (None, None)
             )
             warnings = _build_warnings(meta, repo_root, current_branch, current_commit)
+            metrics = collect_index_metrics(conn)
+            age_h = index_age_hours(metadata_updated_at=meta.get("updated_at"), conn=conn)
+            health = assess_index_health(
+                metrics,
+                index_age_hours=age_h,
+                external_warnings=warnings,
+            )
+            for hint in health.hints:
+                if hint not in warnings:
+                    warnings.append(hint)
 
             built_branch = meta.get("built_branch") or None
             built_commit = meta.get("built_commit") or None
@@ -95,6 +110,7 @@ class StatusService:
                 current_commit=current_commit,
                 warnings=warnings,
                 parse_errors=parse_errors,
+                index_health=health,
             )
         finally:
             conn.close()

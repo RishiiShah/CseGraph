@@ -2,7 +2,7 @@
 
 CseGraph is a **context engine for coding agents**. Its only job is to hand an agent the accurate, minimal slice of code context needed to make a correct retrieval or edit, so the agent spends fewer tokens and skips tool calls it would otherwise make (broad grep, full-file read, repeated lookups).
 
-It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits. Next-upgrade learning notes: [`learn.md`](learn.md).
+It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits.
 
 The product loop is:
 
@@ -170,8 +170,10 @@ There is no packaged `csegraph-dev` console script. These maintainer-only benchm
 ## Discovery and `.csegraphignore`
 
 In a git repository, CseGraph indexes only paths in the git index (`git ls-files`:
-committed or staged). Untracked local files are skipped until you `git add` them.
-Without git, CseGraph walks the project directory instead.
+committed or staged, including submodules by default). Untracked local files are
+skipped until you `git add` them. Set `CSEGRAPH_RECURSE_SUBMODULES=0` to omit
+submodule paths. SVN working copies use `svn list -R` instead; with neither VCS,
+CseGraph walks the project directory.
 
 Place a `.csegraphignore` file in the repository root to exclude paths from that
 candidate set. Supports a `.gitignore`-like subset: blank lines, `#` comments,

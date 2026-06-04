@@ -35,7 +35,13 @@ class IndexService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def index(self, repo: str | Path, profile: str = "small") -> IndexResult:
+    def index(
+        self,
+        repo: str | Path,
+        profile: str = "small",
+        *,
+        exclude_patterns: Optional[Sequence[str]] = None,
+    ) -> IndexResult:
         timings_ms: Dict[str, float] = {}
         config = get_profile(profile)
         repo_root = str(Path(repo).resolve())
@@ -43,7 +49,9 @@ class IndexService:
         cache = ExtractionCache(cache_path)
         start = time.perf_counter()
         parsed_files = _parse_with_cache(
-            registry.iter_files(Path(repo_root)), Path(repo_root), cache,
+            registry.iter_files(Path(repo_root), exclude_patterns=exclude_patterns),
+            Path(repo_root),
+            cache,
         )
         timings_ms["discover_parse"] = _elapsed_ms(start)
 
@@ -97,6 +105,8 @@ class RefreshService:
         profile: str = "small",
         changed_paths: Optional[Iterable[str | Path]] = None,
         dependents_limit: int = 50,
+        *,
+        exclude_patterns: Optional[Sequence[str]] = None,
     ) -> RefreshResult:
         config = get_profile(profile)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
@@ -111,7 +121,7 @@ class RefreshService:
 
             start = time.perf_counter()
             if changed_paths is not None:
-                ignore = load_ignore_filter(repo_root)
+                ignore = load_ignore_filter(repo_root, exclude_patterns=exclude_patterns)
                 changed_abs_set = set()
                 for p in changed_paths:
                     try:
@@ -154,7 +164,9 @@ class RefreshService:
             else:
                 current_files = {
                     path.resolve().relative_to(repo_root).as_posix(): (parser, path)
-                    for parser, path in registry.iter_files(repo_root)
+                    for parser, path in registry.iter_files(
+                        repo_root, exclude_patterns=exclude_patterns,
+                    )
                 }
                 stored = {
                     row["path"]: row["sha256"]

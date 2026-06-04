@@ -1,29 +1,24 @@
-# Local Environment & Python
-.venv/
-venv/
-__pycache__/
-*.pyc
-.pytest_cache/
+# CseGraph runtime (exclude from agent context)
+.csegraph/
+.scratch/
 
-# Graph & Tool Metadata
-.code-review-graph/
-.cursor/
-.claude/
-.vscode/
-
-# Dependencies & Build Artifacts
+# Dependencies and build outputs
 node_modules/
 dist/
 build/
-bin/
-obj/
-*.exe
-*.dll
+*.egg-info/
+csegraph-vscode/out/
 
-# Secrets & Large Data
+# Local environment and secrets
 .env
-*.log
-*.sqlite
-*.json (if > 1MB)
+.venv/
+venv/
+
+# IDE and agent metadata
+.vscode/
+.cursor/
+.claude/
+
+# Large or non-source artifacts
 *.pdf
 *.zip

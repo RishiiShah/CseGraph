@@ -82,6 +82,9 @@ class TestStatusService:
         assert result.schema_version == "csegraph-sqlite-v5"
         assert result.active_profile == "small"
         assert result.updated_at is not None
+        assert result.index_health is not None
+        assert result.index_health.verdict in ("ok", "thin", "stale", "large", "errors", "rebuild")
+        assert result.index_health.summary
 
     def test_status_serializable(self, tmp_path):
         _repo, db = _make_repo(tmp_path, SAMPLE_FILES)

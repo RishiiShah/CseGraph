@@ -10,5 +10,5 @@
 - Kept tracked source to one Python package and one sibling VS Code extension.
 - Added context-quality benchmark corpus support for maintainer evaluation.
 - Added source-first package-layout guardrails and release-hardening workflows.
-- Aligned README, agent docs, architecture notes, command reference, and learning
-  backlog with the one-package layout.
+- Aligned README, agent docs, architecture notes, and command reference with the
+  one-package layout.

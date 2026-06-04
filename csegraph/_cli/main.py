@@ -154,6 +154,13 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(index)
     _add_profile(index)
     index.add_argument("--postprocess", choices=["none", "minimal", "full"], default="full", help="Postprocess level after indexing (default: full).")
+    index.add_argument(
+        "--exclude",
+        action="append",
+        default=None,
+        metavar="PATTERN",
+        help="Extra gitignore-style exclusion (repeatable); applies without editing .csegraphignore.",
+    )
     _add_json(index)
 
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
@@ -161,6 +168,13 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_db(refresh)
     _add_profile(refresh)
     refresh.add_argument("--postprocess", choices=["none", "minimal", "full"], default="full", help="Postprocess level after refresh (default: full).")
+    refresh.add_argument(
+        "--exclude",
+        action="append",
+        default=None,
+        metavar="PATTERN",
+        help="Extra gitignore-style exclusion (repeatable).",
+    )
     _add_json(refresh)
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
@@ -347,6 +361,35 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_benchmark_command(subparsers: argparse._SubParsersAction) -> None:
+    benchmark = subparsers.add_parser(
+        "benchmark",
+        help="Benchmark index, context, token reduction, corpus quality, or agent workflows.",
+    )
+    _add_repo_positional(benchmark)
+    _add_db(benchmark)
+    _add_profile(benchmark)
+    benchmark.add_argument(
+        "--corpus",
+        default=None,
+        help="Path to a context quality benchmark corpus JSON file.",
+    )
+    benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
+    benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
+    benchmark.add_argument(
+        "--expect-node",
+        action="append",
+        default=None,
+        help="Expected context node ID for benchmark quality checks. May be repeated.",
+    )
+    benchmark.add_argument(
+        "--agent-workflows",
+        action="store_true",
+        help="Run multi-step agent workflow benchmarks (minimal → context → optional graph).",
+    )
+    _add_json(benchmark)
+
+
 def _build_dev_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tools/csegraph_dev.py",
@@ -452,25 +495,7 @@ def _build_dev_parser() -> argparse.ArgumentParser:
     emb_clear.add_argument("--provider", choices=["local", "openai-compatible"], default="local", help="Embedding provider.")
     _add_json(emb_clear)
 
-    benchmark = subparsers.add_parser("benchmark", help="Time index, context, graph, and report.")
-    _add_repo_positional(benchmark)
-    _add_db(benchmark)
-    _add_profile(benchmark)
-    benchmark.add_argument("--corpus", default=None, help="Path to a context quality benchmark corpus JSON file.")
-    benchmark.add_argument("--query", default="Benchmark context retrieval", help="Context query to benchmark.")
-    benchmark.add_argument("--target", default=None, help="Optional context target symbol.")
-    benchmark.add_argument(
-        "--expect-node",
-        action="append",
-        default=[],
-        help="Expected context node ID for benchmark quality checks. May be repeated.",
-    )
-    benchmark.add_argument(
-        "--agent-workflows",
-        action="store_true",
-        help="Run multi-step agent workflow benchmarks (minimal → context → optional graph).",
-    )
-    _add_json(benchmark)
+    _add_benchmark_command(subparsers)
 
     return parser
 
@@ -481,7 +506,11 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph._core.postprocess import PostprocessService
         repo = _repo_arg(args)
         db = _db_arg(args, repo)
-        result = IndexService(db).index(repo, profile=args.profile)
+        result = IndexService(db).index(
+            repo,
+            profile=args.profile,
+            exclude_patterns=getattr(args, "exclude", None),
+        )
         pp_level = getattr(args, "postprocess", "full")
         pp_result = None
         skipped_reason = None
@@ -496,7 +525,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph._core.postprocess import PostprocessService
         repo = _repo_arg(args)
         db = _db_arg(args, repo)
-        result = RefreshService(db).refresh(profile=args.profile)
+        result = RefreshService(db).refresh(
+            profile=args.profile,
+            exclude_patterns=getattr(args, "exclude", None),
+        )
         pp_level = getattr(args, "postprocess", "full")
         pp_result = None
         skipped_reason = None

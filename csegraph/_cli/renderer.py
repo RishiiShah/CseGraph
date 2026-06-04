@@ -498,6 +498,12 @@ def render_status_summary(payload: Dict[str, Any]) -> str:
         f"Schema: {payload.get('schema_version', '')}",
         f"Last updated: {payload.get('updated_at', 'unknown')}",
     ]
+    health = payload.get("index_health") or {}
+    if health:
+        lines.append(f"Index health: {health.get('verdict', 'ok')} — {health.get('summary', '')}")
+        age = health.get("index_age_hours")
+        if age is not None:
+            lines.append(f"Index age: {age:.1f} hours")
     if payload.get("built_branch"):
         lines.append(f"Built on branch: {payload['built_branch']}")
     if payload.get("built_commit"):

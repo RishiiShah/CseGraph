@@ -1,12 +1,13 @@
 """Git-aware ignore handling for CseGraph discovery.
 
-Discovery in git repos uses ``git ls-files`` (see ``discovery``); only index
-entries are candidates. ``.csegraphignore`` excludes paths from that set.
-``.gitignore`` still applies on non-git directory walks and for ignore-rule
-unit tests. The public entrypoint is ``load_ignore_filter(root)``.
+Discovery uses ``git ls-files`` when a git repo is present, else ``svn list -R``
+for SVN working copies, else a bounded directory walk. ``.csegraphignore``
+excludes paths from the VCS candidate set. ``.gitignore`` still applies on
+directory walks and for ignore-rule unit tests. Entrypoint: ``load_ignore_filter(root)``.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 import fnmatch
@@ -16,6 +17,23 @@ from typing import List, Optional, Sequence, Set
 IGNORE_FILENAME = ".csegraphignore"
 GITIGNORE_FILENAME = ".gitignore"
 _GIT_TIMEOUT = 10
+_ENV_RECURSE_SUBMODULES = "CSEGRAPH_RECURSE_SUBMODULES"
+
+
+def recurse_submodules_enabled(explicit: Optional[bool] = None) -> bool:
+    """Whether ``git ls-files`` should pass ``--recurse-submodules``.
+
+    Defaults to enabled so pulled submodule code is indexed. Set
+    ``CSEGRAPH_RECURSE_SUBMODULES=0`` to disable (large vendor submodules).
+    """
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get(_ENV_RECURSE_SUBMODULES, "1").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    return True
 
 
 @dataclass(frozen=True)
@@ -36,16 +54,40 @@ class IgnoreDecision:
     negated: bool = False
 
 
-def load_ignore_filter(root: Path) -> "IgnoreFilter":
+def load_ignore_filter(
+    root: Path,
+    *,
+    recurse_submodules: Optional[bool] = None,
+    exclude_patterns: Optional[Sequence[str]] = None,
+) -> "IgnoreFilter":
+    from csegraph._core.vcs import find_svn_root, svn_versioned_paths
+
     root = root.resolve()
     git_root = _git_root(root)
-    in_git_repo = git_root is not None and _is_relative_to(root, git_root)
+    vcs: Optional[str] = None
+    vcs_root: Optional[Path] = None
     tracked_paths: Set[str] = set()
     tracked_dirs: Set[str] = set()
-    if in_git_repo and git_root is not None:
-        tracked_paths = _git_tracked_paths(git_root, root)
+
+    if git_root is not None and _is_relative_to(root, git_root):
+        vcs = "git"
+        vcs_root = git_root
+        tracked_paths = _git_tracked_paths(
+            git_root,
+            root,
+            recurse_submodules=recurse_submodules_enabled(recurse_submodules),
+        )
+    else:
+        svn_root = find_svn_root(root)
+        if svn_root is not None and _is_relative_to(root, svn_root):
+            tracked_paths = svn_versioned_paths(svn_root, root)
+            if tracked_paths:
+                vcs = "svn"
+                vcs_root = svn_root
+
+    if vcs_root is not None:
         tracked_dirs = _tracked_parent_dirs(tracked_paths)
-        search_dirs = _ancestor_dirs(git_root, root)
+        search_dirs = _ancestor_dirs(vcs_root, root)
     else:
         search_dirs = [root]
 
@@ -53,11 +95,15 @@ def load_ignore_filter(root: Path) -> "IgnoreFilter":
     for directory in search_dirs:
         rules.extend(_rules_from_file(directory / GITIGNORE_FILENAME, "gitignore"))
         rules.extend(_rules_from_file(directory / IGNORE_FILENAME, "csegraphignore"))
+    for pattern in exclude_patterns or ():
+        parsed = _parse_line(pattern.strip(), source="runtime", anchor=root)
+        if parsed is not None:
+            rules.append(parsed)
 
     return IgnoreFilter(
         rules,
         root=root,
-        git_repo=in_git_repo,
+        vcs=vcs,
         tracked_paths=tracked_paths,
         tracked_dirs=tracked_dirs,
     )
@@ -99,20 +145,21 @@ def _parse_line(line: str, *, source: str = "csegraphignore", anchor: Optional[P
 
 
 class IgnoreFilter:
-    __slots__ = ("_rules", "_root", "_git_repo", "_tracked_paths", "_tracked_dirs", "_has_negation")
+    __slots__ = ("_rules", "_root", "_vcs", "_tracked_paths", "_tracked_dirs", "_has_negation")
 
     def __init__(
         self,
         rules: List[IgnoreRule],
         *,
         root: Path = Path("/"),
+        vcs: Optional[str] = None,
         git_repo: bool = False,
         tracked_paths: Optional[Set[str]] = None,
         tracked_dirs: Optional[Set[str]] = None,
     ) -> None:
         self._rules = rules
         self._root = root
-        self._git_repo = git_repo
+        self._vcs = vcs or ("git" if git_repo else None)
         self._tracked_paths = tracked_paths or set()
         self._tracked_dirs = tracked_dirs or set()
         self._has_negation = any(rule.negated for rule in rules)
@@ -149,12 +196,21 @@ class IgnoreFilter:
         return self._is_ignored_by_rules(rel_path, is_dir=is_dir, rules=rules).ignored
 
     @property
+    def vcs(self) -> Optional[str]:
+        """``git``, ``svn``, or ``None`` when discovery falls back to a directory walk."""
+        return self._vcs
+
+    @property
     def git_repo(self) -> bool:
-        return self._git_repo
+        return self._vcs == "git"
+
+    @property
+    def svn_repo(self) -> bool:
+        return self._vcs == "svn"
 
     @property
     def index_paths(self) -> Set[str]:
-        """Repo-relative paths from ``git ls-files`` under the scan root."""
+        """Repo-relative paths from the active VCS listing under the scan root."""
         return self._tracked_paths
 
     def should_descend(self, rel_dir: str) -> bool:
@@ -171,8 +227,11 @@ class IgnoreFilter:
         return not self.is_ignored(rel_dir, is_dir=True)
 
     def _effective_rules(self, rel_path: str, *, is_dir: bool) -> Sequence[IgnoreRule]:
-        if self._git_repo and not is_dir and rel_path in self._tracked_paths:
-            return [rule for rule in self._rules if rule.source == "csegraphignore"]
+        if self._vcs and not is_dir and rel_path in self._tracked_paths:
+            return [
+                rule for rule in self._rules
+                if rule.source in ("csegraphignore", "runtime")
+            ]
         return self._rules
 
     def _is_ignored_by_rules(
@@ -255,10 +314,18 @@ def _git_root(root: Path) -> Optional[Path]:
     return Path(value).resolve() if value else None
 
 
-def _git_tracked_paths(git_root: Path, scan_root: Path) -> Set[str]:
+def _git_tracked_paths(
+    git_root: Path,
+    scan_root: Path,
+    *,
+    recurse_submodules: bool = True,
+) -> Set[str]:
+    cmd = ["git", "ls-files", "-z"]
+    if recurse_submodules:
+        cmd.append("--recurse-submodules")
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-z"],
+            cmd,
             cwd=git_root,
             check=False,
             capture_output=True,
