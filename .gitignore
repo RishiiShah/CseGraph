@@ -54,6 +54,7 @@ ref/
 csegraph-1.7.1/
 
 # Agent-local files (regenerate with `csegraph install --instructions`)
+learn.md
 CLAUDE.md
 AGENTS.md
 GEMINI.md
