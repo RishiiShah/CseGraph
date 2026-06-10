@@ -118,7 +118,8 @@ _TOOLS: list[Tool] = [
         description=(
             "Retrieve task-specific context from a csegraph index. "
             "Combines FTS5 lexical search, graph expansion, and sufficiency scoring "
-            "to return compact or detailed code context for a task."
+            "to return compact or detailed code context for a task. Returned path "
+            "fields are repo-relative to repo_root."
         ),
         inputSchema={
             "type": "object",
@@ -181,7 +182,8 @@ _TOOLS: list[Tool] = [
             "Returns nodes and edges within a configurable BFS depth. "
             "Default detail_level=minimal returns a summary and top-degree nodes; "
             "use standard for the full node and edge list. "
-            "Pass relations=['calls','imports',...] to restrict traversal to specific edge kinds."
+            "Pass relations=['calls','imports',...] to restrict traversal to specific edge kinds. "
+            "Returned path fields are repo-relative to repo_root."
         ),
         inputSchema={
             "type": "object",
@@ -233,7 +235,8 @@ _TOOLS: list[Tool] = [
         description=(
             "Find the shortest path between two nodes in the csegraph dependency graph. "
             "Default detail_level=minimal returns a name-chain summary; "
-            "use standard for the full PathStep and PathEdge sequence."
+            "use standard for the full PathStep and PathEdge sequence. "
+            "Returned path fields are repo-relative to repo_root."
         ),
         inputSchema={
             "type": "object",

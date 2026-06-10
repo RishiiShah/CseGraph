@@ -261,7 +261,7 @@ class TestHandleTool:
         assert "→" in result["summary"]
         assert result["edges"] == []
         for node in result["nodes"]:
-            assert node["path"] == ""
+            assert node["path"]
             assert node["line_range"] is None
 
     def test_graph_tool_declares_detail_level_enum(self):

@@ -102,11 +102,15 @@ do not parse IDs in callers.
 2. Retrieve lexical candidates using FTS5 plus exact-name and path boosts.
 3. Add target boost when a target resolves.
 4. Expand through graph relations with weighted BFS.
-5. Select the target, direct calls/dependencies, nearby tests, and highest-score
-   remaining nodes within profile budget.
+5. Select the target, high-signal direct calls/dependencies, and highest-score
+   remaining nodes within an adaptive profile budget.
 6. Compute sufficiency metrics.
 7. Materialize source depending on detail level and `include_source`.
 8. Enforce token budget.
+
+Retrieval outputs keep `path` fields repo-relative and include `repo_root` once
+at the response root. Callers should combine those values when absolute paths
+are required.
 
 Detail levels:
 

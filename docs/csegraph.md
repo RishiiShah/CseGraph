@@ -59,6 +59,10 @@ Graph/path flags:
 - `--detail-level minimal|standard`
 - `--relations calls,imports,tested_by`
 
+JSON responses include `repo_root`; per-node `path` fields are repo-relative to
+that root. Harnesses that need absolute file names should join `repo_root` and
+`path` instead of expecting repeated absolute paths in every node.
+
 ## MCP
 
 ```bash

@@ -7,7 +7,7 @@ Use one editable Python package from the repository root:
 ```bash
 python -m venv env
 env/bin/python -m pip install --upgrade pip
-env/bin/python -m pip install -e .
+env/bin/python -m pip install -e ".[test]"
 ```
 
 For the VS Code extension:
@@ -35,6 +35,10 @@ env/bin/python -m pytest \
   tests/integration/test_cli.py \
   tests/integration/test_mcp_install.py \
   tests/integration/test_mcp_server.py \
+  tests/integration/test_mcp_surface_guardrails.py \
+  tests/integration/test_agent_workflow_benchmark.py \
+  tests/integration/test_target_disambiguation.py \
+  tests/integration/test_context_quality_corpus.py \
   -q
 ```
 
@@ -63,7 +67,8 @@ npm run package
 - `CLAUDE.md` / `AGENTS.md`: agent-facing setup and repo rules.
 - `docs/csegraph.md`: command and flag reference.
 - `docs/architecture.md`: private-module architecture and data flow.
-- `RELEASE.md`, `SECURITY.md`, `CHANGELOG.md`: release hygiene.
+- `RELEASE.md`, `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`,
+  `CHANGELOG.md`: release and community hygiene.
 
 ## Generated Artifacts
 
@@ -72,6 +77,10 @@ Do not commit generated or local-only outputs:
 - `.csegraph/`
 - `.scratch/`
 - `.vscode/`
+- `.cursor/`
+- `.gemini/`
+- `.kiro/`
+- `ref/`
 - `build/`
 - `dist/`
 - `*.egg-info/`

@@ -22,6 +22,38 @@ RELATION_WEIGHTS: Dict[str, float] = {
 _BM25_WEIGHTS = (8.0, 4.0, 2.0, 1.0, 2.0, 1.0)
 # columns: name, path, signature, docstring, summary, source
 
+_SUBSTRING_STOPWORDS = {
+    "about",
+    "build",
+    "code",
+    "does",
+    "file",
+    "find",
+    "first",
+    "from",
+    "how",
+    "into",
+    "show",
+    "task",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with",
+}
+_TEST_QUERY_TOKENS = {
+    "assert",
+    "coverage",
+    "fail",
+    "failed",
+    "failing",
+    "failure",
+    "pytest",
+    "regression",
+    "test",
+    "tests",
+}
+
 
 def fts_lexical_scores(
     conn: sqlite3.Connection,
@@ -79,7 +111,11 @@ def lexical_scores(
     if fts_seed:
         candidates.update(fts_seed.keys())
 
-    task_tokens_lower = [tok.lower() for tok in task_tokens if tok]
+    task_tokens_lower = [
+        tok.lower()
+        for tok in task_tokens
+        if tok and len(tok) > 2 and tok.lower() not in _SUBSTRING_STOPWORDS
+    ]
     if task_tokens_lower:
         for node_id, row in symbols.items():
             name_lower = row["name"].lower()
@@ -116,7 +152,28 @@ def lexical_scores(
             scores[node_id] += 1.5
             evidence[node_id].append("file-path-match")
         scores[node_id] += 0.01
+        if not _is_test_query(task_tokens) and _is_test_symbol(row):
+            scores[node_id] *= 0.45
     return scores, evidence
+
+
+def _is_test_query(task_tokens: set[str]) -> bool:
+    return bool(task_tokens & _TEST_QUERY_TOKENS)
+
+
+def _is_test_symbol(row: Dict[str, Any]) -> bool:
+    kind = str(row.get("kind") or row.get("type") or "")
+    name = str(row.get("name") or "").lower()
+    path = str(row.get("file_path") or row.get("path") or "").lower()
+    return (
+        kind == "test"
+        or name.startswith("test_")
+        or "/test_" in path
+        or path.startswith("test_")
+        or path.startswith("tests/")
+        or "/tests/" in path
+        or "/__tests__/" in path
+    )
 
 
 _BFS_CTE = """

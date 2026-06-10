@@ -42,7 +42,13 @@ class MinimalService:
             totals = _graph_totals(index)
             hub_threshold = _compute_hub_threshold(index)
             hubs = _hub_node_ids(index, hub_threshold)
-            key_entities = _top_entities(index, _KEY_ENTITY_LIMIT, exclude=hubs)
+            intent = inferred_intent if inferred_intent is not None else _detect_intent(task)
+            key_entities = _top_entities(
+                index,
+                _KEY_ENTITY_LIMIT,
+                exclude=hubs,
+                include_tests=_include_test_entities(intent, task),
+            )
             languages = _top_languages(index)
 
             summary = _format_summary(totals, languages)
@@ -60,7 +66,6 @@ class MinimalService:
             )
             if health.verdict != "ok":
                 summary = health.summary + "\n" + summary
-            intent = inferred_intent if inferred_intent is not None else _detect_intent(task)
             suggested_queries = (
                 _explore_suggested_queries(key_entities) if intent == "explore" else []
             )
@@ -118,12 +123,23 @@ def _top_entities(
     index: ProjectIndex,
     limit: int,
     exclude: Optional[set[str]] = None,
+    include_tests: bool = True,
 ) -> List[KeyEntity]:
     exclude_ids = list(exclude or ())
     exclude_clause = (
         f"AND n.id NOT IN ({','.join('?' for _ in exclude_ids)})"
         if exclude_ids
         else ""
+    )
+    test_clause = (
+        ""
+        if include_tests
+        else """
+          AND n.type != 'test'
+          AND COALESCE(n.is_test, 0) = 0
+          AND n.path NOT LIKE 'tests/%'
+          AND n.path NOT LIKE 'test/%'
+        """
     )
     rows = index.conn.execute(
         f"""
@@ -132,6 +148,7 @@ def _top_entities(
         LEFT JOIN edges e ON e.source = n.id OR e.target = n.id
         WHERE n.type IN ('class', 'function', 'method', 'test')
           {exclude_clause}
+          {test_clause}
         GROUP BY n.id
         ORDER BY degree DESC, n.name ASC
         LIMIT ?
@@ -148,6 +165,14 @@ def _top_entities(
         )
         for row in rows
     ]
+
+
+def _include_test_entities(intent: str, task: Optional[str]) -> bool:
+    if intent in {"debug", "review"}:
+        return True
+    lowered = (task or "").lower()
+    test_words = ("test", "tests", "pytest", "failing", "failure", "coverage")
+    return any(re.search(rf"\b{word}\b", lowered) for word in test_words)
 
 
 def _format_summary(totals: Dict[str, int], languages: List[str]) -> str:

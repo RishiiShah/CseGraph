@@ -6,7 +6,7 @@ import * as path from "path";
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-let resolvedCli: string | undefined;
+let resolvedCliByRoot = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext): void {
   outputChannel = vscode.window.createOutputChannel("CseGraph");
@@ -69,11 +69,19 @@ export function deactivate(): void {
 // ---------------------------------------------------------------------------
 
 function cmdIndex(): void {
-  runWithProgress("Building index...", "index", ["--postprocess", "full"]);
+  runWithProgress(
+    "Building index...",
+    "index",
+    getProfileArgs(["--postprocess", "full"])
+  );
 }
 
 function cmdRefresh(): void {
-  runWithProgress("Refreshing...", "refresh", ["--postprocess", "minimal"]);
+  runWithProgress(
+    "Refreshing...",
+    "refresh",
+    getProfileArgs(["--postprocess", "minimal"])
+  );
 }
 
 function cmdStatus(): void {
@@ -97,7 +105,7 @@ async function cmdContext(): Promise<void> {
       args.push("--target", symbol);
     }
   }
-  run("context", args);
+  run("context", getProfileArgs(args));
 }
 
 async function cmdInspect(): Promise<void> {
@@ -132,21 +140,16 @@ function run(command: string, args: string[] = []): void {
     return;
   }
 
-  const cli = getCliCommand();
+  const cli = getCliCommand(root);
   const allArgs = [command, ...args];
 
   outputChannel.show(true);
   outputChannel.appendLine("");
-  outputChannel.appendLine(`> ${cli} ${allArgs.join(" ")}`);
+  outputChannel.appendLine(formatCommandLine(cli, allArgs));
   outputChannel.appendLine("");
 
   execFile(cli, allArgs, { cwd: root, timeout: 120_000 }, (err, stdout, stderr) => {
-    if (stdout) {
-      outputChannel.appendLine(stdout);
-    }
-    if (stderr) {
-      outputChannel.appendLine(stderr);
-    }
+    appendCommandOutput(stdout, stderr);
     if (err && err.killed) {
       outputChannel.appendLine("Command timed out.");
     } else if (err) {
@@ -169,12 +172,12 @@ function runWithProgress(
     return;
   }
 
-  const cli = getCliCommand();
+  const cli = getCliCommand(root);
   const allArgs = [command, ...args];
 
   outputChannel.show(true);
   outputChannel.appendLine("");
-  outputChannel.appendLine(`> ${cli} ${allArgs.join(" ")}`);
+  outputChannel.appendLine(formatCommandLine(cli, allArgs));
   outputChannel.appendLine("");
 
   vscode.window.withProgress(
@@ -190,12 +193,7 @@ function runWithProgress(
           allArgs,
           { cwd: root, timeout: 300_000 },
           (err, stdout, stderr) => {
-            if (stdout) {
-              outputChannel.appendLine(stdout);
-            }
-            if (stderr) {
-              outputChannel.appendLine(stderr);
-            }
+            appendCommandOutput(stdout, stderr);
             if (err) {
               vscode.window.showErrorMessage(
                 `CseGraph ${command} failed. See output panel.`
@@ -218,10 +216,10 @@ function silentRefresh(): void {
   if (!root) {
     return;
   }
-  const cli = getCliCommand();
+  const cli = getCliCommand(root);
   execFile(
     cli,
-    ["refresh", "--postprocess", "minimal"],
+    ["refresh", ...getProfileArgs(["--postprocess", "minimal"])],
     { cwd: root, timeout: 60_000 },
     (_err, _stdout, _stderr) => {
       updateStatusBar();
@@ -246,7 +244,7 @@ function updateStatusBar(): void {
     return;
   }
 
-  const cli = getCliCommand();
+  const cli = getCliCommand(root);
   execFile(
     cli,
     ["status", "--json"],
@@ -283,6 +281,14 @@ function updateStatusBar(): void {
 // ---------------------------------------------------------------------------
 
 function getWorkspaceRoot(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (folder) {
+      return folder.uri.fsPath;
+    }
+  }
+
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
     return undefined;
@@ -290,34 +296,67 @@ function getWorkspaceRoot(): string | undefined {
   return folders[0].uri.fsPath;
 }
 
-function getCliCommand(): string {
-  if (resolvedCli) {
-    return resolvedCli;
-  }
+function getProfileArgs(args: string[] = []): string[] {
+  const config = vscode.workspace.getConfiguration("csegraph");
+  const profile = config.get<string>("profile", "medium");
+  return [...args, "--profile", profile];
+}
 
+function appendCommandOutput(stdout: string, stderr: string): void {
+  if (!shouldLogCommandOutput()) {
+    if (stdout || stderr) {
+      outputChannel.appendLine(
+        "Command output hidden by csegraph.logCommandOutput."
+      );
+    }
+    return;
+  }
+  if (stdout) {
+    outputChannel.appendLine(stdout);
+  }
+  if (stderr) {
+    outputChannel.appendLine(stderr);
+  }
+}
+
+function formatCommandLine(cli: string, allArgs: string[]): string {
+  if (!shouldLogCommandOutput()) {
+    const command = allArgs[0] ?? "";
+    return [">", cli, command, "[arguments hidden]"].filter(Boolean).join(" ");
+  }
+  return [">", cli, allArgs.join(" ")].join(" ");
+}
+
+function shouldLogCommandOutput(): boolean {
+  const config = vscode.workspace.getConfiguration("csegraph");
+  return config.get<boolean>("logCommandOutput", true);
+}
+
+function getCliCommand(root: string): string {
   const config = vscode.workspace.getConfiguration("csegraph");
   const configured = config.get<string>("command", "csegraph");
   if (configured !== "csegraph") {
-    resolvedCli = configured;
-    outputChannel.appendLine(`[cli] using configured command: ${resolvedCli}`);
-    return resolvedCli;
+    outputChannel.appendLine(`[cli] using configured command: ${configured}`);
+    return configured;
   }
 
-  const root = getWorkspaceRoot();
-  if (root) {
-    const isWin = process.platform === "win32";
-    const candidates = [
-      "venv", ".venv", "env", ".env",
-    ];
-    for (const dir of candidates) {
-      const bin = isWin
-        ? path.join(root, dir, "Scripts", "csegraph.exe")
-        : path.join(root, dir, "bin", "csegraph");
-      if (fs.existsSync(bin)) {
-        resolvedCli = bin;
-        outputChannel.appendLine(`[cli] auto-discovered: ${resolvedCli}`);
-        return resolvedCli;
-      }
+  const cached = resolvedCliByRoot.get(root);
+  if (cached) {
+    return cached;
+  }
+
+  const isWin = process.platform === "win32";
+  const candidates = [
+    "venv", ".venv", "env", ".env",
+  ];
+  for (const dir of candidates) {
+    const bin = isWin
+      ? path.join(root, dir, "Scripts", "csegraph.exe")
+      : path.join(root, dir, "bin", "csegraph");
+    if (fs.existsSync(bin)) {
+      resolvedCliByRoot.set(root, bin);
+      outputChannel.appendLine(`[cli] auto-discovered: ${bin}`);
+      return bin;
     }
   }
 

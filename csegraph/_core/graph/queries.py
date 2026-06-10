@@ -425,7 +425,7 @@ class GraphQueryService:
                         node_id=nid,
                         kind="",
                         name=_short_name(nid, node_rows),
-                        path="",
+                        path=str(node_rows.get(nid, {}).get("path") or ""),
                         line_range=None,
                     )
                     for nid in path_ids

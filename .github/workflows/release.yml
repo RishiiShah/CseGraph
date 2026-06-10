@@ -29,11 +29,21 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.14"
+          python-version: "3.12"
           cache: pip
 
-      - name: Install build tooling
+      - name: Install test/build tooling
         run: python -m pip install --upgrade pip build
+
+      - name: Install csegraph editable
+        run: python -m pip install -e ".[test]"
+
+      - name: Run Python release verification
+        run: |
+          python -m pytest tests/ -q
+          python -m compileall -q csegraph tools csegraph-vscode
+          csegraph index . --json
+          python tools/csegraph_dev.py benchmark . --corpus benchmarks/context_quality/csegraph_self.json --json
 
       - name: Build wheel and sdist
         run: python -m build
@@ -43,22 +53,29 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import tarfile
+          import tomllib
           import zipfile
 
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
           wheels = sorted(Path("dist").glob("csegraph-*.whl"))
           sdists = sorted(Path("dist").glob("csegraph-*.tar.gz"))
           assert len(wheels) == 1, wheels
           assert len(sdists) == 1, sdists
           with zipfile.ZipFile(wheels[0]) as wheel:
               wheel_names = wheel.namelist()
+              metadata_name = next(name for name in wheel_names if name.endswith(".dist-info/METADATA"))
+              metadata = wheel.read(metadata_name).decode()
           assert any(name.startswith("csegraph/") for name in wheel_names)
           assert all(
-              name.startswith(("csegraph/", "csegraph-1.7.1.dist-info/"))
+              name.startswith(("csegraph/", f"csegraph-{version}.dist-info/"))
               for name in wheel_names
           )
+          assert "Description-Content-Type: text/markdown" in metadata
+          assert "# csegraph" in metadata
           with tarfile.open(sdists[0]) as sdist:
               sdist_names = sdist.getnames()
           assert any("/csegraph/" in name for name in sdist_names)
+          assert any(name.endswith("/README.md") for name in sdist_names)
           PY
 
       - uses: actions/upload-artifact@v7
@@ -96,9 +113,11 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import json
           import zipfile
 
-          vsix = Path("csegraph-vscode-1.7.1.vsix")
+          version = json.loads(Path("package.json").read_text())["version"]
+          vsix = Path(f"csegraph-vscode-{version}.vsix")
           assert vsix.exists()
           with zipfile.ZipFile(vsix) as archive:
               names = archive.namelist()
