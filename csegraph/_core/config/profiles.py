@@ -109,10 +109,9 @@ def _load_config_file(path: Path) -> dict:
     if path.suffix == ".toml":
         try:
             import tomllib
-        except ImportError as exc:
-            raise ImportError(
-                "csegraph.toml requires Python 3.11+ (tomllib). "
-                "Use csegraph.json instead or upgrade Python."
-            ) from exc
+        except ImportError:
+            import tomlkit
+
+            return dict(tomlkit.parse(path.read_text(encoding="utf-8")))
         return tomllib.loads(path.read_text(encoding="utf-8"))
     return json.loads(path.read_text(encoding="utf-8"))

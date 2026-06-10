@@ -4,7 +4,11 @@ import os
 import site
 import subprocess
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomlkit
 
 
 CORE_RUNTIME_DEPENDENCIES = [
@@ -43,8 +47,11 @@ CORE_LANGUAGE_DEPENDENCIES = [
 
 
 def _project_metadata(path: Path) -> dict:
-    with (path / "pyproject.toml").open("rb") as fh:
-        return tomllib.load(fh)["project"]
+    pyproject = path / "pyproject.toml"
+    if "tomllib" in globals():
+        with pyproject.open("rb") as fh:
+            return tomllib.load(fh)["project"]
+    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))["project"]
 
 
 def _offline_pip_env() -> dict:

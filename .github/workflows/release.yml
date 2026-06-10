@@ -53,10 +53,15 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import tarfile
-          import tomllib
           import zipfile
 
-          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          try:
+              import tomllib
+              project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          except ModuleNotFoundError:
+              import tomlkit
+              project = tomlkit.parse(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          version = project["version"]
           wheels = sorted(Path("dist").glob("csegraph-*.whl"))
           sdists = sorted(Path("dist").glob("csegraph-*.tar.gz"))
           assert len(wheels) == 1, wheels
