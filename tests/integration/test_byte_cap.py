@@ -156,14 +156,16 @@ class TestByteCapOnMcpResponse:
         if "nodes" not in result:
             assert result["omitted_counts"]["nodes"] >= 1
 
-    def test_minimum_mcp_cap_is_hard_for_large_tools(self):
+    def test_minimum_mcp_cap_is_hard_for_large_tools(self, tmp_path):
+        repo, db = _indexed(tmp_path)
         for tool_name, args in [
             (
                 "csegraph_context",
                 {
-                    "repo": str(Path.cwd()),
-                    "task": "context",
-                    "target": "ContextService.build_context",
+                    "repo": str(repo),
+                    "db": db,
+                    "task": "foo helper context",
+                    "target": "foo",
                     "detail_level": "full",
                     "max_bytes": 256,
                 },

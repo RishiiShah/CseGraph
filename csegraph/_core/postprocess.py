@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from csegraph._core.core.models import PostprocessResult, to_dict
 from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.languages.base import sha256_text
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 
 
@@ -121,8 +122,12 @@ def _rebuild_fts(index: ProjectIndex, repo_root: str) -> int:
         SELECT
             n.id, n.type, n.name, n.path, n.language,
             n.signature, n.docstring, n.start_line, n.end_line,
+            file_node.sha256 AS indexed_file_hash,
             COALESCE(s.summary, '') AS summary
         FROM nodes n
+        LEFT JOIN nodes file_node
+          ON file_node.type = 'file'
+         AND file_node.path = n.path
         LEFT JOIN summaries s ON s.node_id = n.id
         WHERE n.type IN ('file', 'class', 'function', 'method', 'test')
         """
@@ -135,6 +140,7 @@ def _rebuild_fts(index: ProjectIndex, repo_root: str) -> int:
             source = _read_source_slice(
                 repo_root, row["path"], row["language"],
                 row["start_line"], row["end_line"],
+                row["indexed_file_hash"],
             )
 
         batch.append((
@@ -165,13 +171,17 @@ def _read_source_slice(
     language: str,
     start_line: int,
     end_line: int,
+    indexed_file_hash: str | None = None,
 ) -> str:
     try:
         root = Path(repo_root).resolve()
         full_path = (root / rel_path).resolve()
         if not full_path.is_relative_to(root):
             return ""
-        lines = full_path.read_text(errors="replace").splitlines()
+        text = full_path.read_text(encoding="utf-8", errors="replace")
+        if indexed_file_hash and sha256_text(text) != indexed_file_hash:
+            return ""
+        lines = text.splitlines()
         source = "\n".join(lines[start_line - 1 : end_line])
     except (OSError, IndexError):
         return ""

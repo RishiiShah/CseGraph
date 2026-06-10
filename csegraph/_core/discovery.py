@@ -53,8 +53,6 @@ def _walk_rel_paths(root: Path, ignore: IgnoreFilter) -> Iterable[str]:
             )
         )
         for filename in sorted(filenames):
-            if filename.startswith("."):
-                continue
             rel_path = f"{rel_root}/{filename}" if rel_root != "." else filename
             if not ignore.is_ignored(rel_path):
                 yield rel_path

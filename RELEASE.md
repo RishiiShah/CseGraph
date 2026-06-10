@@ -5,7 +5,7 @@
 Run from the repository root:
 
 ```bash
-env/bin/python -m pip install -e .
+env/bin/python -m pip install -e ".[test]"
 env/bin/python -m pytest tests/ -q
 env/bin/python -m compileall -q csegraph tools csegraph-vscode
 env/bin/csegraph index . --json
@@ -36,16 +36,22 @@ Inspect the wheel before publishing:
 ```bash
 env/bin/python - <<'PY'
 from pathlib import Path
+import tomllib
 import zipfile
 
+version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 wheel = next(Path("dist").glob("csegraph-*.whl"))
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
+    metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+    metadata = archive.read(metadata_name).decode()
 assert any(name.startswith("csegraph/") for name in names)
 assert all(
-    name.startswith(("csegraph/", "csegraph-1.7.1.dist-info/"))
+    name.startswith(("csegraph/", f"csegraph-{version}.dist-info/"))
     for name in names
 )
+assert "Description-Content-Type: text/markdown" in metadata
+assert "# csegraph" in metadata
 PY
 ```
 
@@ -67,7 +73,8 @@ npm run package
 Install locally before publishing:
 
 ```bash
-code --install-extension csegraph-vscode-1.7.1.vsix --force
+VSIX=$(python -c "import json; print('csegraph-vscode-' + json.load(open('package.json'))['version'] + '.vsix')")
+code --install-extension "$VSIX" --force
 code --list-extensions --show-versions | grep csegraph.csegraph-vscode
 ```
 

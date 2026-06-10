@@ -93,6 +93,41 @@ def test_typescript_cross_file_call_edge(tmp_path):
     assert any("formatName" in t for t in targets)
 
 
+def test_typescript_call_edge_prefers_imported_same_named_symbol(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "a.ts").write_text(
+        "export function dup(): string {\n  return 'a';\n}\n",
+        encoding="utf-8",
+    )
+    (repo / "b.ts").write_text(
+        "export function dup(): string {\n  return 'b';\n}\n",
+        encoding="utf-8",
+    )
+    (repo / "main.ts").write_text(
+        "import { dup } from './b';\n\n"
+        "export function run(): string {\n"
+        "  return dup();\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    run_cli("index", str(repo), "--json")
+
+    result = run_cli(
+        "inspect",
+        "symbol::main.ts::function::run",
+        "--repo", str(repo),
+        "--depth", "1",
+        "--detail-level", "standard",
+        "--json",
+    )
+
+    call_edges = [edge for edge in result["edges"] if edge["relation"] == "calls"]
+    targets = {edge["target"] for edge in call_edges}
+    assert "symbol::b.ts::function::dup" in targets
+    assert "symbol::a.ts::function::dup" not in targets
+
+
 def test_typescript_import_edge(tmp_path):
     repo = tmp_path / "repo"
     _write_ts_repo(repo)

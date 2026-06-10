@@ -31,6 +31,10 @@ from csegraph._core.text.source_reader import read_source_lines
 DETAIL_LEVELS = {"auto", "minimal", "standard", "full"}
 MINIMAL_NODE_LIMIT = 5
 MINIMAL_SUMMARY_CHAR_LIMIT = 240
+DIRECT_CALL_ALWAYS_LIMIT = 2
+DIRECT_CALL_SCORE_FLOOR = 4.0
+RANKED_SCORE_FLOOR = 3.0
+RANKED_SCORE_RATIO_FLOOR = 0.30
 
 
 class ContextService:
@@ -113,12 +117,12 @@ class ContextService:
             context_ids = _select_context_ids(
                 target_id,
                 scores,
+                evidence,
+                symbols,
                 outgoing,
                 config.context_budget,
             )
-            selected_context_ids = list(context_ids)
             metrics = compute_metrics(task, target_id, context_ids, symbols, summaries, outgoing)
-            initial_sufficient = _is_sufficient(metrics, config)
             raw_nodes = raw_code_nodes(
                 target_id,
                 context_ids,
@@ -127,9 +131,9 @@ class ContextService:
                 config.raw_code_budget,
                 confidence_threshold=config.confidence_threshold,
             )
-            returned_detail_level = _returned_detail_level(detail_level, initial_sufficient)
 
             t0 = time.perf_counter()
+            returned_detail_level = "minimal" if detail_level == "auto" else detail_level
             nodes, metrics, sufficient = _build_detail_pass(
                 detail_level=returned_detail_level,
                 context_ids=context_ids,
@@ -150,11 +154,12 @@ class ContextService:
                 index=index,
             )
 
-            # If auto->minimal but token budget breaks sufficiency, try standard detail
-            if detail_level == "auto" and returned_detail_level == "minimal" and not sufficient:
+            # Auto should judge the compact response it will actually return before
+            # promoting to standard; the full candidate pool is intentionally noisy.
+            if detail_level == "auto" and not sufficient:
                 nodes, metrics, sufficient = _build_detail_pass(
                     detail_level="standard",
-                    context_ids=selected_context_ids,
+                    context_ids=context_ids,
                     target_id=target_id,
                     include_source=include_source,
                     explain=explain,
@@ -395,28 +400,69 @@ def _ambiguous_context_result(
 def _select_context_ids(
     target_id: str,
     scores: Dict[str, float],
+    evidence: Dict[str, List[str]],
+    symbols: Dict[str, Dict[str, Any]],
     outgoing: Dict[str, List[Dict[str, Any]]],
     budget: int,
 ) -> List[str]:
-    required = [target_id]
+    baseline_score = 0.01
+    adaptive_budget = min(budget, max(MINIMAL_NODE_LIMIT, math.ceil(budget * 0.90)))
+    direct_calls: List[str] = []
     for edge in outgoing.get(target_id, []):
         if edge["relation"] == "calls":
-            required.append(edge["target_id"])
+            direct_calls.append(edge["target_id"])
+    ranked_direct_calls = sorted(
+        dict.fromkeys(direct_calls),
+        key=lambda node_id: (-scores.get(node_id, 0.0), node_id),
+    )
+    required = [target_id]
+    for index, node_id in enumerate(ranked_direct_calls):
+        if (
+            index < DIRECT_CALL_ALWAYS_LIMIT
+            or scores.get(node_id, 0.0) >= DIRECT_CALL_SCORE_FLOOR
+            or _has_lexical_evidence(evidence.get(node_id, []))
+        ):
+            required.append(node_id)
     selected: List[str] = []
     seen: set[str] = set()
+    selected_by_path: Dict[str, int] = {}
     for node_id in required:
-        if node_id in scores and node_id not in seen and len(selected) < budget:
+        if node_id in scores and node_id not in seen and len(selected) < adaptive_budget:
+            path = str(symbols.get(node_id, {}).get("file_path") or "")
+            if (
+                node_id != target_id
+                and path
+                and scores.get(node_id, 0.0) < DIRECT_CALL_SCORE_FLOOR
+                and selected_by_path.get(path, 0) >= 2
+                and len(selected) >= MINIMAL_NODE_LIMIT
+            ):
+                continue
             selected.append(node_id)
             seen.add(node_id)
-    remaining = budget - len(selected)
+            if path:
+                selected_by_path[path] = selected_by_path.get(path, 0) + 1
+    remaining = adaptive_budget - len(selected)
     if remaining > 0:
+        top_score = max(scores.values(), default=0.0)
+        ranked_floor = max(RANKED_SCORE_FLOOR, top_score * RANKED_SCORE_RATIO_FLOOR)
         for node_id, _ in heapq.nlargest(budget, scores.items(), key=lambda item: item[1]):
             if node_id not in seen:
+                if scores.get(node_id, 0.0) <= baseline_score:
+                    continue
+                if scores.get(node_id, 0.0) < ranked_floor and len(selected) >= MINIMAL_NODE_LIMIT:
+                    continue
                 selected.append(node_id)
                 seen.add(node_id)
-                if len(selected) >= budget:
+                if len(selected) >= adaptive_budget:
                     break
     return selected
+
+
+def _has_lexical_evidence(items: Sequence[str]) -> bool:
+    return any(
+        item in {"fts5-bm25", "lexical-token-overlap", "exact-symbol-name", "file-path-match"}
+        for item in items
+    )
 
 
 def _validate_include_source(value: str) -> str:

@@ -48,6 +48,18 @@ def test_non_git_repo_walks_untracked(tmp_path):
     assert "b.py" in rels
 
 
+def test_non_git_repo_discovers_supported_dotfiles(tmp_path):
+    (tmp_path / ".eslintrc.js").write_text("module.exports = {};\n", encoding="utf-8")
+    hidden_dir = tmp_path / ".config"
+    hidden_dir.mkdir()
+    (hidden_dir / "tool.js").write_text("export const ignored = true;\n", encoding="utf-8")
+
+    rels = list(iter_discoverable_rel_paths(tmp_path))
+
+    assert ".eslintrc.js" in rels
+    assert ".config/tool.js" not in rels
+
+
 def test_csegraphignore_excludes_indexed_path(tmp_path):
     _git(tmp_path, "init")
     (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")

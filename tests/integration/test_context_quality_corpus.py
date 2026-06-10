@@ -11,6 +11,9 @@ _CORPUS = _ROOT / "benchmarks" / "context_quality" / "csegraph_self.json"
 # Baselines from csegraph self-index (profile=small); tighten only with intent.
 _MIN_OVERALL_HIT_RATE = 0.85
 _MIN_TASK_PASS_RATE = 0.66
+_MAX_AVG_CONTEXT_TOKENS = 1300
+_MAX_AVG_RESPONSE_BYTES = 17000
+_MAX_RETURNED_NODE_COUNT = 18
 
 
 def test_context_quality_corpus_hit_rate(tmp_path):
@@ -26,7 +29,10 @@ def test_context_quality_corpus_hit_rate(tmp_path):
     assert summary.overall_hit_rate >= _MIN_OVERALL_HIT_RATE
     assert summary.task_pass_rate >= 0.6
     assert summary.failed_task_count <= 2
+    assert summary.avg_context_tokens <= _MAX_AVG_CONTEXT_TOKENS
+    assert summary.avg_response_bytes <= _MAX_AVG_RESPONSE_BYTES
 
     for task in result.tasks:
         assert task.error is None
         assert task.hit_rate >= 0.75, task.task_id
+        assert task.returned_node_count <= _MAX_RETURNED_NODE_COUNT, task.task_id

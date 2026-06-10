@@ -172,6 +172,31 @@ def test_lexical_scoring_candidates_optimization():
     assert "fts5-bm25" not in evidence.get("node2", [])
 
 
+def test_lexical_scoring_demotes_tests_for_production_queries():
+    symbols = {
+        "prod": {
+            "name": "process_order",
+            "file_path": "app.py",
+            "signature": "def process_order()",
+            "docstring": "",
+            "language": "python",
+        },
+        "test": {
+            "name": "test_process_order",
+            "file_path": "tests/test_app.py",
+            "signature": "def test_process_order()",
+            "docstring": "",
+            "language": "python",
+        },
+    }
+
+    production_scores, _ = lexical_scores("process order implementation", symbols, {})
+    test_scores, _ = lexical_scores("fix failing test process order", symbols, {})
+
+    assert production_scores["prod"] > production_scores["test"]
+    assert test_scores["test"] >= test_scores["prod"]
+
+
 def test_entity_extraction_length_optimization():
     known_names = ["very_long_symbol_name_that_is_longer_than_query", "greet"]
     entities = extract_query_entities("greet name", known_names)

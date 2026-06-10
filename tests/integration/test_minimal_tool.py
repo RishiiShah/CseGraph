@@ -73,6 +73,30 @@ class TestMinimalServiceShape:
         degrees = [e.degree for e in result.key_entities]
         assert degrees == sorted(degrees, reverse=True)
 
+    def test_general_key_entities_do_not_default_to_tests(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text(
+            "def greet(name: str) -> str:\n    return name.title()\n",
+            encoding="utf-8",
+        )
+        tests_dir = repo / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_app.py").write_text(
+            "\n".join(
+                f"def test_greet_{index}():\n    assert greet('sam') == 'Sam'\n"
+                for index in range(8)
+            ),
+            encoding="utf-8",
+        )
+        db = str(repo / ".scratch" / "csegraph" / "test.db")
+        IndexService(db).index(repo, profile="small")
+
+        result = MinimalService(db).first(task="explore the app architecture")
+
+        assert result.key_entities
+        assert all(not entity.path.startswith("tests/") for entity in result.key_entities)
+
 
 class TestTaskKeywordRouting:
     def test_review_keyword(self, tmp_path):

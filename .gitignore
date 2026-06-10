@@ -48,17 +48,24 @@ data/
 # CseGraph runtime artifacts
 .csegraph/
 .scratch/
+ref/
 
 # Unpacked wheel trees can shadow imports if left in the repo root
 csegraph-1.7.1/
 
 # Agent-local files (regenerate with `csegraph install --instructions`)
+learn.md
 CLAUDE.md
 AGENTS.md
 GEMINI.md
 CODEX.md
 
 .claude/
+.codex/
+.agents/
+.cursor/
+.gemini/
+.kiro/
 .mcp.json
 
 # Local maintainer scripts (not shipped; use tools/csegraph_dev.py)

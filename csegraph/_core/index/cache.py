@@ -11,13 +11,17 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
+from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.languages.types import ParsedFile, ParsedSymbol
 
+
+CACHE_VERSION = f"{SCHEMA_VERSION}:parser-v2"
 
 _CACHE_DDL = """
 CREATE TABLE IF NOT EXISTS parse_cache (
     rel_path TEXT NOT NULL,
     sha256 TEXT NOT NULL,
+    version TEXT NOT NULL,
     parsed_json TEXT NOT NULL,
     PRIMARY KEY (rel_path, sha256)
 );
@@ -33,14 +37,18 @@ class ExtractionCache:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_CACHE_DDL)
+        self._ensure_version_column()
 
     def close(self) -> None:
         self.conn.close()
 
     def get(self, rel_path: str, sha256: str) -> Optional[ParsedFile]:
         row = self.conn.execute(
-            "SELECT parsed_json FROM parse_cache WHERE rel_path = ? AND sha256 = ?",
-            (rel_path, sha256),
+            """
+            SELECT parsed_json FROM parse_cache
+            WHERE rel_path = ? AND sha256 = ? AND version = ?
+            """,
+            (rel_path, sha256, CACHE_VERSION),
         ).fetchone()
         if row is None:
             self.misses += 1
@@ -52,11 +60,13 @@ class ExtractionCache:
         blob = _serialize(parsed)
         self.conn.execute(
             """
-            INSERT INTO parse_cache (rel_path, sha256, parsed_json)
-            VALUES (?, ?, ?)
-            ON CONFLICT(rel_path, sha256) DO UPDATE SET parsed_json = excluded.parsed_json
+            INSERT INTO parse_cache (rel_path, sha256, version, parsed_json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(rel_path, sha256) DO UPDATE SET
+                version = excluded.version,
+                parsed_json = excluded.parsed_json
             """,
-            (parsed.rel_path, parsed.sha256, blob),
+            (parsed.rel_path, parsed.sha256, CACHE_VERSION, blob),
         )
         self.conn.commit()
 
@@ -67,6 +77,17 @@ class ExtractionCache:
     def stats(self) -> dict:
         row = self.conn.execute("SELECT COUNT(*) AS c FROM parse_cache").fetchone()
         return {"cached_files": row["c"], "hits": self.hits, "misses": self.misses}
+
+    def _ensure_version_column(self) -> None:
+        columns = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(parse_cache)")
+        }
+        if "version" not in columns:
+            self.conn.execute(
+                "ALTER TABLE parse_cache ADD COLUMN version TEXT NOT NULL DEFAULT ''"
+            )
+            self.conn.commit()
 
 
 def _serialize(parsed: ParsedFile) -> str:

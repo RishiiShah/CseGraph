@@ -4,7 +4,11 @@ import os
 import site
 import subprocess
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomlkit
 
 
 CORE_RUNTIME_DEPENDENCIES = [
@@ -43,8 +47,11 @@ CORE_LANGUAGE_DEPENDENCIES = [
 
 
 def _project_metadata(path: Path) -> dict:
-    with (path / "pyproject.toml").open("rb") as fh:
-        return tomllib.load(fh)["project"]
+    pyproject = path / "pyproject.toml"
+    if "tomllib" in globals():
+        with pyproject.open("rb") as fh:
+            return tomllib.load(fh)["project"]
+    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))["project"]
 
 
 def _offline_pip_env() -> dict:
@@ -89,10 +96,17 @@ def test_one_distribution_package_layout_and_versions():
 
     assert root_project["name"] == "csegraph"
     assert root_project["version"] == "1.7.1"
+    assert root_project["readme"] == "README.md"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
     assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
+    assert root_project["urls"] == {
+        "Repository": "https://github.com/RishiiShah/CseGraph",
+        "Issues": "https://github.com/RishiiShah/CseGraph/issues",
+        "Documentation": "https://github.com/RishiiShah/CseGraph/tree/main/docs",
+        "Changelog": "https://github.com/RishiiShah/CseGraph/blob/main/CHANGELOG.md",
+    }
 
     assert (repo_root / "csegraph" / "__init__.py").exists()
     assert (repo_root / "csegraph" / "_core" / "__init__.py").exists()
@@ -325,11 +339,16 @@ def test_source_first_package_guard():
         ".vsix",
     )
     forbidden_prefixes = (
+        ".cursor/",
         ".csegraph/",
+        ".gemini/",
+        ".kiro/",
         ".scratch/",
+        ".vscode/",
         "build/",
-        "dist/",
+        "csegraph-vscode/node_modules/",
         "csegraph-vscode/out/",
+        "dist/",
     )
     forbidden_exact = {
         "build.py",
@@ -355,9 +374,11 @@ def test_release_hardening_files_and_vscode_audit_override():
         ".github/workflows/ci.yml",
         ".github/workflows/release.yml",
         "SECURITY.md",
+        "CODE_OF_CONDUCT.md",
         "CONTRIBUTING.md",
         "CHANGELOG.md",
         "RELEASE.md",
+        "SUPPORT.md",
         "docs/architecture.md",
         "docs/csegraph.md",
     ]

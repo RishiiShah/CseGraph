@@ -42,6 +42,26 @@ class TestLoadProfile:
         assert cfg.context_budget == 100
         assert cfg.entity_threshold == 0.80
 
+    def test_override_from_toml(self, tmp_path):
+        config_file = tmp_path / "csegraph.toml"
+        config_file.write_text(
+            "\n".join(
+                [
+                    "dep_threshold = 0.70",
+                    "confidence_threshold = 0.60",
+                    "context_budget = 100",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        cfg = load_profile(config_path=str(config_file))
+
+        assert cfg.dep_threshold == 0.70
+        assert cfg.confidence_threshold == 0.60
+        assert cfg.context_budget == 100
+        assert cfg.entity_threshold == 0.80
+
     def test_unknown_keys_raise_valueerror(self, tmp_path):
         config_file = tmp_path / "csegraph.json"
         config_file.write_text(json.dumps({"bogus_key": 42}), encoding="utf-8")

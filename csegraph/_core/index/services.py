@@ -586,9 +586,12 @@ def _insert_edges(
             source = symbol.parent_symbol_id if symbol.kind == "method" and symbol.parent_symbol_id else current_file_id
             edge_rows.append(_edge(source, symbol.node_id, "contains"))
 
+        imported_file_ids: List[str] = []
         for import_name in parsed.imports:
             target_file_id = parser.resolve_local_import(import_name, module_to_file_id, current_module)
             if target_file_id:
+                if target_file_id not in imported_file_ids:
+                    imported_file_ids.append(target_file_id)
                 edge_rows.append(_edge(current_file_id, target_file_id, "imports", {"import": import_name}))
 
         _SYMBOL_EDGE_SPECS = [
@@ -605,6 +608,7 @@ def _insert_edges(
                         batch.symbol_by_name,
                         batch.node_to_file_node,
                         batch.node_kind_by_id,
+                        imported_file_ids,
                     )
                     if target and target != symbol.node_id:
                         src, tgt = (target, symbol.node_id) if reverse else (symbol.node_id, target)
@@ -617,6 +621,7 @@ def _insert_edges(
                         batch.symbol_by_name,
                         batch.node_to_file_node,
                         batch.node_kind_by_id,
+                        imported_file_ids,
                     )
                     if target and target != symbol.node_id:
                         edge_rows.append(_edge(target, symbol.node_id, "tested_by", {"via": call}))
@@ -769,6 +774,7 @@ def _pick_call_target(
     symbol_by_name: Dict[str, List[str]],
     node_to_file_node: Dict[str, str],
     node_kind_by_id: Dict[str, str],
+    preferred_file_ids: Sequence[str] | None = None,
 ) -> Optional[str]:
     candidates = symbol_by_name.get(symbol, [])
     if not candidates:
@@ -776,6 +782,24 @@ def _pick_call_target(
     for node_id in candidates:
         if node_to_file_node.get(node_id) == current_file_id:
             return node_id
+    preferred_rank = {
+        file_id: index
+        for index, file_id in enumerate(preferred_file_ids or [])
+    }
+    imported_candidates = [
+        node_id
+        for node_id in candidates
+        if node_to_file_node.get(node_id) in preferred_rank
+    ]
+    if imported_candidates:
+        return min(
+            imported_candidates,
+            key=lambda node_id: (
+                preferred_rank[node_to_file_node[node_id]],
+                node_kind_by_id.get(node_id) != "function",
+                node_id,
+            ),
+        )
     for node_id in candidates:
         if node_kind_by_id.get(node_id) == "function":
             return node_id

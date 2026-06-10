@@ -4,14 +4,14 @@ Lightweight VS Code extension for [CseGraph](https://github.com/RishiiShah/CseGr
 
 ## Prerequisites
 
-- **CseGraph CLI** installed
+- **CseGraph CLI matching this extension version or newer** installed
   - Install the package: `pip install csegraph`
   - Or install from source at the repository root: `env/bin/pip install -e .`
-- A built index in your workspace (`.csegraph/index.db`)
 
 ## Install
 
-Install the CLI first, then install the VS Code extension.
+Install the CLI first, then install the VS Code extension. Build an index in
+the workspace before using status, context, or inspect commands.
 
 ### From VSIX
 
@@ -19,7 +19,8 @@ Install the CLI first, then install the VS Code extension.
 pip install csegraph
 cd csegraph-vscode
 npm ci && npm run package
-code --install-extension csegraph-vscode-1.7.1.vsix
+VSIX=$(python -c "import json; print('csegraph-vscode-' + json.load(open('package.json'))['version'] + '.vsix')")
+code --install-extension "$VSIX"
 ```
 
 ### Via CLI
@@ -30,6 +31,12 @@ csegraph install --platform vscode
 ```
 
 This writes `.vscode/settings.json`, `tasks.json`, and `extensions.json` into your project, merging with existing config.
+
+## First Use
+
+Open the repository folder in VS Code, then run **CseGraph: Build Index** from
+the command palette. The index is stored at `.csegraph/index.db` inside the
+workspace and should not be committed.
 
 ## Commands
 
@@ -76,6 +83,7 @@ When enabled (default), saving a supported file (`.py`, `.ts`, `.tsx`, `.js`, `.
 |---------|------|---------|-------------|
 | `csegraph.command` | string | `csegraph` | Path to the CLI executable |
 | `csegraph.profile` | enum | `medium` | Indexing profile (`small`, `medium`, `large`) |
+| `csegraph.logCommandOutput` | boolean | `true` | Write raw CLI stdout/stderr to the CseGraph output panel |
 | `csegraph.autoRefresh` | boolean | `true` | Refresh index on file save |
 | `csegraph.refreshDebounce` | number | `2000` | Debounce interval in ms |
 | `csegraph.statusBar` | boolean | `true` | Show status bar item |
@@ -97,7 +105,7 @@ If commands fail with `'csegraph' is not recognized as an internal or external c
 | Cause | Fix |
 |-------|-----|
 | **Venv has a non-standard name** (e.g. `.conda/`, `myenv/`) | Rename it to one of the auto-discovered names (`venv/`, `.venv/`, `env/`, `.env/`), or set `csegraph.command` to the full path. |
-| **VS Code workspace root ≠ repo root** | Auto-discovery looks in the first workspace folder. If you opened a parent directory, the venv won't be found. Open the folder that contains the venv directly, or set `csegraph.command`. |
+| **VS Code workspace root ≠ repo root** | Auto-discovery uses the active editor's workspace folder when available, then the first workspace folder. Open the folder that contains the venv directly, or set `csegraph.command`. |
 | **Installed globally but not on VS Code's PATH** | VS Code inherits the system PATH at launch time. If you installed `csegraph` after opening VS Code, restart VS Code. On Windows, VS Code launched from the Start Menu may not see conda/venv activations from your terminal. |
 | **Installed in a conda environment** | Conda environments are not auto-discovered. Set `csegraph.command` to the full path (e.g. `C:\Users\you\miniconda3\envs\myenv\Scripts\csegraph.exe`). |
 
@@ -111,7 +119,7 @@ which csegraph        # macOS / Linux
 
 Then in VS Code Settings (`Ctrl+,`), set **csegraph.command** to the full path returned above.
 
-**Diagnostics** — open the CseGraph output panel (`View → Output → CseGraph`) to see `[cli]` log lines showing which discovery step was used or why discovery failed.
+**Diagnostics** — open the CseGraph output panel (`View → Output → CseGraph`) to see `[cli]` log lines showing which discovery step was used or why discovery failed. Command output is local, but context and inspect output can include task text, symbol names, file paths, and selected code excerpts. Set `csegraph.logCommandOutput` to `false` to hide raw CLI stdout/stderr in that panel.
 
 ## License
 

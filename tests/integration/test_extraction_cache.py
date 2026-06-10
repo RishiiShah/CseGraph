@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from csegraph._core.index import cache as cache_module
 from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.index.services import IndexService, RefreshService
 from csegraph._core.languages.types import ParsedFile
@@ -81,6 +82,30 @@ class TestExtractionCache:
         assert result.symbols[0].name == "foo"
         assert result.symbols[0].node_id == "symbol::test.py::function::foo"
         cache.close()
+
+    def test_cache_version_mismatch_is_a_miss(self, monkeypatch, tmp_path):
+        cache_path = tmp_path / "cache.db"
+        cache = ExtractionCache(str(cache_path))
+        parsed = ParsedFile(
+            rel_path="test.py",
+            abs_path="/repo/test.py",
+            sha256="abc123",
+            mtime=1.0,
+            size=100,
+        )
+        cache.put(parsed)
+        assert cache.get("test.py", "abc123") is not None
+        cache.close()
+
+        monkeypatch.setattr(
+            cache_module,
+            "CACHE_VERSION",
+            f"{cache_module.CACHE_VERSION}-next",
+        )
+        changed_cache = ExtractionCache(str(cache_path))
+        assert changed_cache.get("test.py", "abc123") is None
+        assert changed_cache.stats()["misses"] == 1
+        changed_cache.close()
 
 
 class TestCacheIntegration:

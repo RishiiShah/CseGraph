@@ -158,6 +158,48 @@ def test_context_auto_upgrades_to_standard_when_sufficiency_fails(tmp_path):
     assert any("source_text" in node for node in payload["nodes"])
 
 
+def test_context_auto_uses_minimal_response_before_promoting(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "index.db"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "csegraph.json").write_text(
+        json.dumps({"semantic_threshold_relaxed": 0.2}),
+        encoding="utf-8",
+    )
+    (repo / "helpers.py").write_text(
+        "def clean_name(value: str) -> str:\n    return value.strip().lower()\n",
+        encoding="utf-8",
+    )
+    (repo / "service.py").write_text(
+        "from helpers import clean_name\n\n"
+        "def create_user(name: str) -> dict:\n"
+        "    normalized = clean_name(name)\n"
+        "    return {'clean_name': normalized}\n",
+        encoding="utf-8",
+    )
+    for index in range(18):
+        (repo / f"noise_{index}.py").write_text(
+            f"def unrelated_{index}():\n"
+            f"    return 'omega_{index} zeta_{index} theta_{index} lambda_{index}'\n",
+            encoding="utf-8",
+        )
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="create_user clean_name",
+        target="create_user",
+        profile="small",
+        detail_level="auto",
+    )
+    payload = to_dict(context)
+
+    assert payload["detail_level"] == "auto"
+    assert payload["returned_detail_level"] == "minimal"
+    assert payload["sufficiency"]["sufficient"] is True
+    assert len(payload["nodes"]) <= 5
+    assert [node["name"] for node in payload["nodes"]] == ["create_user", "clean_name"]
+
+
 def test_context_minimal_detail_never_includes_source(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "index.db"

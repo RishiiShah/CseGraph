@@ -240,6 +240,33 @@ class TestPostprocessService:
         conn.close()
         assert count_after == result.fts_entries
 
+    def test_postprocess_fts_does_not_mix_live_source_into_stale_index(self, tmp_path):
+        repo, db = _make_repo(
+            tmp_path,
+            {"app.py": "def indexed_name():\n    return 'indexed_token'\n"},
+        )
+        Path(repo, "app.py").write_text(
+            "def live_name():\n    return 'live_only_token'\n",
+            encoding="utf-8",
+        )
+
+        result = PostprocessService(db).postprocess(level="minimal")
+        assert result.fts_entries > 0
+
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT source FROM lexical_index
+            WHERE node_id = 'symbol::app.py::function::indexed_name'
+            """
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert "indexed" not in row["source"]
+        assert "live" not in row["source"]
+
     def test_postprocess_communities(self, tmp_path):
         _repo, db = _make_repo(tmp_path, SAMPLE_FILES)
         result = PostprocessService(db).postprocess(no_fts=True)
