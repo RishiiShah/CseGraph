@@ -116,6 +116,9 @@ env/bin/python tools/csegraph_dev.py report . --json
 env/bin/python tools/csegraph_dev.py embeddings status .
 ```
 
+See [Token Reduction Benchmark](token-reduction-benchmark.md) for measured
+context-size reductions from benchmark runs on this repository.
+
 There is no `csegraph-dev` console script.
 
 ## Profiles And Config
