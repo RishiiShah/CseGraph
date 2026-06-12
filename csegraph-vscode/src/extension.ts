@@ -7,6 +7,7 @@ let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let resolvedCliByRoot = new Map<string, string>();
+let loggedFallbacks = new Set<string>();
 
 export function activate(context: vscode.ExtensionContext): void {
   outputChannel = vscode.window.createOutputChannel("CseGraph");
@@ -55,6 +56,17 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(watcher);
 
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      updateStatusBar();
+    })
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      updateStatusBar();
+    })
+  );
+
   updateStatusBar();
 }
 
@@ -100,7 +112,8 @@ async function cmdContext(): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   const args = [task, "--format", "markdown"];
   if (editor) {
-    const symbol = getWordAtCursor(editor);
+    const selection = editor.document.getText(editor.selection).trim();
+    const symbol = selection || getWordAtCursor(editor);
     if (symbol) {
       args.push("--target", symbol);
     }
@@ -113,7 +126,8 @@ async function cmdInspect(): Promise<void> {
   let symbol: string | undefined;
 
   if (editor) {
-    symbol = getWordAtCursor(editor);
+    const selection = editor.document.getText(editor.selection).trim();
+    symbol = selection || getWordAtCursor(editor);
   }
   if (!symbol) {
     symbol = await vscode.window.showInputBox({
@@ -362,9 +376,12 @@ function getCliCommand(root: string): string {
 
   // Don't cache the fallback — retry discovery on every call so that
   // workspace folders or venvs created after activation are picked up.
-  outputChannel.appendLine(
-    `[cli] csegraph not found in venv (root=${root ?? "none"}), falling back to PATH`
-  );
+  if (!loggedFallbacks.has(root)) {
+    loggedFallbacks.add(root);
+    outputChannel.appendLine(
+      `[cli] csegraph not found in venv (root=${root ?? "none"}), falling back to PATH`
+    );
+  }
   return "csegraph";
 }
 

@@ -92,6 +92,16 @@ class ContextService:
                 label = resolution.requested or target or ""
                 raise ValueError(f"Target '{label}' did not match any indexed symbol.")
             target_id = resolution.target_id
+            if target_id and target_id not in symbols:
+                target_node = index.conn.execute(
+                    "SELECT id, parent_id, type AS kind, name, path AS file_path, "
+                    "language, start_line, end_line, source_hash, "
+                    "parent_id AS parent_symbol_id FROM nodes "
+                    "WHERE id = ? AND type = 'file'",
+                    (target_id,),
+                ).fetchone()
+                if target_node:
+                    symbols[target_id] = dict(target_node)
             fts_seed = fts_lexical_scores(index.conn, task)
             scores, evidence = lexical_scores(task, symbols, summaries, fts_seed=fts_seed)
             if target_id:
@@ -655,9 +665,20 @@ def _line_range(start_line: Optional[int], end_line: Optional[int]) -> Optional[
 
 def _read_node_source(repo_root: str, row: Dict[str, Any]) -> Optional[str]:
     file_path = row.get("file_path")
+    kind = row.get("kind")
+    if not file_path:
+        return None
+    if kind == "file":
+        try:
+            full_path = (Path(repo_root).resolve() / file_path).resolve()
+            if not full_path.is_relative_to(Path(repo_root).resolve()):
+                return None
+            return full_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return None
     start_line = row.get("start_line")
     end_line = row.get("end_line")
-    if not file_path or start_line is None or end_line is None:
+    if start_line is None or end_line is None:
         return None
     return read_source_lines(repo_root, str(file_path), int(start_line), int(end_line))
 

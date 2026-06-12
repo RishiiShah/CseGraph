@@ -1,6 +1,7 @@
 """Target resolution for context retrieval (exact match, ambiguity, inference)."""
 from __future__ import annotations
 
+import posixpath
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -145,16 +146,34 @@ def _candidate_payload(row: Dict[str, Any], *, match: str) -> Dict[str, Any]:
 
 def _resolve_file_path(target: str, repo_root: str, index: ProjectIndex) -> str | None:
     try:
+        norm_path = _normalized_repo_relative_path(target)
+        if norm_path:
+            row = index.conn.execute(
+                "SELECT id FROM nodes WHERE type = 'file' AND LOWER(path) = ? LIMIT 1",
+                (norm_path,),
+            ).fetchone()
+            if row is not None:
+                return row["id"]
+
         abs_target_path = Path(target).resolve()
         resolved_root = Path(repo_root).resolve()
         if not abs_target_path.is_relative_to(resolved_root):
             return None
         rel_path = abs_target_path.relative_to(resolved_root).as_posix()
         row = index.conn.execute(
-            "SELECT id FROM nodes WHERE LOWER(path) = ?"
-            " ORDER BY type = 'file' DESC LIMIT 1",
+            "SELECT id FROM nodes WHERE type = 'file' AND LOWER(path) = ? LIMIT 1",
             (rel_path.lower(),),
         ).fetchone()
         return row["id"] if row is not None else None
     except Exception:
         return None
+
+
+def _normalized_repo_relative_path(target: str) -> str | None:
+    normalized = target.replace("\\", "/").strip()
+    if not normalized or normalized.startswith("/"):
+        return None
+    normalized = posixpath.normpath(normalized)
+    if normalized in {"", ".", ".."} or normalized.startswith("../"):
+        return None
+    return normalized.lower()
