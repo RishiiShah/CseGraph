@@ -57,11 +57,15 @@ Open the command palette (`Ctrl+Shift+P`) and type "CseGraph":
 | `Ctrl+Shift+G` (`Cmd+Shift+G` on Mac) | Get Context for Task |
 | `Ctrl+Shift+I` (`Cmd+Shift+I` on Mac) | Inspect Symbol |
 
+> [!NOTE]
+> If you have text selected in the editor, both **Get Context for Task** and **Inspect Symbol** will automatically use the active selection as their target. Otherwise, they fall back to the word under the cursor.
+
 ## Right-Click Menu
 
 In the editor, right-click to access:
 
-- **Inspect Symbol** — inspects the word at cursor
+- **Inspect Symbol** — inspects the selected text or word at cursor
+
 
 ## Status Bar
 

@@ -98,6 +98,14 @@ env/bin/csegraph daemon start --alias app
 env/bin/csegraph daemon status
 ```
 
+Supported export formats:
+- `html`: Generates an interactive web graph visualization featuring an electric blue theme, N-body repulsion physics, neighborhood isolation focus, and code summary tooltips.
+- `tree`: Generates an interactive file tree visualization.
+- `json`: Exports a portable JSON graph representation.
+- `graphml`: Exports in standard GraphML format.
+- `obsidian`: Exports markdown notes formatted as an Obsidian vault.
+
+
 ## Maintainer Tooling
 
 Development analytics stay repo-local:
@@ -131,8 +139,16 @@ Profiles trade breadth against token budget:
 
 Config files: `csegraph.json`, `csegraph.toml`, or `--config`.
 
-Supported config keys include profile, thresholds, top-k, graph radius, context
-budget, and raw-code budget. Unknown keys raise `ValueError`.
+Supported config keys in `csegraph.json` or `csegraph.toml` include:
+- `profile`: Base profile name to load (`small`, `medium`, or `large`).
+- `top_k`: Number of lexical query candidates to retrieve.
+- `graph_radius`: Radius of the neighborhood expansion.
+- `context_budget`: Maximum budget for the context package in tokens.
+- `raw_code_budget`: Token budget limit for raw code source nodes.
+- `max_bytes`: Hard ceiling on the serialized JSON response size.
+- `dep_threshold`, `entity_threshold`, `semantic_threshold`, `semantic_threshold_relaxed`, `confidence_threshold`: Various retrieval filtering thresholds.
+
+All keys must use underscore notation matching these Python/JSON property names. Unknown keys raise `ValueError`.
 
 ## Ignore Policy
 

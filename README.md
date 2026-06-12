@@ -203,6 +203,14 @@ csegraph registry register /path/to/repo --alias myapp
 csegraph daemon start --alias myapp
 ```
 
+Supported export formats:
+- `html`: Generates an interactive web graph visualization featuring an electric blue theme, N-body repulsion physics, neighborhood isolation focus, and code summary tooltips.
+- `tree`: Generates an interactive file tree visualization.
+- `json`: Exports a portable JSON graph representation.
+- `graphml`: Exports in standard GraphML format.
+- `obsidian`: Exports markdown notes formatted as an Obsidian vault.
+
+
 ## Maintainer Tooling
 
 CseGraph development analytics and experimental commands are repo-local only:
