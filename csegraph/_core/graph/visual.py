@@ -65,8 +65,17 @@ def _build_graph_nodes(all_nodes: Dict[str, Dict[str, Any]]) -> List[Dict[str, A
             "parent_id": row.get("parent_id"),
             "child_count": child_counts.get(node_id, 0),
             "line_range": _line_range(row.get("start_line"), row.get("end_line")),
+            "search_text": _search_text(
+                node_id,
+                row.get("name", ""),
+                row.get("path") or row.get("file_path", ""),
+            ),
         })
     return result
+
+
+def _search_text(node_id: str, name: Any, path: Any) -> str:
+    return " ".join(str(part).lower() for part in (name, path, node_id) if part)
 
 
 def _line_range(start_line: Any, end_line: Any) -> List[int] | None:

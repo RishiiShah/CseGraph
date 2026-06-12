@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from csegraph import ContextService, IndexService
 from csegraph._core.core.serializer import to_dict
 
@@ -54,3 +56,26 @@ def test_unique_symbol_name_still_resolves(tmp_path):
 
     assert payload["target_resolution"] == "resolved"
     assert payload["nodes"]
+
+
+@pytest.mark.parametrize("target", ["a.py", "./a.py"])
+def test_repo_relative_target_resolves_regardless_of_cwd(tmp_path, monkeypatch, target):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "index.db"
+    _write_unique_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    # Change CWD to a temp directory outside the repo
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    monkeypatch.chdir(outside_dir)
+
+    # Resolve target using a repo-relative path.
+    context = ContextService(db_path).build_context(
+        task="explain this",
+        target=target,
+        profile="small",
+    )
+    payload = to_dict(context)
+    assert payload["target_resolution"] == "resolved"
+    assert any(node["name"] == "a.py" for node in payload["nodes"])

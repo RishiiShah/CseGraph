@@ -251,6 +251,64 @@ def test_graph_visual_export_has_click_to_expand_nodes(tmp_path):
     assert "function visibleNodeSet()" in content
 
 
+def test_graph_visual_export_uses_cached_search_and_linear_edge_ticks(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    output_html = repo / ".scratch" / "csegraph" / "out.html"
+    run_cli(
+        "export",
+        "--repo",
+        str(repo),
+        "--format",
+        "html",
+        "--output",
+        str(output_html),
+        "--json",
+    )
+
+    content = output_html.read_text(encoding="utf-8")
+    data = _html_graph_data(content)
+    create_user = next(node for node in data["nodes"] if node["name"] == "create_user")
+    assert "create_user" in create_user["search_text"]
+    assert "service.py" in create_user["search_text"]
+    assert "symbol::service.py::function::create_user" in create_user["search_text"]
+    assert "function rebuildVisibleState()" in content
+    assert "var visibleNodeIds = [];" in content
+    assert "var activeEdges = [];" in content
+    assert "for (var ei = 0; ei < activeEdges.length; ei++)" in content
+    assert "function scheduleRender()" in content
+    assert "n.name.toLowerCase()" not in content
+
+
+def test_graph_visual_export_has_default_pan_zoom_drag_interactions(tmp_path):
+    repo = tmp_path / "repo"
+    _write_nested_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    output_html = repo / ".scratch" / "csegraph" / "out.html"
+    run_cli(
+        "export",
+        "--repo",
+        str(repo),
+        "--format",
+        "html",
+        "--output",
+        str(output_html),
+        "--json",
+    )
+
+    content = output_html.read_text(encoding="utf-8")
+    assert "function toWorld(x, y)" in content
+    assert "canvas.addEventListener(\"wheel\"" in content
+    assert "canvas.addEventListener(\"mousemove\"" in content
+    assert "canvas.addEventListener(\"mouseup\"" in content
+    assert "dragNodeIndex" in content
+    assert "panStart" in content
+    assert "function showDetail(i)" in content
+
+
 def test_graph_visual_export_default_output_path(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
