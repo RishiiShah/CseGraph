@@ -353,7 +353,18 @@ def test_install_dry_run_json_reports_auto_targets(tmp_path):
     assert result["dry_run"] is True
     assert result["server_command"] == "csegraph"
     assert result["server_args"] == ["serve"]
-    assert {target["platform"] for target in result["installed"]} == {"claude-code"}
+    assert {target["platform"] for target in result["installed"]} == {
+        "codex",
+        "claude-code",
+        "cursor",
+        "gemini-cli",
+        "kiro",
+        "copilot",
+        "instructions",
+        "hooks:claude-code",
+        "hooks:codex",
+        "gitignore",
+    }
 
 
 def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
@@ -370,7 +381,7 @@ def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
     assert result["installed"][0]["path"].endswith(os.path.join(".cursor", "mcp.json"))
 
 
-def test_install_codex_dry_run_json_uses_user_config(tmp_path):
+def test_install_codex_dry_run_json_uses_repo_config(tmp_path):
     result = run_cli(
         "install",
         str(tmp_path),
@@ -382,6 +393,41 @@ def test_install_codex_dry_run_json_uses_user_config(tmp_path):
 
     assert result["installed"][0]["platform"] == "codex"
     assert result["installed"][0]["path"].endswith(os.path.join(".codex", "config.toml"))
+    assert result["installed"][0]["scope"] == "project"
+    assert {target["platform"] for target in result["installed"]} >= {
+        "codex",
+        "instructions",
+        "hooks:codex",
+        "gitignore",
+    }
+
+
+def test_install_codex_no_hooks_skips_hook_targets(tmp_path):
+    result = run_cli(
+        "install",
+        str(tmp_path),
+        "--platform",
+        "codex",
+        "--no-hooks",
+        "--dry-run",
+        "--json",
+    )
+
+    assert "hooks:codex" not in {target["platform"] for target in result["installed"]}
+
+
+def test_install_codex_no_gitignore_skips_gitignore_target(tmp_path):
+    result = run_cli(
+        "install",
+        str(tmp_path),
+        "--platform",
+        "codex",
+        "--no-gitignore",
+        "--dry-run",
+        "--json",
+    )
+
+    assert "gitignore" not in {target["platform"] for target in result["installed"]}
 
 
 def test_benchmark_json_profiles_core_commands(tmp_path):
