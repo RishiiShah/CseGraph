@@ -17,10 +17,13 @@ keywords = ["code graph", "context", "coding agents", "mcp", "tree-sitter"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Typing :: Typed",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 dependencies = [
@@ -55,6 +58,12 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=9.0.3", "setuptools>=68"]
+dev = [
+    "coverage[toml]>=7.6",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "ruff>=0.8",
+]
 embeddings = ["sentence-transformers>=1.7.1"]
 
 [project.urls]
@@ -70,11 +79,49 @@ csegraph = "csegraph._cli.main:main"
 include = ["csegraph*"]
 
 [tool.setuptools.package-data]
+"csegraph" = ["py.typed"]
 "csegraph._core.graph.templates" = ["*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = ["csegraph"]
+omit = [
+    "tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    'if __name__ == "__main__":',
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E9",
+    "F63",
+    "F7",
+    "F82",
+]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["csegraph", "tools"]
+ignore_missing_imports = true
+show_error_codes = true
+warn_unused_configs = true
+pretty = true
 
 [tool.vulture]
 paths = ["csegraph", "tools"]

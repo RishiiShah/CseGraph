@@ -10,6 +10,13 @@ env/bin/python -m pip install --upgrade pip
 env/bin/python -m pip install -e ".[test]"
 ```
 
+Optional local quality tools are grouped in the `dev` extra:
+
+```bash
+env/bin/python -m pip install -e ".[test,dev]"
+env/bin/python -m pre_commit install
+```
+
 For the VS Code extension:
 
 ```bash
@@ -24,6 +31,25 @@ Run the Python verification suite:
 ```bash
 env/bin/python -m pytest tests/ -q
 env/bin/python -m compileall -q csegraph tools csegraph-vscode
+```
+
+Run optional local quality checks:
+
+```bash
+env/bin/python -m ruff check .
+env/bin/python -m mypy
+env/bin/python -m coverage run -m pytest tests/ -q
+env/bin/python -m coverage report
+env/bin/python -m pre_commit run --all-files
+```
+
+The pre-commit configuration runs lightweight TOML/YAML validation and
+conservative Ruff checks by default. Mypy and coverage are available as manual
+hooks:
+
+```bash
+env/bin/python -m pre_commit run mypy --hook-stage manual --all-files
+env/bin/python -m pre_commit run pytest-coverage --hook-stage manual --all-files
 ```
 
 Run package-layout smoke tests:

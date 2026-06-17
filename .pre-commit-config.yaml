@@ -1,0 +1,28 @@
+minimum_pre_commit_version: "4.0.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-toml
+      - id: check-yaml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: python -m mypy
+        language: system
+        pass_filenames: false
+        stages: [manual]
+      - id: pytest-coverage
+        name: pytest coverage
+        entry: python -m coverage run -m pytest tests/ -q
+        language: system
+        pass_filenames: false
+        stages: [manual]

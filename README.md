@@ -1,5 +1,11 @@
 # csegraph
 
+[![CI](https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml/badge.svg)](https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/csegraph.svg)](https://pypi.org/project/csegraph/)
+[![Python](https://img.shields.io/pypi/pyversions/csegraph.svg)](https://pypi.org/project/csegraph/)
+[![License](https://img.shields.io/pypi/l/csegraph.svg)](LICENSE)
+[![VS Code installs](https://img.shields.io/visual-studio-marketplace/i/rishiishah.csegraph-vscode?label=VS%20Code%20installs)](https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode)
+
 CseGraph is a **context engine for coding agents**. Its only job is to hand an agent the accurate, minimal slice of code context needed to make a correct retrieval or edit, so the agent spends fewer tokens and skips tool calls it would otherwise make (broad grep, full-file read, repeated lookups).
 
 It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits.
