@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from csegraph._core.core.models import McpInstallResult, McpInstallTarget
 from csegraph._core.mcp_resolve import build_mcp_server_entry
@@ -54,25 +55,96 @@ _INSTRUCTION_FILES = {
     "CODEX.md": _INSTRUCTION_BODY,
 }
 
+_PLATFORM_INSTRUCTION_FILES = {
+    "auto": tuple(_INSTRUCTION_FILES),
+    "codex": ("AGENTS.md", "CODEX.md"),
+    "claude-code": ("CLAUDE.md",),
+    "cursor": ("AGENTS.md",),
+    "gemini-cli": ("GEMINI.md",),
+    "kiro": ("AGENTS.md",),
+    "copilot": ("AGENTS.md",),
+    "vscode": ("AGENTS.md",),
+}
+
+
+_RUNTIME_GITIGNORE_ENTRIES = (".csegraph/",)
+
+
+def _csegraph_hook_command(command: str, args: str) -> str:
+    executable = shlex.quote(command)
+    return f'cd "$(git rev-parse --show-toplevel)" && {executable} {args} >/dev/null 2>&1 || true'
+
+
+def _claude_hooks(command: str) -> dict[str, Any]:
+    return {
+        "hooks": {
+            "PostToolUse": [
+                {
+                    "matcher": "Edit|Write",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": _csegraph_hook_command(command, "refresh . --profile small"),
+                        }
+                    ],
+                }
+            ],
+            "PreToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": _csegraph_hook_command(command, "status ."),
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+
+def _codex_hooks(command: str) -> dict[str, Any]:
+    return {
+        "hooks": {
+            "PostToolUse": [
+                {
+                    "matcher": "Edit|Write|apply_patch",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": _csegraph_hook_command(command, "refresh . --profile small"),
+                            "timeout": 120,
+                            "statusMessage": "Refreshing CseGraph index",
+                        }
+                    ],
+                }
+            ],
+            "PreToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": _csegraph_hook_command(command, "status ."),
+                            "timeout": 30,
+                            "statusMessage": "Checking CseGraph index",
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+
 _HOOK_CONFIGS: dict[str, dict[str, Any]] = {
     "claude-code": {
         "path": Path(".claude") / "settings.json",
-        "build": lambda cmd: {
-            "hooks": {
-                "PostToolUse": [
-                    {
-                        "matcher": "Edit|Write",
-                        "hooks": [{"type": "command", "command": f"{cmd} refresh . --profile small 2>$null"}],
-                    }
-                ],
-                "PreToolUse": [
-                    {
-                        "matcher": "Bash",
-                        "hooks": [{"type": "command", "command": f"{cmd} status 2>$null || true"}],
-                    }
-                ],
-            }
-        },
+        "build": _claude_hooks,
+    },
+    "codex": {
+        "path": Path(".codex") / "hooks.json",
+        "build": _codex_hooks,
     },
 }
 
@@ -117,8 +189,9 @@ class McpInstallService:
         *,
         platform: Platform = "auto",
         dry_run: bool = False,
-        instructions: bool = False,
-        hooks: bool = False,
+        instructions: bool | None = None,
+        hooks: bool | None = None,
+        gitignore: bool | None = None,
     ) -> McpInstallResult:
         if platform not in _PLATFORMS:
             raise ValueError(f"Unsupported MCP install platform: {platform}")
@@ -133,9 +206,9 @@ class McpInstallService:
         )
 
         if platform == "auto":
-            self._install_project_json("claude-code", dry_run, result, force=True)
-            for candidate in ("cursor", "gemini-cli", "kiro", "copilot"):
-                self._install_project_json(candidate, dry_run, result, force=False)
+            self._install_codex(dry_run, result)
+            for candidate in ("claude-code", "cursor", "gemini-cli", "kiro", "copilot"):
+                self._install_project_json(candidate, dry_run, result, force=True)
         elif platform == "codex":
             self._install_codex(dry_run, result)
         elif platform == "vscode":
@@ -143,10 +216,26 @@ class McpInstallService:
         else:
             self._install_project_json(platform, dry_run, result, force=True)
 
-        if instructions:
-            self._install_instructions(dry_run, result)
-        if hooks:
-            self._install_agent_hooks(dry_run, result)
+        if instructions is not False:
+            self._install_instructions(
+                dry_run,
+                result,
+                platform="auto" if instructions is True else platform,
+            )
+        if hooks is not False:
+            self._install_agent_hooks(
+                dry_run,
+                result,
+                platform="auto" if hooks is True else platform,
+            )
+        if gitignore is not False:
+            self._install_gitignore(
+                dry_run,
+                result,
+                platform=platform,
+                instructions=instructions,
+                hooks=hooks,
+            )
 
         return result
 
@@ -192,7 +281,7 @@ class McpInstallService:
         )
 
     def _install_codex(self, dry_run: bool, result: McpInstallResult) -> None:
-        path = self.home / ".codex" / "config.toml"
+        path = self.repo / ".codex" / "config.toml"
         action = "updated" if path.exists() else "created"
 
         if not dry_run:
@@ -216,7 +305,7 @@ class McpInstallService:
             McpInstallTarget(
                 platform="codex",
                 path=str(path),
-                scope="user",
+                scope="project",
                 action=action,
                 dry_run=dry_run,
             )
@@ -290,8 +379,15 @@ class McpInstallService:
             )
         )
 
-    def _install_instructions(self, dry_run: bool, result: McpInstallResult) -> None:
-        for filename, body in _INSTRUCTION_FILES.items():
+    def _install_instructions(
+        self,
+        dry_run: bool,
+        result: McpInstallResult,
+        *,
+        platform: str,
+    ) -> None:
+        for filename in _instruction_filenames(platform):
+            body = _INSTRUCTION_FILES[filename]
             path = self.repo / filename
             if path.exists():
                 existing = path.read_text(encoding="utf-8")
@@ -326,16 +422,22 @@ class McpInstallService:
                 )
             )
 
-    def _install_agent_hooks(self, dry_run: bool, result: McpInstallResult) -> None:
-        for platform_name, cfg in _HOOK_CONFIGS.items():
+    def _install_agent_hooks(
+        self,
+        dry_run: bool,
+        result: McpInstallResult,
+        *,
+        platform: str,
+    ) -> None:
+        for platform_name in _hook_platforms(platform):
+            cfg = _HOOK_CONFIGS[platform_name]
             path = self.repo / cfg["path"]
             action = "updated" if path.exists() else "created"
 
             if not dry_run:
                 data = _read_json_object(path)
                 hook_data = cfg["build"](self.command)
-                for key, value in hook_data.items():
-                    data[key] = value
+                _merge_hooks(data, hook_data)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -348,6 +450,57 @@ class McpInstallService:
                     dry_run=dry_run,
                 )
             )
+
+    def _install_gitignore(
+        self,
+        dry_run: bool,
+        result: McpInstallResult,
+        *,
+        platform: str,
+        instructions: bool | None,
+        hooks: bool | None,
+    ) -> None:
+        path = self.repo / ".gitignore"
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        missing = [
+            entry
+            for entry in _gitignore_entries(platform, instructions=instructions, hooks=hooks)
+            if not _gitignore_covers(entry, existing)
+        ]
+
+        if not missing:
+            result.skipped.append(
+                McpInstallTarget(
+                    platform="gitignore",
+                    path=str(path),
+                    scope="project",
+                    action="skipped",
+                    dry_run=dry_run,
+                    reason="already ignores csegraph setup files",
+                )
+            )
+            return
+
+        action = "updated" if path.exists() else "created"
+        if not dry_run:
+            section = "\n".join(
+                ["# CseGraph local setup (regenerate with `csegraph install`)", *missing]
+            )
+            if existing.strip():
+                content = existing.rstrip() + "\n\n" + section + "\n"
+            else:
+                content = section + "\n"
+            path.write_text(content, encoding="utf-8")
+
+        result.installed.append(
+            McpInstallTarget(
+                platform="gitignore",
+                path=str(path),
+                scope="project",
+                action=action,
+                dry_run=dry_run,
+            )
+        )
 
     def _server_entry(self, *, vscode_style: bool) -> dict[str, Any]:
         return build_mcp_server_entry(
@@ -367,3 +520,113 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"MCP config must be a JSON object: {path}")
     return data
+
+
+def _instruction_filenames(platform: str) -> Sequence[str]:
+    return _PLATFORM_INSTRUCTION_FILES.get(platform, ("AGENTS.md",))
+
+
+def _hook_platforms(platform: str) -> Sequence[str]:
+    if platform == "auto":
+        return tuple(_HOOK_CONFIGS)
+    if platform in _HOOK_CONFIGS:
+        return (platform,)
+    return ()
+
+
+def _merge_hooks(data: dict[str, Any], hook_data: dict[str, Any]) -> None:
+    incoming_hooks = hook_data.get("hooks")
+    if not isinstance(incoming_hooks, dict):
+        data.update(hook_data)
+        return
+
+    existing_hooks = data.setdefault("hooks", {})
+    if not isinstance(existing_hooks, dict):
+        data["hooks"] = existing_hooks = {}
+
+    for event_name, incoming_groups in incoming_hooks.items():
+        if not isinstance(incoming_groups, list):
+            existing_hooks[event_name] = incoming_groups
+            continue
+        existing_groups = existing_hooks.setdefault(event_name, [])
+        if not isinstance(existing_groups, list):
+            existing_hooks[event_name] = existing_groups = []
+        for incoming_group in incoming_groups:
+            _upsert_hook_group(existing_groups, incoming_group)
+
+
+def _upsert_hook_group(existing_groups: list[Any], incoming_group: Any) -> None:
+    incoming_key = _hook_group_key(incoming_group)
+    for idx, existing_group in enumerate(existing_groups):
+        if _hook_group_key(existing_group) == incoming_key:
+            existing_groups[idx] = incoming_group
+            return
+    existing_groups.append(incoming_group)
+
+
+def _hook_group_key(group: Any) -> tuple[Any, ...]:
+    if not isinstance(group, dict):
+        return (id(group),)
+    hooks = group.get("hooks") if isinstance(group.get("hooks"), list) else []
+    handler_keys = tuple(_hook_handler_key(handler) for handler in hooks)
+    return (group.get("matcher"), handler_keys)
+
+
+def _hook_handler_key(handler: Any) -> Any:
+    if not isinstance(handler, dict):
+        return id(handler)
+    return handler.get("statusMessage") or handler.get("command")
+
+
+def _gitignore_entries(
+    platform: str,
+    *,
+    instructions: bool | None,
+    hooks: bool | None,
+) -> tuple[str, ...]:
+    entries: list[str] = list(_RUNTIME_GITIGNORE_ENTRIES)
+    entries.extend(_platform_config_gitignore_entries(platform))
+
+    if instructions is not False:
+        instruction_platform = "auto" if instructions is True else platform
+        entries.extend(_instruction_filenames(instruction_platform))
+
+    if hooks is not False:
+        hook_platform = "auto" if hooks is True else platform
+        entries.extend(str(_HOOK_CONFIGS[name]["path"]) for name in _hook_platforms(hook_platform))
+
+    return tuple(dict.fromkeys(entries))
+
+
+def _platform_config_gitignore_entries(platform: str) -> tuple[str, ...]:
+    if platform == "auto":
+        entries = [".codex/config.toml"]
+        entries.extend(str(target[0]) for target in _PROJECT_JSON_TARGETS.values())
+        return tuple(entries)
+    if platform == "codex":
+        return (".codex/config.toml",)
+    if platform == "vscode":
+        return (
+            ".vscode/settings.json",
+            ".vscode/tasks.json",
+            ".vscode/extensions.json",
+        )
+    if platform in _PROJECT_JSON_TARGETS:
+        return (str(_PROJECT_JSON_TARGETS[platform][0]),)
+    return ()
+
+
+def _gitignore_covers(entry: str, text: str) -> bool:
+    entry = entry.strip().lstrip("/")
+    entry_as_dir = entry.rstrip("/")
+    for raw_line in text.splitlines():
+        pattern = raw_line.strip()
+        if not pattern or pattern.startswith("#") or pattern.startswith("!"):
+            continue
+        pattern = pattern.lstrip("/")
+        pattern_as_dir = pattern.rstrip("/")
+        if pattern == entry or pattern_as_dir == entry_as_dir:
+            return True
+        if entry.startswith(pattern_as_dir + "/"):
+            return True
+    return False

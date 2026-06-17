@@ -278,8 +278,48 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Executable command used by MCP clients to launch csegraph.",
     )
     install.add_argument("--dry-run", action="store_true", help="Show planned writes without modifying files.")
-    install.add_argument("--instructions", action="store_true", help="Generate platform instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md).")
-    install.add_argument("--hooks", action="store_true", help="Install agent hooks for auto-refresh and status checks.")
+    instructions_group = install.add_mutually_exclusive_group()
+    instructions_group.add_argument(
+        "--instructions",
+        dest="instructions",
+        action="store_true",
+        default=None,
+        help="Generate all agent instruction files (default: platform-scoped guidance).",
+    )
+    instructions_group.add_argument(
+        "--no-instructions",
+        dest="instructions",
+        action="store_false",
+        help="Skip agent instruction files.",
+    )
+    hooks_group = install.add_mutually_exclusive_group()
+    hooks_group.add_argument(
+        "--hooks",
+        dest="hooks",
+        action="store_true",
+        default=None,
+        help="Install all supported agent hooks (default: platform-scoped hooks).",
+    )
+    hooks_group.add_argument(
+        "--no-hooks",
+        dest="hooks",
+        action="store_false",
+        help="Skip agent hooks.",
+    )
+    gitignore_group = install.add_mutually_exclusive_group()
+    gitignore_group.add_argument(
+        "--gitignore",
+        dest="gitignore",
+        action="store_true",
+        default=None,
+        help="Add generated local setup paths to .gitignore (default).",
+    )
+    gitignore_group.add_argument(
+        "--no-gitignore",
+        dest="gitignore",
+        action="store_false",
+        help="Do not modify .gitignore.",
+    )
     _add_json(install)
 
     watch = subparsers.add_parser("watch", help="Watch for file changes and auto-refresh the index.")
@@ -660,6 +700,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             dry_run=args.dry_run,
             instructions=args.instructions,
             hooks=args.hooks,
+            gitignore=args.gitignore,
         )
     if args.command == "report":
         from csegraph._core.graph.report import ReportService
