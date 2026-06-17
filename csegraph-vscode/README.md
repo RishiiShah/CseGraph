@@ -4,7 +4,7 @@ Lightweight VS Code extension for [CseGraph](https://github.com/RishiiShah/CseGr
 
 ## Prerequisites
 
-- **CseGraph CLI matching this extension version or newer** installed
+- **CseGraph CLI installed**
   - Install the package: `pip install csegraph`
   - Or install from source at the repository root: `env/bin/pip install -e .`
 

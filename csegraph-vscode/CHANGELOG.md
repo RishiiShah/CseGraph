@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.2
+
+- Added the Marketplace icon metadata and packaged icon asset.
+- Updated install docs to point users at the Marketplace flow first.
+- Kept the editable SVG source in the repository while excluding it from the VSIX package.
+
 ## 1.7.1
 
 - Bumped package version to 1.7.1 and updated metadata/installation references (README, package.json, package-lock.json).
