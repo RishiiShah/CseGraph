@@ -46,12 +46,16 @@ CORE_LANGUAGE_DEPENDENCIES = [
 ]
 
 
-def _project_metadata(path: Path) -> dict:
+def _pyproject_data(path: Path) -> dict:
     pyproject = path / "pyproject.toml"
     if "tomllib" in globals():
         with pyproject.open("rb") as fh:
-            return tomllib.load(fh)["project"]
-    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))["project"]
+            return tomllib.load(fh)
+    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))
+
+
+def _project_metadata(path: Path) -> dict:
+    return _pyproject_data(path)["project"]
 
 
 def _offline_pip_env() -> dict:
@@ -92,15 +96,27 @@ def _create_test_venv(path: Path) -> None:
 def test_one_distribution_package_layout_and_versions():
     repo_root = Path(__file__).resolve().parents[2]
 
-    root_project = _project_metadata(repo_root)
+    pyproject = _pyproject_data(repo_root)
+    root_project = pyproject["project"]
 
     assert root_project["name"] == "csegraph"
     assert root_project["version"] == "1.7.1"
     assert root_project["readme"] == "README.md"
+    assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
     assert set(root_project.get("optional-dependencies", {})) == {"test", "dev", "embeddings"}
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
+    classifiers = set(root_project["classifiers"])
+    assert "Typing :: Typed" in classifiers
+    assert {
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+    }.issubset(classifiers)
+    assert pyproject["tool"]["setuptools"]["package-data"]["csegraph"] == ["py.typed"]
     assert root_project["urls"] == {
         "Repository": "https://github.com/RishiiShah/CseGraph",
         "Issues": "https://github.com/RishiiShah/CseGraph/issues",
@@ -109,6 +125,7 @@ def test_one_distribution_package_layout_and_versions():
     }
 
     assert (repo_root / "csegraph" / "__init__.py").exists()
+    assert (repo_root / "csegraph" / "py.typed").read_text(encoding="utf-8") == ""
     assert (repo_root / "csegraph" / "_core" / "__init__.py").exists()
     assert (repo_root / "csegraph" / "_cli" / "__init__.py").exists()
     assert (repo_root / "csegraph-vscode" / "package.json").exists()
