@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from csegraph._core.core.models import KeyEntity, MinimalResult, NextToolSuggestion
+from csegraph._core.core.models import IndexHealth, KeyEntity, MinimalResult, NextToolSuggestion
 from csegraph._core.corpus_health import (
     assess_index_health,
     collect_index_metrics,
@@ -208,7 +208,7 @@ def _detect_intent(task: Optional[str]) -> str:
 def _suggestions_for_intent(
     intent: str,
     task: Optional[str],
-    health: Optional[object] = None,
+    health: Optional[IndexHealth] = None,
 ) -> List[NextToolSuggestion]:
     task_arg = task or ""
     if health and health.verdict in ("stale", "rebuild") and intent != "explore":

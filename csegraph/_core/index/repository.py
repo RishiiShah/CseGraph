@@ -229,7 +229,10 @@ class ProjectIndex:
             ),
         )
         self.conn.commit()
-        return int(cur.lastrowid)
+        row_id = cur.lastrowid
+        if row_id is None:
+            raise RuntimeError("SQLite did not return a retrieval run id")
+        return int(row_id)
 
     def insert_retrieval_context(
         self,

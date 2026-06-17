@@ -98,7 +98,7 @@ def test_one_distribution_package_layout_and_versions():
     assert root_project["version"] == "1.7.1"
     assert root_project["readme"] == "README.md"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
+    assert set(root_project.get("optional-dependencies", {})) == {"test", "dev", "embeddings"}
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
     assert root_project["urls"] == {
@@ -322,6 +322,7 @@ def test_source_first_package_guard():
         path.relative_to(repo_root).as_posix()
         for path in repo_root.rglob("pyproject.toml")
         if "csegraph-vscode" not in path.relative_to(repo_root).as_posix()
+        and ".scratch/" not in path.relative_to(repo_root).as_posix()
     )
     assert publishable_pyprojects == ["pyproject.toml"]
 

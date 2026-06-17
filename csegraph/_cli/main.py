@@ -138,7 +138,7 @@ def _add_json(p: argparse.ArgumentParser, *, suppress: bool = False) -> None:
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS if suppress else "Emit machine-readable JSON.")
 
 
-def _add_profile(p: argparse.ArgumentParser, *, default: str = "medium") -> None:
+def _add_profile(p: argparse.ArgumentParser, *, default: str | None = "medium") -> None:
     p.add_argument("--profile", choices=sorted(PROFILES), default=default)
 
 
@@ -506,7 +506,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph._core.postprocess import PostprocessService
         repo = _repo_arg(args)
         db = _db_arg(args, repo)
-        result = IndexService(db).index(
+        index_result = IndexService(db).index(
             repo,
             profile=args.profile,
             exclude_patterns=getattr(args, "exclude", None),
@@ -518,35 +518,35 @@ def _dispatch(args: argparse.Namespace) -> Any:
             pp_result = PostprocessService(db).postprocess(level=pp_level)
         else:
             skipped_reason = "disabled"
-        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
-        return result
+        attach_postprocess_metadata(index_result, db, pp_level, pp_result, skipped_reason)
+        return index_result
     if args.command == "refresh":
         from csegraph._core.index.services import RefreshService
         from csegraph._core.postprocess import PostprocessService
         repo = _repo_arg(args)
         db = _db_arg(args, repo)
-        result = RefreshService(db).refresh(
+        refresh_result = RefreshService(db).refresh(
             profile=args.profile,
             exclude_patterns=getattr(args, "exclude", None),
         )
         pp_level = getattr(args, "postprocess", "full")
         pp_result = None
         skipped_reason = None
-        if pp_level != "none" and result.files_indexed > 0:
+        if pp_level != "none" and refresh_result.files_indexed > 0:
             pp_result = PostprocessService(db).postprocess(level=pp_level)
         elif pp_level == "none":
             skipped_reason = "disabled"
         else:
             skipped_reason = "unchanged"
-        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
-        return result
+        attach_postprocess_metadata(refresh_result, db, pp_level, pp_result, skipped_reason)
+        return refresh_result
     if args.command == "context":
         from csegraph._core.retrieval.context import ContextService
-        repo = Path(args.repo or ".").resolve()
+        repo_path = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg
         if not task:
             raise ValueError('context requires a task. Example: csegraph context "Fix auth"')
-        return ContextService(_db_arg(args, str(repo))).build_context(
+        return ContextService(_db_arg(args, str(repo_path))).build_context(
             task=task,
             target=args.target,
             profile=args.profile,
@@ -558,18 +558,18 @@ def _dispatch(args: argparse.Namespace) -> Any:
         )
     if args.command == "path":
         from csegraph._core.graph.queries import GraphQueryService
-        repo = Path(args.repo or ".").resolve()
+        repo_path = Path(args.repo or ".").resolve()
         source = args.source or args.source_arg
         target = args.target or args.target_arg
         if not source or not target:
             raise ValueError("path requires two nodes. Example: csegraph path greet main")
         relations = [r.strip() for r in args.relations.split(',') if r.strip()] if args.relations else None
-        return GraphQueryService(_db_arg(args, str(repo))).shortest_path(
+        return GraphQueryService(_db_arg(args, str(repo_path))).shortest_path(
             source, target, detail_level=args.detail_level, relations=relations
         )
     if args.command == "inspect":
         from csegraph._core.graph.queries import GraphQueryService
-        repo = Path(args.repo or ".").resolve()
+        repo_path = Path(args.repo or ".").resolve()
         node = args.node or args.node_arg
         if not node:
             raise ValueError("inspect requires a node. Example: csegraph inspect MyClass.method")
@@ -578,14 +578,14 @@ def _dispatch(args: argparse.Namespace) -> Any:
             if args.relations
             else None
         )
-        result = GraphQueryService(_db_arg(args, str(repo))).neighborhood(
+        graph_result = GraphQueryService(_db_arg(args, str(repo_path))).neighborhood(
             node,
             depth=args.depth,
             detail_level=args.detail_level,
             relations=relations,
         )
-        result.command = "inspect"
-        return result
+        graph_result.command = "inspect"
+        return graph_result
     if args.command == "export":
         from csegraph._core.graph.exports import ExportService
         from csegraph._core.core.models import ExportResult
@@ -728,24 +728,24 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph._core.graph.embeddings import EmbeddingService
         repo = _repo_arg(args)
         db = _db_arg(args, repo)
-        svc = EmbeddingService(
+        embedding_service = EmbeddingService(
             db,
             model=getattr(args, "model", None),
             provider=getattr(args, "provider", "local"),
             endpoint=getattr(args, "endpoint", None),
         )
         if args.embeddings_command == "compute":
-            return svc.compute()
+            return embedding_service.compute()
         if args.embeddings_command == "search":
-            return svc.search(
+            return embedding_service.search(
                 args.query,
                 top_k=args.top_k,
                 hybrid=not args.no_hybrid,
             )
         if args.embeddings_command == "status":
-            return svc.status()
+            return embedding_service.status()
         if args.embeddings_command == "clear":
-            return svc.clear()
+            return embedding_service.clear()
         raise ValueError(f"Unknown embeddings subcommand: {args.embeddings_command}")
     if args.command == "benchmark":
         from csegraph._core.benchmark import BenchmarkService
@@ -772,34 +772,34 @@ def _dispatch(args: argparse.Namespace) -> Any:
         )
     if args.command == "registry":
         from csegraph._core.registry import RegistryService
-        svc = RegistryService()
+        registry_service = RegistryService()
         if args.registry_command == "register":
             repo = _repo_arg(args)
-            return svc.register(
+            return registry_service.register(
                 repo,
                 alias=args.alias,
                 profile=args.profile,
                 db=args.db,
             )
         if args.registry_command == "unregister":
-            return svc.unregister(args.alias)
+            return registry_service.unregister(args.alias)
         if args.registry_command == "list":
-            return svc.list()
+            return registry_service.list()
         if args.registry_command == "status":
-            return svc.status(args.alias)
+            return registry_service.status(args.alias)
         raise ValueError(f"Unknown registry subcommand: {args.registry_command}")
     if args.command == "daemon":
         from csegraph._core.daemon import DaemonService
-        svc = DaemonService()
+        daemon_service = DaemonService()
         if args.daemon_command == "start":
-            return svc.start(
+            return daemon_service.start(
                 aliases=args.alias,
                 profile=args.profile,
             )
         if args.daemon_command == "stop":
-            return svc.stop(aliases=args.alias)
+            return daemon_service.stop(aliases=args.alias)
         if args.daemon_command == "status":
-            return svc.status()
+            return daemon_service.status()
         raise ValueError(f"Unknown daemon subcommand: {args.daemon_command}")
     raise ValueError(f"Unknown command: {args.command}")
 

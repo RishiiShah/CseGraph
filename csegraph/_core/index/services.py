@@ -764,7 +764,9 @@ def _module_to_file_id(index: ProjectIndex) -> Dict[str, str]:
             parser = registry.for_extension(Path(path).suffix)
         except UnsupportedLanguageError:
             continue
-        mapping[parser.module_name_from_relpath(path)] = file_node_id(path)
+        module_name = parser.module_name_from_relpath(path)
+        if module_name is not None:
+            mapping[module_name] = file_node_id(path)
     return mapping
 
 

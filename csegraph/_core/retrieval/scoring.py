@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from csegraph._core.languages.registry import registry
 from csegraph._core.text.query_tokenizer import query_tokenizer
@@ -107,7 +107,7 @@ def lexical_scores(
                 scores[node_id] += score
                 evidence[node_id].append("fts5-bm25")
 
-    candidates = set()
+    candidates: Set[str] = set()
     if fts_seed:
         candidates.update(fts_seed.keys())
 
@@ -135,10 +135,10 @@ def lexical_scores(
                     break
 
     for node_id in candidates:
-        row = symbols.get(node_id)
-        if not row:
+        candidate_row = symbols.get(node_id)
+        if not candidate_row:
             continue
-        content_tokens = tokenize_node_content(node_id, row, summaries, registry)
+        content_tokens = tokenize_node_content(node_id, candidate_row, summaries, registry)
         overlap = task_tokens & content_tokens
         if overlap:
             scores[node_id] += float(len(overlap))

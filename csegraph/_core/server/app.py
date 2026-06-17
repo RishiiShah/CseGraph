@@ -781,7 +781,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        result = IndexService(db).index(repo, profile=profile)
+        index_result = IndexService(db).index(repo, profile=profile)
         pp_level = arguments.get("postprocess_level", "full")
         pp_result = None
         skipped_reason = None
@@ -789,9 +789,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             pp_result = PostprocessService(db).postprocess(level=pp_level)
         else:
             skipped_reason = "disabled"
-        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
+        attach_postprocess_metadata(index_result, db, pp_level, pp_result, skipped_reason)
         clear_hub_cache()
-        return to_dict(result)
+        return to_dict(index_result)
 
     if name == "csegraph_refresh":
         from csegraph._core.index.services import RefreshService
@@ -801,19 +801,19 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
         db = _db_path(repo, arguments.get("db"))
-        result = RefreshService(db).refresh(profile=profile)
+        refresh_result = RefreshService(db).refresh(profile=profile)
         pp_level = arguments.get("postprocess_level", "full")
         pp_result = None
         skipped_reason = None
-        if pp_level != "none" and result.files_indexed > 0:
+        if pp_level != "none" and refresh_result.files_indexed > 0:
             pp_result = PostprocessService(db).postprocess(level=pp_level)
         elif pp_level == "none":
             skipped_reason = "disabled"
         else:
             skipped_reason = "unchanged"
-        attach_postprocess_metadata(result, db, pp_level, pp_result, skipped_reason)
+        attach_postprocess_metadata(refresh_result, db, pp_level, pp_result, skipped_reason)
         clear_hub_cache()
-        return to_dict(result)
+        return to_dict(refresh_result)
 
     if name == "csegraph_minimal":
         from csegraph._core.retrieval.minimal import MinimalService

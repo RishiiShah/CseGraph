@@ -160,7 +160,7 @@ class ContextService:
                 scores=scores,
                 outgoing=outgoing,
                 incoming=incoming,
-                raw_nodes=raw_nodes,
+                raw_nodes=tuple(raw_nodes),
                 index=index,
             )
 
@@ -183,7 +183,7 @@ class ContextService:
                     scores=scores,
                     outgoing=outgoing,
                     incoming=incoming,
-                    raw_nodes=raw_nodes,
+                    raw_nodes=tuple(raw_nodes),
                     index=index,
                 )
                 returned_detail_level = "standard"

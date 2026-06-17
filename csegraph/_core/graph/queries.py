@@ -389,7 +389,7 @@ class GraphQueryService:
             path_edges: List[PathEdge] = []
             confidence_counts: Dict[str, int] = {}
             visited_trace: Set[str] = set()
-            node = dst
+            node: Optional[str] = dst
             while node is not None:
                 if node in visited_trace:
                     break

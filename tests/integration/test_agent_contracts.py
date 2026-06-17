@@ -22,14 +22,14 @@ def _root_runtime_dependency_names() -> set[str]:
     return set(re.findall(r'"([A-Za-z0-9_.-]+)', match.group("body")))
 
 
-def _readme_base_command_lines() -> list[str]:
-    readme = _read("README.md")
-    match = re.search(r"## Base Commands\n\n```bash\n(?P<body>.*?)\n```", readme, re.S)
-    assert match, "README.md must keep a bash Base Commands block"
+def _command_reference_setup_lines() -> list[str]:
+    reference = _read("docs/csegraph.md")
+    match = re.search(r"## Setup\n\n```bash\n(?P<body>.*?)\n```", reference, re.S)
+    assert match, "docs/csegraph.md must keep a bash Setup block"
     return [
-        line.split("#", 1)[0].strip()
+        line.split("#", 1)[0].strip().replace("env/bin/", "")
         for line in match.group("body").splitlines()
-        if line.strip().startswith("csegraph ")
+        if "csegraph " in line
     ]
 
 
@@ -51,7 +51,7 @@ def test_readme_base_commands_are_real_cli_commands():
         capture_output=True,
         text=True,
     )
-    command_lines = _readme_base_command_lines()
+    command_lines = _command_reference_setup_lines()
 
     assert command_lines
     for line in command_lines:
@@ -105,23 +105,23 @@ def test_documented_base_command_dependencies_are_runtime_dependencies():
 
 
 def test_documented_mcp_tools_match_server_registry():
-    readme = _read("README.md")
+    command_reference = _read("docs/csegraph.md")
     tool_names = {tool.name for tool in _TOOLS}
 
-    documented_readme = set(re.findall(r"\| `(csegraph_[a-z_]+)` \|", readme))
+    documented_reference = set(re.findall(r"\| `(csegraph_[a-z_]+)` \|", command_reference))
 
-    assert documented_readme == tool_names
-    assert ("csegraph_" + "minimal_context") not in readme
+    assert documented_reference == tool_names
+    assert ("csegraph_" + "minimal_context") not in command_reference
 
 
 def test_documented_mcp_prompts_match_server_registry():
-    readme = _read("README.md")
+    command_reference = _read("docs/csegraph.md")
     prompt_names = {prompt.name for prompt in _PROMPTS}
 
-    prompt_table = readme.split("| Prompt | Workflow |", 1)[1]
-    documented_readme = set(re.findall(r"\| `(csegraph-[a-z-]+)` \|", prompt_table))
+    prompt_table = command_reference.split("| Prompt | Workflow |", 1)[1]
+    documented_reference = set(re.findall(r"\| `(csegraph-[a-z-]+)` \|", prompt_table))
 
-    assert documented_readme == prompt_names
+    assert documented_reference == prompt_names
 
 
 def test_public_docs_are_not_gitignored():

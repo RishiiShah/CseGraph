@@ -89,7 +89,7 @@ def _spec(name: str) -> LanguageSpec:
 class LazyLanguageMap(dict):
     def __init__(self, spec: LanguageSpec) -> None:
         self.spec = spec
-        self._cache = {}
+        self._cache: Dict[str, Language] = {}
 
     def get(self, key, default=None):
         if key in self._cache:

@@ -5,7 +5,7 @@ import math
 import subprocess
 import time
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar
+from typing import Any, Callable, Iterable, TypeVar
 
 from csegraph._core.core.models import (
     BenchmarkCorpusResult,
@@ -229,7 +229,7 @@ class BenchmarkService:
                 tool = wf.get("tool")
                 args = wf.get("args", {}) or {}
                 start = time.perf_counter()
-                resp = None
+                resp: Any = None
                 try:
                     if tool == "minimal":
                         resp = MinimalService(self.db_path).first(**args)

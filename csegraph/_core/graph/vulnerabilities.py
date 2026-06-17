@@ -135,7 +135,7 @@ class VulnerabilityService:
         all_vulns.extend(self._check_untested_security_code(index, warnings))
         all_vulns.extend(self._check_high_exposure_sensitive(index, warnings))
 
-        seen_keys: Set[str] = set()
+        seen_keys: Set[Tuple[str, str, str]] = set()
         deduped: List[Vulnerability] = []
         for v in all_vulns:
             key = (v.id, v.category, v.severity)
