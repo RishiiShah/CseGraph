@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from csegraph._core.core.errors import UnsupportedSchemaError
 from csegraph._core.core.ids import file_node_id
 from csegraph._core.repo_state import git_head_state
+from csegraph._core.index.migrations import migrate_schema
 from csegraph._core.index.schema import (
     METADATA_UPSERT,
     SCHEMA_DDL,
@@ -42,7 +43,9 @@ class ProjectIndex:
         if existing_version is None and self._has_csegraph_objects():
             raise UnsupportedSchemaError()
         if existing_version is not None and existing_version != SCHEMA_VERSION:
-            raise UnsupportedSchemaError()
+            migrate_schema(self.conn, existing_version)
+            self.conn.commit()
+            return
 
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
@@ -51,9 +54,17 @@ class ProjectIndex:
         self.conn.commit()
 
     def _existing_schema_version(self) -> Optional[str]:
-        if self._table_exists("metadata"):
+        for table_name in ("metadata", "schema_meta"):
+            version = self._schema_version_from_table(table_name)
+            if version is not None:
+                return version
+
+        return None
+
+    def _schema_version_from_table(self, table_name: str) -> Optional[str]:
+        if self._table_exists(table_name):
             row = self.conn.execute(
-                "SELECT value FROM metadata WHERE key = 'schema_version'"
+                f"SELECT value FROM {table_name} WHERE key = 'schema_version'"
             ).fetchone()
             return row["value"] if row else None
 

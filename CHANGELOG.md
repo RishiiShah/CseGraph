@@ -17,6 +17,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for GitHub Actions, Python, and VS Code extension dependencies.
 - Added optional developer tooling for Ruff, mypy, coverage, and pre-commit.
 - Added CI checks for Ruff and test coverage.
+- Added a SQLite schema migration framework for known older csegraph index
+  versions.
 
 ### Changed
 
