@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a new CseGraph capability or behavior change.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Large design changes and new public surfaces work best when they start as an issue. Keep proposals focused on the public CseGraph package, CLI, MCP server, SDK facade, or VS Code extension.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Target surface
+      options:
+        - CLI
+        - MCP server
+        - Python SDK/facade
+        - VS Code extension
+        - Indexing/parsing
+        - Retrieval/context quality
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What agent workflow, repository shape, or developer task would this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the command, API, output shape, setting, or UX you want.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention current workarounds or why existing `index`, `refresh`, `context`, `inspect`, `path`, or `analyze` flows are not enough.
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and scope
+      description: Note any public API, package layout, local-first/privacy, performance, or VS Code extension compatibility concerns.
