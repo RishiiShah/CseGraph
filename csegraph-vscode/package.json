@@ -4,6 +4,7 @@
   "description": "Code graph context for coding agents - index, refresh, inspect, and retrieve context from VS Code.",
   "version": "1.7.1",
   "publisher": "rishiishah",
+  "icon": "media/icon.png",
   "author": "Rishabh Shah, Hitanshu Oza",
   "license": "MIT",
   "repository": {

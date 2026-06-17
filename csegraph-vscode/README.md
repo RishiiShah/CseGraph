@@ -10,27 +10,38 @@ Lightweight VS Code extension for [CseGraph](https://github.com/RishiiShah/CseGr
 
 ## Install
 
-Install the CLI first, then install the VS Code extension. Build an index in
-the workspace before using status, context, or inspect commands.
+Install the CLI first, then install the VS Code extension from the Marketplace.
+Build an index in the workspace before using status, context, or inspect
+commands.
 
-### From VSIX
+### Marketplace
 
 ```bash
 pip install csegraph
-cd csegraph-vscode
-npm ci && npm run package
-VSIX=$(python -c "import json; print('csegraph-vscode-' + json.load(open('package.json'))['version'] + '.vsix')")
-code --install-extension "$VSIX"
+code --install-extension rishiishah.csegraph-vscode
 ```
 
-### Via CLI
+Marketplace item:
+[`rishiishah.csegraph-vscode`](https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode).
+
+### Project Setup
 
 ```bash
-pip install csegraph
 csegraph install --platform vscode
 ```
 
 This writes `.vscode/settings.json`, `tasks.json`, and `extensions.json` into your project, merging with existing config.
+
+### Local VSIX
+
+Use this only when testing changes from this repository.
+
+```bash
+cd csegraph-vscode
+npm ci
+npm run package
+code --install-extension csegraph-vscode-*.vsix --force
+```
 
 ## First Use
 
