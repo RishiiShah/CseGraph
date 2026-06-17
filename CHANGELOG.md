@@ -18,6 +18,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added optional developer tooling for Ruff, mypy, coverage, and pre-commit.
 - Added CI checks for Ruff and test coverage.
 
+### Changed
+
+- Changed MCP install behavior so Codex config is repo-local at
+  `.codex/config.toml` instead of global user config.
+- Changed `csegraph install --platform auto` to create repo-local MCP config for
+  Codex, Claude Code, Cursor, Gemini CLI, Kiro, and Copilot.
+- Changed `csegraph install --platform <client>` to perform full platform setup
+  by default, including platform guidance and supported lifecycle hooks.
+- Changed `csegraph install` to add generated local setup paths and `.csegraph/`
+  to `.gitignore` by default.
+
 ## 1.7.1
 
 ### Added
