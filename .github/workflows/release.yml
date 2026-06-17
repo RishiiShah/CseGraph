@@ -92,6 +92,7 @@ jobs:
   build-vscode:
     name: Build VS Code extension
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.publish_vscode == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -156,7 +157,7 @@ jobs:
     name: Publish VS Code extension
     needs: build-vscode
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_vscode == 'true' }}
+    if: ${{ github.event.inputs.publish_vscode == 'true' }}
     env:
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:

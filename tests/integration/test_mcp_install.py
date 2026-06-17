@@ -243,7 +243,7 @@ def test_vscode_install_creates_three_files(tmp_path: Path) -> None:
     assert labels == {"csegraph: Build Index", "csegraph: Refresh", "csegraph: Status"}
 
     extensions = _read_json(repo / ".vscode" / "extensions.json")
-    assert "csegraph.csegraph-vscode" in extensions["recommendations"]
+    assert "rishiishah.csegraph-vscode" in extensions["recommendations"]
 
 
 def test_vscode_install_merges_with_existing_settings(tmp_path: Path) -> None:
@@ -296,14 +296,14 @@ def test_vscode_install_does_not_duplicate_extension_recommendation(tmp_path: Pa
     ext_path = repo / ".vscode" / "extensions.json"
     ext_path.parent.mkdir(parents=True)
     ext_path.write_text(
-        json.dumps({"recommendations": ["csegraph.csegraph-vscode", "ms-python.python"]}),
+        json.dumps({"recommendations": ["rishiishah.csegraph-vscode", "ms-python.python"]}),
         encoding="utf-8",
     )
 
     McpInstallService(repo).install(platform="vscode", dry_run=False)
 
     data = _read_json(ext_path)
-    assert data["recommendations"].count("csegraph.csegraph-vscode") == 1
+    assert data["recommendations"].count("rishiishah.csegraph-vscode") == 1
     assert "ms-python.python" in data["recommendations"]
 
 
@@ -319,4 +319,3 @@ def test_vscode_dry_run_does_not_write_files(tmp_path: Path) -> None:
     assert not (repo / ".vscode" / "settings.json").exists()
     assert not (repo / ".vscode" / "tasks.json").exists()
     assert not (repo / ".vscode" / "extensions.json").exists()
-

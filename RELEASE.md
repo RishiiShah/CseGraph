@@ -75,7 +75,7 @@ Install locally before publishing:
 ```bash
 VSIX=$(python -c "import json; print('csegraph-vscode-' + json.load(open('package.json'))['version'] + '.vsix')")
 code --install-extension "$VSIX" --force
-code --list-extensions --show-versions | grep csegraph.csegraph-vscode
+code --list-extensions --show-versions | grep rishiishah.csegraph-vscode
 ```
 
 Publish to the VS Code Marketplace only from the GitHub release workflow when
@@ -87,4 +87,4 @@ Publish to the VS Code Marketplace only from the GitHub release workflow when
 - `csegraph --help` works.
 - `python -c "from csegraph import ContextService"` works.
 - Only the `csegraph` distribution is installed for this project.
-- VS Code lists `csegraph.csegraph-vscode` at the released version.
+- VS Code lists `rishiishah.csegraph-vscode` at the released version.

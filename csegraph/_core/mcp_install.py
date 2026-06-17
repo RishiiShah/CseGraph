@@ -274,8 +274,8 @@ class McpInstallService:
         if not dry_run:
             recs_data = _read_json_object(recs_path)
             recs = recs_data.setdefault("recommendations", [])
-            if "csegraph.csegraph-vscode" not in recs:
-                recs.append("csegraph.csegraph-vscode")
+            if "rishiishah.csegraph-vscode" not in recs:
+                recs.append("rishiishah.csegraph-vscode")
             recs_path.write_text(
                 json.dumps(recs_data, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
