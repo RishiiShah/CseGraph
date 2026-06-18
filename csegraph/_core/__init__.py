@@ -50,6 +50,10 @@ from csegraph._core.graph.tree import TreeExportService
 from csegraph._core.graph.visual import VisualExportService
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.services import IndexService, RefreshService
+from csegraph._core.languages.base import BaseParser, DefaultTokenizer, Tokenizer
+from csegraph._core.languages.plugins import register_parser, register_tree_sitter_language
+from csegraph._core.languages.treesitter.config import LanguageConfig
+from csegraph._core.languages.types import ParsedFile, ParsedSymbol
 from csegraph._core.postprocess import POSTPROCESS_LEVELS, PostprocessService
 from csegraph._core.retrieval.constants import VALID_REASONS
 from csegraph._core.mcp_install import McpInstallService
@@ -69,12 +73,14 @@ __all__ = [
     "AsyncGraphQueryService",
     "AsyncIndexService",
     "AsyncRefreshService",
+    "BaseParser",
     "ContextNode",
     "ContextResult",
     "ContextService",
     "DaemonEntry",
     "DaemonResult",
     "DaemonService",
+    "DefaultTokenizer",
     "GraphEdgeView",
     "GraphNodeView",
     "GraphQueryService",
@@ -82,12 +88,15 @@ __all__ = [
     "IndexResult",
     "IndexService",
     "KeyEntity",
+    "LanguageConfig",
     "McpInstallResult",
     "McpInstallService",
     "McpInstallTarget",
     "MinimalResult",
     "MinimalService",
     "NextToolSuggestion",
+    "ParsedFile",
+    "ParsedSymbol",
     "PathEdge",
     "PathResult",
     "PathStep",
@@ -108,10 +117,13 @@ __all__ = [
     "SufficiencyMetrics",
     "SufficiencyResult",
     "TreeExportService",
+    "Tokenizer",
     "VALID_REASONS",
     "VisualExportResult",
     "VisualExportService",
     "get_profile",
     "load_profile",
+    "register_parser",
+    "register_tree_sitter_language",
     "to_dict",
 ]

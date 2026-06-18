@@ -296,6 +296,20 @@ context = await AsyncContextService(".csegraph/index.db").build_context(
 )
 ```
 
+Custom parser integrations can register process-local parsers without forking
+CseGraph:
+
+```python
+from csegraph import BaseParser, register_parser
+
+class MyParser(BaseParser):
+    language = "my_language"
+    extensions = (".mine",)
+    # implement parse(), module_name_from_relpath(), resolve_local_import()
+
+register_parser(MyParser())
+```
+
 ## Context Output
 
 Context responses include:

@@ -25,6 +25,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   controls.
 - Added thread-backed async SDK facades for indexing, refreshing, context
   retrieval, and graph queries.
+- Added a public parser plugin API for custom parser and tree-sitter language
+  registration.
 
 ### Changed
 
