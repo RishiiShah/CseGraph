@@ -39,6 +39,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Changed MCP install behavior so Codex config is repo-local at
   `.codex/config.toml` instead of global user config.
+- Split MCP prompt rendering and tool schemas out of the server app module.
 - Changed `csegraph install --platform auto` to create repo-local MCP config for
   Codex, Claude Code, Cursor, Gemini CLI, Kiro, and Copilot.
 - Changed `csegraph install --platform <client>` to perform full platform setup
