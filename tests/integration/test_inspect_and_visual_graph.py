@@ -452,6 +452,36 @@ def test_graph_visual_export_allows_repo_local_scratch_output(tmp_path):
     assert output_html.exists()
 
 
+def test_graph_visual_export_contains_interactive_explorer(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    run_cli("index", str(repo), "--json")
+
+    output_html = repo / ".scratch" / "csegraph" / "interactive.html"
+    run_cli(
+        "export",
+        "--repo",
+        str(repo),
+        "--format",
+        "html",
+        "--output",
+        str(output_html),
+        "--json",
+    )
+
+    html = output_html.read_text(encoding="utf-8")
+
+    assert 'data-csegraph-viewer="interactive-force-graph"' in html
+    assert '<canvas id="graph"></canvas>' in html
+    assert 'var DATA = {"schema_version":"csegraph-graph-v1"' in html
+    assert 'id="search"' in html
+    assert 'id="btn-play-pause"' in html
+    assert 'id="sld-repulsion"' in html
+    assert 'function stepSim()' in html
+    assert 'canvas.addEventListener("wheel"' in html
+    assert 'canvas.addEventListener("mousedown"' in html
+
+
 def test_graph_visual_export_rejects_tmp_output(tmp_path):
     # Negative path policy: CLI export --output must be repo-local, not OS temp.
     repo = tmp_path / "repo"

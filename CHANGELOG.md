@@ -30,6 +30,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added a benchmark regression checker and dedicated CI job for context-quality
   thresholds.
 - Added a MkDocs Material documentation site scaffold with strict CI build.
+- Added regression coverage for the interactive HTML graph explorer.
 
 ### Changed
 
