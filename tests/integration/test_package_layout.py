@@ -136,6 +136,7 @@ def test_one_distribution_package_layout_and_versions():
     assert set(optional_deps) == {
         "test",
         "dev",
+        "docs",
         "embeddings",
         "all",
         *OPTIONAL_LANGUAGE_DEPENDENCIES,
@@ -143,6 +144,7 @@ def test_one_distribution_package_layout_and_versions():
     for extra, dependencies in OPTIONAL_LANGUAGE_DEPENDENCIES.items():
         assert optional_deps[extra] == dependencies
     assert optional_deps["all"] == ALL_OPTIONAL_LANGUAGE_DEPENDENCIES
+    assert optional_deps["docs"] == ["mkdocs>=1.6", "mkdocs-material>=9.5"]
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
     classifiers = set(root_project["classifiers"])

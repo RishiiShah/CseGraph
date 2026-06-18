@@ -29,6 +29,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   registration.
 - Added a benchmark regression checker and dedicated CI job for context-quality
   thresholds.
+- Added a MkDocs Material documentation site scaffold with strict CI build.
 
 ### Changed
 

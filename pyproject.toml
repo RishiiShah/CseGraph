@@ -44,6 +44,7 @@ dev = [
     "pre-commit>=4.0",
     "ruff>=0.8",
 ]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
 embeddings = ["sentence-transformers>=1.7.1"]
 go = ["tree-sitter-go>=0.23"]
 rust = ["tree-sitter-rust>=0.23"]

@@ -17,6 +17,13 @@ env/bin/python -m pip install -e ".[test,dev,all]"
 env/bin/python -m pre_commit install
 ```
 
+Documentation site tooling is available through the `docs` extra:
+
+```bash
+env/bin/python -m pip install -e ".[docs]"
+env/bin/python -m mkdocs build --strict
+```
+
 For the VS Code extension:
 
 ```bash
