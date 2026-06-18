@@ -40,6 +40,7 @@ env/bin/python -m ruff check .
 env/bin/python -m mypy
 env/bin/python -m coverage run -m pytest tests/ -q
 env/bin/python -m coverage report
+env/bin/python tools/check_benchmark_regression.py --repo .
 env/bin/python -m pre_commit run --all-files
 ```
 
