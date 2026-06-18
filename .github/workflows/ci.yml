@@ -176,6 +176,12 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check .
 
+      - name: Check Ruff formatting
+        run: python -m ruff format --check .
+
+      - name: Run mypy
+        run: python -m mypy
+
       - name: Run coverage
         run: |
           python -m coverage run -m pytest tests/ -q
