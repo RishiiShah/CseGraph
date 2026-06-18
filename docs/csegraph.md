@@ -16,6 +16,9 @@ The editable install includes Python, JavaScript, and TypeScript grammars. Use
 `env/bin/python -m pip install -e ".[all]"` when you want every optional
 tree-sitter grammar, or install individual extras such as `.[go,rust]`.
 
+Global `--verbose` and `--quiet` flags control diagnostic logging. Put them
+before the subcommand, for example `env/bin/csegraph --verbose watch .`.
+
 `install` configures MCP clients to launch `csegraph serve`, writes
 platform-scoped agent guidance, and installs supported refresh/status lifecycle
 hooks. It also adds generated setup paths and `.csegraph/` to `.gitignore` by

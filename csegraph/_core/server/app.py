@@ -1099,11 +1099,10 @@ def create_server(*, allowed_tools: list[str] | None = None) -> Server:
 
 
 async def run_stdio(*, allowed_tools: list[str] | None = None) -> None:
-    import sys
     server = create_server(allowed_tools=allowed_tools)
     if allowed_tools:
-        print(f"csegraph MCP server running on stdio — exposing {len(allowed_tools)} tools", file=sys.stderr, flush=True)
+        logger.info("csegraph MCP server running on stdio; exposing %s tools", len(allowed_tools))
     else:
-        print("csegraph MCP server running on stdio — waiting for client connection...", file=sys.stderr, flush=True)
+        logger.info("csegraph MCP server running on stdio; waiting for client connection")
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())

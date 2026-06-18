@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,7 @@ def dev_main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    _configure_logging(args)
     command = _effective_command(args)
 
     try:
@@ -121,6 +123,29 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _configure_logging(args: argparse.Namespace) -> None:
+    logging.basicConfig(
+        level=_log_level_for_args(args),
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
+
+
+def _log_level_for_args(args: argparse.Namespace) -> int:
+    quiet = int(getattr(args, "log_quiet", 0) or 0)
+    verbose = int(getattr(args, "log_verbose", 0) or 0)
+    if quiet >= 2:
+        return logging.ERROR
+    if quiet == 1:
+        return logging.WARNING
+    if verbose >= 2:
+        return logging.DEBUG
+    if verbose == 1 or _effective_command(args) in {"serve", "watch"}:
+        return logging.INFO
+    return logging.WARNING
+
+
 def _effective_command(args: argparse.Namespace) -> str:
     return getattr(args, "command")
 
@@ -142,11 +167,31 @@ def _add_profile(p: argparse.ArgumentParser, *, default: str | None = "medium") 
     p.add_argument("--profile", choices=sorted(PROFILES), default=default)
 
 
+def _add_logging_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="log_verbose",
+        action="count",
+        default=0,
+        help="Increase diagnostic logging. Repeat for debug logs.",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        dest="log_quiet",
+        action="count",
+        default=0,
+        help="Reduce diagnostic logging. Repeat to show errors only.",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="csegraph",
         description="SQLite-backed code graph indexing and context retrieval.",
     )
+    _add_logging_options(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     index = subparsers.add_parser("index", help="Build a fresh project index.")
@@ -435,6 +480,7 @@ def _build_dev_parser() -> argparse.ArgumentParser:
         prog="tools/csegraph_dev.py",
         description="Repo-local maintainer tooling for CseGraph diagnostics and experiments.",
     )
+    _add_logging_options(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     architecture = subparsers.add_parser("architecture", help="Community summaries and architecture overview.")

@@ -21,6 +21,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   versions.
 - Added optional tree-sitter grammar extras so installs can stay small while
   `csegraph[all]` preserves full language coverage.
+- Added structured diagnostic logging with global `--verbose` and `--quiet`
+  controls.
 
 ### Changed
 
