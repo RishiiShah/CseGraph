@@ -14,6 +14,23 @@ CseGraph is local-first and does not execute indexed code. The Python
 distribution is one package, `csegraph`; implementation modules are private
 under `csegraph._core` and `csegraph._cli`.
 
+## Product Boundary
+
+CseGraph's core job is to give coding agents the smallest accurate task context
+needed for a retrieval, review, or edit. New features should preserve that job:
+
+- Prefer features that improve indexing, refresh, retrieval quality, context
+  sufficiency, response size, or agent/editor ergonomics around the context loop.
+- Keep the MCP surface limited to the six-tool context loop: index, refresh,
+  minimal, context, graph, and path.
+- Keep broad diagnostics, experiments, review intelligence, benchmark tools,
+  security scans, and embedding experiments behind repo-local maintainer tooling
+  unless they directly route users back to `context` or `inspect`.
+- Do not turn the public product into a general static analyzer, security
+  scanner, observability platform, or project-management dashboard.
+- When adding a public command, classify it as core context, support, or a
+  narrow diagnostic bridge, and update the product-boundary tests deliberately.
+
 ## Main Modules
 
 | Module | Responsibility |
@@ -72,11 +89,10 @@ Postprocess levels:
 
 Schema version: `csegraph-sqlite-v5` (`PRAGMA user_version = 5`).
 
-There is no schema migrator. Opening an index whose `metadata.schema_version`
-differs from the current version, or that has CseGraph tables without a
-recognized version, raises `UnsupportedSchemaError`. Rebuild with
-`csegraph index` (or delete `.csegraph/index.db` first). Older layouts such as
-`schema_meta` / `csegraph-sqlite-v1` are unsupported.
+Known older schema versions are migrated on first access. Unknown versions, or
+databases that have CseGraph tables without a recognized version, still raise
+`UnsupportedSchemaError`; rebuild with `csegraph index` (or delete
+`.csegraph/index.db` first).
 
 Core tables:
 

@@ -7,12 +7,73 @@ from pathlib import Path
 
 from csegraph._core.server.app import _PROMPTS, _TOOLS
 
-
 ROOT = Path(__file__).resolve().parents[2]
+
+CORE_CONTEXT_COMMANDS = {
+    "index",
+    "refresh",
+    "context",
+    "path",
+    "inspect",
+    "serve",
+}
+
+SUPPORT_COMMANDS = {
+    "export",
+    "install",
+    "watch",
+    "lsp",
+    "status",
+    "postprocess",
+}
+
+PUBLIC_OPERATIONS_COMMANDS = {
+    "registry",
+    "daemon",
+}
+
+DIAGNOSTIC_BRIDGE_COMMANDS = {
+    "analyze",
+}
+
+EXPECTED_PUBLIC_COMMANDS = (
+    CORE_CONTEXT_COMMANDS
+    | SUPPORT_COMMANDS
+    | PUBLIC_OPERATIONS_COMMANDS
+    | DIAGNOSTIC_BRIDGE_COMMANDS
+)
+
+DEV_ONLY_DIAGNOSTIC_COMMANDS = {
+    "architecture",
+    "flows",
+    "resolvers",
+    "communities",
+    "report",
+    "detect-changes",
+    "test-gaps",
+    "review-questions",
+    "review-eval",
+    "vulnerabilities",
+    "embeddings",
+    "benchmark",
+}
 
 
 def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _help_commands(command: list[str]) -> set[str]:
+    proc = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    match = re.search(r"\{(?P<commands>[a-z0-9_,.-]+)\}", proc.stdout)
+    assert match, proc.stdout
+    return set(match.group("commands").split(","))
 
 
 def _root_runtime_dependency_names() -> set[str]:
@@ -96,6 +157,19 @@ def test_base_commands_expose_help_from_source_install():
             text=True,
         )
         assert f"usage: csegraph {command}" in proc.stdout
+
+
+def test_public_cli_surface_stays_within_context_engine_boundary():
+    public_commands = _help_commands([sys.executable, "-m", "csegraph._cli", "--help"])
+
+    assert public_commands == EXPECTED_PUBLIC_COMMANDS
+    assert DEV_ONLY_DIAGNOSTIC_COMMANDS.isdisjoint(public_commands)
+
+
+def test_maintainer_diagnostics_stay_behind_dev_cli():
+    dev_commands = _help_commands([sys.executable, "tools/csegraph_dev.py", "--help"])
+
+    assert DEV_ONLY_DIAGNOSTIC_COMMANDS <= dev_commands
 
 
 def test_documented_base_command_dependencies_are_runtime_dependencies():
