@@ -567,7 +567,8 @@ def _upsert_hook_group(existing_groups: list[Any], incoming_group: Any) -> None:
 def _hook_group_key(group: Any) -> tuple[Any, ...]:
     if not isinstance(group, dict):
         return (id(group),)
-    hooks = group.get("hooks") if isinstance(group.get("hooks"), list) else []
+    raw_hooks = group.get("hooks")
+    hooks = raw_hooks if isinstance(raw_hooks, list) else []
     handler_keys = tuple(_hook_handler_key(handler) for handler in hooks)
     return (group.get("matcher"), handler_keys)
 
