@@ -36,6 +36,7 @@ class IndexResult:
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
     timings_ms: Dict[str, float] = field(default_factory=dict)
     postprocess_level: str = "none"
     postprocess: Dict[str, Any] = field(default_factory=dict)
@@ -59,6 +60,7 @@ class RefreshResult:
     deleted_files: List[str] = field(default_factory=list)
     changed_symbols: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
     dependents_expanded: int = 0
     dependents_cap_hit: bool = False
     timings_ms: Dict[str, float] = field(default_factory=dict)

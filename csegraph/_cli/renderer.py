@@ -29,7 +29,9 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
     lines = [
         f"Parsing: {files:,} files",
         indexing,
-        _postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason")),
+        _postprocess_line(
+            postprocess_level, postprocess, payload.get("postprocess_skipped_reason")
+        ),
     ]
     if graph_totals:
         label = "Full index" if postprocess_level == "full" else "Index"
@@ -51,6 +53,9 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
     errors = _render_parse_errors(parse_errors)
     if errors:
         lines.extend(["", *errors])
+    warnings = _render_warnings(payload.get("warnings") or [])
+    if warnings:
+        lines.extend(["", *warnings])
     return "\n".join(lines) + "\n"
 
 
@@ -77,7 +82,9 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
         if parse_errors:
             indexing += f" ({len(parse_errors):,} parse errors)"
         lines.append(indexing)
-    lines.append(_postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason")))
+    lines.append(
+        _postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason"))
+    )
     if graph_totals:
         lines.append(
             f"Refresh: {graph_totals.get('files', 0):,} files, "
@@ -97,6 +104,9 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
     errors = _render_parse_errors(parse_errors)
     if errors:
         lines.extend(["", *errors])
+    warnings = _render_warnings(payload.get("warnings") or [])
+    if warnings:
+        lines.extend(["", *warnings])
     return "\n".join(lines) + "\n"
 
 
@@ -376,12 +386,14 @@ def render_embeddings_summary(payload: Dict[str, Any]) -> str:
     elif action == "search":
         query = payload.get("query", "")
         hits = payload.get("hits", [])
-        lines.append(f"Embedding search: \"{query}\" ({len(hits)} results)")
+        lines.append(f'Embedding search: "{query}" ({len(hits)} results)')
         lines.append(f"  Model: {model}")
         lines.append("")
         for i, hit in enumerate(hits, 1):
             loc = hit["path"]
-            lines.append(f"  {i}. {hit['name']} ({hit['kind']})  {loc}  score={hit['score']:.4f}  [{hit['source']}]")
+            lines.append(
+                f"  {i}. {hit['name']} ({hit['kind']})  {loc}  score={hit['score']:.4f}  [{hit['source']}]"
+            )
     elif action == "status":
         embedded = payload.get("nodes_embedded", 0)
         stale = payload.get("nodes_skipped", 0)
@@ -480,7 +492,9 @@ def render_install_summary(payload: Dict[str, Any]) -> str:
     if payload.get("dry_run"):
         lines.append("  Mode:    dry run")
     for target in payload.get("installed", []):
-        action = "Would write" if target.get("dry_run") else target.get("action", "updated").capitalize()
+        action = (
+            "Would write" if target.get("dry_run") else target.get("action", "updated").capitalize()
+        )
         lines.append(f"  {action}: {target.get('platform')} -> {target.get('path')}")
     for target in payload.get("skipped", []):
         reason = target.get("reason") or "skipped"
@@ -675,9 +689,7 @@ def render_flows_summary(payload: Dict[str, Any]) -> str:
         reason = ep.get("detection_reason", "")
         crit = flow.get("criticality", 0)
         crit_bar = _criticality_bar(crit)
-        lines.append(
-            f"  {ep.get('name', '?')} ({ep.get('kind', '?')})  {loc}"
-        )
+        lines.append(f"  {ep.get('name', '?')} ({ep.get('kind', '?')})  {loc}")
         lines.append(
             f"    {crit_bar} criticality={crit:.2f}  "
             f"depth={flow.get('depth', 0)}  "
@@ -693,9 +705,7 @@ def render_flows_summary(payload: Dict[str, Any]) -> str:
         steps = flow.get("steps", [])
         if steps:
             shown = steps[:5]
-            step_names = ", ".join(
-                f"{s['name']}(d={s['depth']})" for s in shown
-            )
+            step_names = ", ".join(f"{s['name']}(d={s['depth']})" for s in shown)
             suffix = f" ... +{len(steps) - 5} more" if len(steps) > 5 else ""
             lines.append(f"    Calls: {step_names}{suffix}")
         lines.append("")
@@ -740,15 +750,19 @@ def render_report_markdown(payload: Dict[str, Any]) -> str:
 
 
 def _render_corpus_check(lines: List[str], payload: Dict[str, Any]) -> None:
-    lines.extend([
-        "## Corpus Check", "",
-        "| Metric | Count |", "|---|---:|",
-        f"| Files | {payload['total_files']:,} |",
-        f"| Symbols | {payload['total_symbols']:,} |",
-        f"| Edges | {payload['total_edges']:,} |",
-        f"| Parse errors | {payload['parse_error_count']:,} |",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Corpus Check",
+            "",
+            "| Metric | Count |",
+            "|---|---:|",
+            f"| Files | {payload['total_files']:,} |",
+            f"| Symbols | {payload['total_symbols']:,} |",
+            f"| Edges | {payload['total_edges']:,} |",
+            f"| Parse errors | {payload['parse_error_count']:,} |",
+            "",
+        ]
+    )
 
 
 def _render_summary_tables(lines: List[str], payload: Dict[str, Any]) -> None:
@@ -768,20 +782,24 @@ def _render_summary_tables(lines: List[str], payload: Dict[str, Any]) -> None:
 def _render_god_nodes(lines: List[str], payload: Dict[str, Any]) -> None:
     if not payload.get("god_nodes"):
         return
-    lines.extend([
-        "## God Nodes", "",
-        "| Rank | Name | Kind | Path | Degree |",
-        "|---:|---|---|---|---:|",
-    ])
+    lines.extend(
+        [
+            "## God Nodes",
+            "",
+            "| Rank | Name | Kind | Path | Degree |",
+            "|---:|---|---|---|---:|",
+        ]
+    )
     for rank, node in enumerate(payload["god_nodes"], start=1):
         lines.append(
-            f"| {rank} | `{node['name']}` | {node['kind']} "
-            f"| {node['path']} | {node['degree']} |"
+            f"| {rank} | `{node['name']}` | {node['kind']} | {node['path']} | {node['degree']} |"
         )
     lines.append("")
 
 
-def _render_gap_table(lines: List[str], gaps: List[Dict[str, Any]], reason: Optional[str] = None) -> None:
+def _render_gap_table(
+    lines: List[str], gaps: List[Dict[str, Any]], reason: Optional[str] = None
+) -> None:
     lines.extend(["| Name | Kind | Path | Degree |", "|---|---|---|---:|"])
     for node in gaps:
         if reason is not None and node.get("reason") != reason:
@@ -809,11 +827,14 @@ def _render_knowledge_gaps(lines: List[str], payload: Dict[str, Any]) -> None:
 def _render_sections(lines: List[str], payload: Dict[str, Any]) -> None:
     if not payload.get("sections"):
         return
-    lines.extend([
-        "## Sections", "",
-        "| Section | Files | Symbols | Internal edges | Cross-section deps |",
-        "|---|---:|---:|---:|---|",
-    ])
+    lines.extend(
+        [
+            "## Sections",
+            "",
+            "| Section | Files | Symbols | Internal edges | Cross-section deps |",
+            "|---|---:|---:|---:|---|",
+        ]
+    )
     for section in payload["sections"]:
         deps = ", ".join(section.get("cross_section_deps", []))
         lines.append(
@@ -827,12 +848,11 @@ def _render_sections(lines: List[str], payload: Dict[str, Any]) -> None:
 def _render_surprising(lines: List[str], payload: Dict[str, Any]) -> None:
     if not payload.get("surprising_connections"):
         return
-    lines.extend(["## Surprising Connections", "", "| Source | Relation | Target |", "|---|---|---|"])
+    lines.extend(
+        ["## Surprising Connections", "", "| Source | Relation | Target |", "|---|---|---|"]
+    )
     for edge in payload["surprising_connections"]:
-        lines.append(
-            f"| `{edge['source_path']}` | {edge['relation']} "
-            f"| `{edge['target_path']}` |"
-        )
+        lines.append(f"| `{edge['source_path']}` | {edge['relation']} | `{edge['target_path']}` |")
     lines.append("")
 
 
@@ -845,7 +865,9 @@ def _render_questions(lines: List[str], payload: Dict[str, Any]) -> None:
     lines.append("")
 
 
-def _postprocess_detail(level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]) -> str:
+def _postprocess_detail(
+    level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]
+) -> str:
     if skipped_reason:
         return f"postprocess=skipped ({skipped_reason})"
     if postprocess:
@@ -853,7 +875,9 @@ def _postprocess_detail(level: str, postprocess: Dict[str, Any], skipped_reason:
     return f"postprocess={level}"
 
 
-def _postprocess_line(level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]) -> str:
+def _postprocess_line(
+    level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]
+) -> str:
     if skipped_reason:
         return f"Postprocess: skipped ({skipped_reason})"
     if not postprocess:
@@ -893,6 +917,14 @@ def _render_parse_errors(parse_errors: Dict[str, str]) -> List[str]:
     lines = ["  Errors:"]
     for path, error in sorted(parse_errors.items()):
         lines.append(f"    {path}: {error}")
+    return lines
+
+
+def _render_warnings(warnings: List[str]) -> List[str]:
+    if not warnings:
+        return []
+    lines = ["  Warnings:"]
+    lines.extend(f"    {warning}" for warning in warnings)
     return lines
 
 

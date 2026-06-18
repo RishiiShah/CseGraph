@@ -33,8 +33,8 @@ Codex hooks are written to `.codex/hooks.json` so they show up in Codex's Hooks
 view after the project config layer is trusted. Review generated local setup
 before sharing logs or issue reproductions, and do not commit it.
 
-VS Code extension install and project setup live in
-[`csegraph-vscode/README.md`](../csegraph-vscode/README.md).
+VS Code extension install and project setup live in the
+[extension README](https://github.com/RishiiShah/CseGraph/tree/main/csegraph-vscode#readme).
 
 ## Index And Refresh
 
