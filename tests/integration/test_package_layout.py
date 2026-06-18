@@ -300,6 +300,10 @@ def test_sdk_exports_context_engine_facade_only():
     sdk_all = set(csegraph.__all__)
     expected = {
         "__version__",
+        "AsyncContextService",
+        "AsyncGraphQueryService",
+        "AsyncIndexService",
+        "AsyncRefreshService",
         "ContextNode",
         "ContextResult",
         "ContextService",

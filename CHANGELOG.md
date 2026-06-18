@@ -23,6 +23,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `csegraph[all]` preserves full language coverage.
 - Added structured diagnostic logging with global `--verbose` and `--quiet`
   controls.
+- Added thread-backed async SDK facades for indexing, refreshing, context
+  retrieval, and graph queries.
 
 ### Changed
 

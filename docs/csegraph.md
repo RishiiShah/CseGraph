@@ -282,6 +282,20 @@ status = StatusService(".csegraph/index.db").status()
 PostprocessService(".csegraph/index.db").postprocess(level="minimal")
 ```
 
+Async applications can use thread-backed async facades for the main SDK
+services:
+
+```python
+from csegraph import AsyncContextService, AsyncIndexService
+
+await AsyncIndexService(".csegraph/index.db").index(".", profile="medium")
+context = await AsyncContextService(".csegraph/index.db").build_context(
+    task="fix auth token refresh bug",
+    target="refresh_token",
+    profile="medium",
+)
+```
+
 ## Context Output
 
 Context responses include:

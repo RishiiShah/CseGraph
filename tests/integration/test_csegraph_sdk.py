@@ -1,9 +1,14 @@
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 from csegraph import (
+    AsyncContextService,
+    AsyncGraphQueryService,
+    AsyncIndexService,
+    AsyncRefreshService,
     ContextService,
     GraphQueryService,
     IndexService,
@@ -174,6 +179,41 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
         profile="small",
     )
     assert refreshed_context.target == "symbol::utils.py::function::format_title"
+
+
+def test_async_sdk_services(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = _scratch_path(repo, "async.csegraph.db")
+    _write_sample_repo(repo)
+
+    async def run_scenario():
+        index_result = await AsyncIndexService(db_path).index(repo, profile="small")
+        assert index_result.files_indexed == 2
+
+        context = await AsyncContextService(db_path).build_context(
+            task="Implement build_report using format_user",
+            target="symbol::main.py::function::build_report",
+            profile="small",
+        )
+        context_ids = {node.id for node in context.nodes}
+        assert "symbol::main.py::function::build_report" in context_ids
+        assert "symbol::utils.py::function::format_user" in context_ids
+
+        graph_service = AsyncGraphQueryService(db_path)
+        graph = await graph_service.neighborhood(
+            "symbol::main.py::function::build_report",
+            depth=1,
+            detail_level="standard",
+        )
+        assert graph.nodes
+
+        path = await graph_service.shortest_path("build_report", "format_user")
+        assert path.found is True
+
+        refresh = await AsyncRefreshService(db_path).refresh(profile="small")
+        assert refresh.files_indexed == 0
+
+    asyncio.run(run_scenario())
 
 
 def test_benchmark_service_runs_core_pipeline(tmp_path):

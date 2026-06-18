@@ -10,6 +10,12 @@ private implementation modules for repo-local maintainer tooling.
 __version__ = "1.7.1"
 
 from csegraph._core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
+from csegraph._core.async_services import (
+    AsyncContextService,
+    AsyncGraphQueryService,
+    AsyncIndexService,
+    AsyncRefreshService,
+)
 from csegraph._core.core.models import (
     ContextNode,
     ContextResult,
@@ -59,6 +65,10 @@ __all__ = [
     "EXPORT_FORMATS",
     "ExportResult",
     "ExportService",
+    "AsyncContextService",
+    "AsyncGraphQueryService",
+    "AsyncIndexService",
+    "AsyncRefreshService",
     "ContextNode",
     "ContextResult",
     "ContextService",

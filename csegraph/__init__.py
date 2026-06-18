@@ -7,6 +7,10 @@ re-exported by this SDK facade.
 from __future__ import annotations
 
 from csegraph._core import (
+    AsyncContextService,
+    AsyncGraphQueryService,
+    AsyncIndexService,
+    AsyncRefreshService,
     ContextNode,
     ContextResult,
     ContextService,
@@ -44,6 +48,10 @@ __version__ = "1.7.1"
 
 __all__ = [
     "__version__",
+    "AsyncContextService",
+    "AsyncGraphQueryService",
+    "AsyncIndexService",
+    "AsyncRefreshService",
     "ContextNode",
     "ContextResult",
     "ContextService",
