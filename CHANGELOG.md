@@ -33,6 +33,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added regression coverage for the interactive HTML graph explorer.
 - Added monorepo include-root support for indexing and refreshing selected
   repo-local subtrees.
+- Added a minimal stdio LSP server with indexed document-symbol support.
 
 ### Changed
 

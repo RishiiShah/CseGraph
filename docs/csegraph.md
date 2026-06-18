@@ -121,6 +121,17 @@ core tool names. The MCP surface does not expose CLI operations such as
 `analyze`, `export`, `registry`, or `daemon`, and it does not expose
 maintainer-only benchmark/eval tools.
 
+## LSP
+
+```bash
+env/bin/csegraph lsp --repo .
+env/bin/csegraph lsp . --db .csegraph/index.db
+```
+
+The LSP server speaks JSON-RPC over stdio for editor integrations. It advertises
+document symbols for files already present in the SQLite index, so run
+`csegraph index` or `csegraph refresh` before launching an editor client.
+
 `csegraph_context` supports both `max_tokens`, a soft budgeting hint used during
 retrieval to decide how much source material to include, and `max_bytes`, a hard
 ceiling enforced on the serialized JSON response. When `max_bytes` is exceeded,

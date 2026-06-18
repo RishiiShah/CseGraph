@@ -399,6 +399,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_json(serve, suppress=True)
 
+    lsp = subparsers.add_parser("lsp", help="Start the LSP stdio server for editors.")
+    _add_repo_positional(lsp)
+    _add_db(lsp)
+    _add_json(lsp, suppress=True)
+
     status = subparsers.add_parser("status", help="Show graph health and staleness info.")
     _add_repo_positional(status)
     status.add_argument("--verbose", action="store_true", help="Include extra detail (parse error paths).")
@@ -784,6 +789,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if raw is not None and not allowed:
             raise SystemExit("error: --tools resolved to an empty list. Use 'core' or a comma-separated list of tool names.")
         asyncio.run(run_stdio(allowed_tools=allowed))
+        return None
+    if args.command == "lsp":
+        from csegraph._core.lsp import run_stdio_lsp
+        repo = _repo_arg(args)
+        return_code = run_stdio_lsp(repo, _db_arg(args, repo))
+        if return_code:
+            raise SystemExit(return_code)
         return None
     if args.command == "status":
         from csegraph._core.status import StatusService

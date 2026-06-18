@@ -906,6 +906,7 @@ def test_cli_help_lists_only_product_commands():
         "watch",
         "status",
         "serve",
+        "lsp",
         "context",
         "inspect",
         "path",
