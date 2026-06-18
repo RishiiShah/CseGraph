@@ -1,4 +1,5 @@
 """Smoke tests for MCP install targets and VS Code extension surface."""
+
 from __future__ import annotations
 
 import json

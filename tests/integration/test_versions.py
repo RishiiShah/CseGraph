@@ -9,7 +9,6 @@ import csegraph
 import csegraph._cli
 import csegraph._core
 
-
 EXPECTED_VERSION = "1.7.1"
 
 

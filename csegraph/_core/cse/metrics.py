@@ -8,7 +8,6 @@ from csegraph._core.text.entities import extract_query_entities
 from csegraph._core.text.query_tokenizer import query_tokenizer
 from csegraph._core.text.tokens import tokenize_node_content
 
-
 DEP_THRESHOLD = 0.80
 ENTITY_THRESHOLD = 0.80
 SEMANTIC_THRESHOLD = 0.50
@@ -50,9 +49,7 @@ def compute_metrics(
     for node_id in context_set:
         if node_id not in symbols:
             continue
-        context_tokens.update(
-            tokenize_node_content(node_id, symbols[node_id], summaries, registry)
-        )
+        context_tokens.update(tokenize_node_content(node_id, symbols[node_id], summaries, registry))
     if not task_tokens or not context_tokens:
         sem = 0.0
     else:

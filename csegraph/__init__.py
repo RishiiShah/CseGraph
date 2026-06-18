@@ -4,9 +4,13 @@ Thin public facade over the context-engine API. Private engine, CLI,
 diagnostic, and maintainer services live under internal namespaces and are not
 re-exported by this SDK facade.
 """
+
 from __future__ import annotations
 
 from csegraph._core import (
+    POSTPROCESS_LEVELS,
+    PROFILES,
+    VALID_REASONS,
     AsyncContextService,
     AsyncGraphQueryService,
     AsyncIndexService,
@@ -32,10 +36,8 @@ from csegraph._core import (
     PathEdge,
     PathResult,
     PathStep,
-    POSTPROCESS_LEVELS,
     PostprocessResult,
     PostprocessService,
-    PROFILES,
     ProfileConfig,
     RefreshResult,
     RefreshService,
@@ -44,7 +46,6 @@ from csegraph._core import (
     SufficiencyMetrics,
     SufficiencyResult,
     Tokenizer,
-    VALID_REASONS,
     get_profile,
     load_profile,
     register_parser,

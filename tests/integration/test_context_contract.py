@@ -5,7 +5,6 @@ from csegraph import ContextService, IndexService
 from csegraph._core.core.serializer import to_dict
 from csegraph._core.retrieval.constants import VALID_REASONS
 
-
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "context_contract_v2_shape.json"
 
 
@@ -66,7 +65,9 @@ def test_context_json_contract_is_canonical_only(tmp_path):
         assert set(node["reason"]).issubset(VALID_REASONS)
         assert node["reason_details"]
         assert {d["code"] for d in node["reason_details"]}.issubset(VALID_REASONS)
-        assert all("confidence_tier" in d and "score_contribution" in d for d in node["reason_details"])
+        assert all(
+            "confidence_tier" in d and "score_contribution" in d for d in node["reason_details"]
+        )
         assert "source_text" not in node
         assert "explanation" not in node
 
@@ -224,6 +225,7 @@ def test_context_minimal_detail_never_includes_source(tmp_path):
 
 def test_minimal_detail_truncates_long_summaries(tmp_path):
     import sqlite3
+
     repo = tmp_path / "repo"
     db_path = tmp_path / "index.db"
     repo.mkdir(parents=True, exist_ok=True)

@@ -10,7 +10,6 @@ from typing import Any
 from csegraph._core.benchmark import BenchmarkService
 from csegraph._core.core.serializer import to_dict
 
-
 DEFAULT_MIN_OVERALL_HIT_RATE = 0.85
 DEFAULT_MIN_TASK_PASS_RATE = 0.60
 DEFAULT_MAX_FAILED_TASKS = 2

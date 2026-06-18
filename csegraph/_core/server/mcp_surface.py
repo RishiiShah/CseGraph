@@ -2,6 +2,7 @@
 
 Keeps the six-tool context loop from growing via accidental schema or prompt bloat.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,15 +68,11 @@ def validate_mcp_surface(
     tool_names = {tool.name for tool in tools}
     prompt_names = {prompt.name for prompt in prompts}
     if len(tools) != EXPECTED_MCP_TOOL_COUNT:
-        raise AssertionError(
-            f"MCP tool count {len(tools)} != {EXPECTED_MCP_TOOL_COUNT}"
-        )
+        raise AssertionError(f"MCP tool count {len(tools)} != {EXPECTED_MCP_TOOL_COUNT}")
     if tool_names != set(expected_tool_names):
         raise AssertionError(f"MCP tool names drifted: {sorted(tool_names)}")
     if len(prompts) != EXPECTED_MCP_PROMPT_COUNT:
-        raise AssertionError(
-            f"MCP prompt count {len(prompts)} != {EXPECTED_MCP_PROMPT_COUNT}"
-        )
+        raise AssertionError(f"MCP prompt count {len(prompts)} != {EXPECTED_MCP_PROMPT_COUNT}")
     if prompt_names != set(expected_prompt_names):
         raise AssertionError(f"MCP prompt names drifted: {sorted(prompt_names)}")
 

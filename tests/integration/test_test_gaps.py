@@ -1,10 +1,9 @@
 """Tests for test-gap analysis service."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.graph.test_gaps import TestGapService

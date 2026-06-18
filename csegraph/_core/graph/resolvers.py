@@ -5,13 +5,14 @@ inserts new edges with confidence_tier='INFERRED'. Resolvers are idempotent —
 running them multiple times produces the same result because edges use
 INSERT OR IGNORE with the UNIQUE constraint.
 """
+
 from __future__ import annotations
 
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from csegraph._core.index.repository import ProjectIndex
 
@@ -68,6 +69,7 @@ class ResolverService:
 
 # -- Transitive test edges -----------------------------------------------------
 
+
 def _resolve_transitive_test_edges(index: ProjectIndex, max_depth: int = 3) -> ResolverStats:
     """Walk call chains from test functions to discover indirect tested_by edges.
 
@@ -86,15 +88,11 @@ def _resolve_transitive_test_edges(index: ProjectIndex, max_depth: int = 3) -> R
         return stats
 
     outgoing_calls: Dict[str, Set[str]] = defaultdict(set)
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges WHERE relation = 'calls'"
-    ):
+    for row in index.conn.execute("SELECT source, target FROM edges WHERE relation = 'calls'"):
         outgoing_calls[row["source"]].add(row["target"])
 
     existing_tested_by: Set[Tuple[str, str]] = set()
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges WHERE relation = 'tested_by'"
-    ):
+    for row in index.conn.execute("SELECT source, target FROM edges WHERE relation = 'tested_by'"):
         existing_tested_by.add((row["source"], row["target"]))
 
     new_edges: List[Tuple[str, str, str, str, float, str]] = []
@@ -114,10 +112,16 @@ def _resolve_transitive_test_edges(index: ProjectIndex, max_depth: int = 3) -> R
                 if (target_id, test_id) not in existing_tested_by:
                     existing_tested_by.add((target_id, test_id))
                     meta = json.dumps({"via": "transitive", "depth": depth})
-                    new_edges.append((
-                        target_id, test_id, "tested_by", meta,
-                        round(0.8 / depth, 2), "INFERRED",
-                    ))
+                    new_edges.append(
+                        (
+                            target_id,
+                            test_id,
+                            "tested_by",
+                            meta,
+                            round(0.8 / depth, 2),
+                            "INFERRED",
+                        )
+                    )
                     stats.edges_added += 1
 
                 next_frontier.update(outgoing_calls.get(target_id, set()))
@@ -135,6 +139,7 @@ def _resolve_transitive_test_edges(index: ProjectIndex, max_depth: int = 3) -> R
 
 
 # -- Python import resolver ----------------------------------------------------
+
 
 def _resolve_python_imports(index: ProjectIndex, repo_root: str) -> ResolverStats:
     """Retry unresolved Python imports using __init__.py and suffix matching.
@@ -156,9 +161,7 @@ def _resolve_python_imports(index: ProjectIndex, repo_root: str) -> ResolverStat
     module_map = _build_python_module_map(py_files)
 
     existing_imports: Set[Tuple[str, str]] = set()
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges WHERE relation = 'imports'"
-    ):
+    for row in index.conn.execute("SELECT source, target FROM edges WHERE relation = 'imports'"):
         existing_imports.add((row["source"], row["target"]))
 
     symbol_names: Dict[str, List[str]] = defaultdict(list)
@@ -192,9 +195,16 @@ def _resolve_python_imports(index: ProjectIndex, repo_root: str) -> ResolverStat
             if resolved and (file_id, resolved) not in existing_imports:
                 existing_imports.add((file_id, resolved))
                 meta = json.dumps({"import": import_name, "strategy": "fallback"})
-                new_edges.append((
-                    file_id, resolved, "imports", meta, 0.7, "INFERRED",
-                ))
+                new_edges.append(
+                    (
+                        file_id,
+                        resolved,
+                        "imports",
+                        meta,
+                        0.7,
+                        "INFERRED",
+                    )
+                )
                 stats.edges_added += 1
 
     if new_edges:
@@ -271,7 +281,7 @@ def _resolve_relative_python(
     else:
         return None
 
-    base = parts[:max(0, len(parts) - dots + 1)]
+    base = parts[: max(0, len(parts) - dots + 1)]
     if suffix:
         target_module = ".".join(base + suffix.split("."))
     else:
@@ -281,6 +291,7 @@ def _resolve_relative_python(
 
 
 # -- TypeScript alias resolver -------------------------------------------------
+
 
 def _resolve_ts_aliases(index: ProjectIndex, repo_root: str) -> ResolverStats:
     """Read tsconfig.json/jsconfig.json paths and re-resolve aliased imports."""
@@ -304,9 +315,7 @@ def _resolve_ts_aliases(index: ProjectIndex, repo_root: str) -> ResolverStats:
         file_by_path[path.replace("\\", "/")] = file_id
 
     existing_imports: Set[Tuple[str, str]] = set()
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges WHERE relation = 'imports'"
-    ):
+    for row in index.conn.execute("SELECT source, target FROM edges WHERE relation = 'imports'"):
         existing_imports.add((row["source"], row["target"]))
 
     new_edges: List[Tuple[str, str, str, str, float, str]] = []
@@ -331,9 +340,16 @@ def _resolve_ts_aliases(index: ProjectIndex, repo_root: str) -> ResolverStats:
             if resolved_path and (file_id, resolved_path) not in existing_imports:
                 existing_imports.add((file_id, resolved_path))
                 meta = json.dumps({"import": import_path, "strategy": "tsconfig_alias"})
-                new_edges.append((
-                    file_id, resolved_path, "imports", meta, 0.7, "INFERRED",
-                ))
+                new_edges.append(
+                    (
+                        file_id,
+                        resolved_path,
+                        "imports",
+                        meta,
+                        0.7,
+                        "INFERRED",
+                    )
+                )
                 stats.edges_added += 1
 
     if new_edges:
@@ -361,9 +377,7 @@ def _load_ts_path_aliases(repo_root: str) -> Dict[str, List[str]]:
             for alias, targets in paths.items():
                 resolved_targets = []
                 for t in targets:
-                    resolved_targets.append(
-                        (Path(base_url) / t).as_posix()
-                    )
+                    resolved_targets.append((Path(base_url) / t).as_posix())
                 aliases[alias] = resolved_targets
             if aliases:
                 break
@@ -377,14 +391,14 @@ def _extract_ts_import_path(line: str) -> Optional[str]:
     for pattern in ("from '", 'from "', "from '", 'from "'):
         idx = stripped.find(pattern)
         if idx >= 0:
-            rest = stripped[idx + len(pattern):]
+            rest = stripped[idx + len(pattern) :]
             end = rest.find("'" if pattern.endswith("'") else '"')
             if end > 0:
                 return rest[:end]
     for pattern in ("require('", 'require("'):
         idx = stripped.find(pattern)
         if idx >= 0:
-            rest = stripped[idx + len(pattern):]
+            rest = stripped[idx + len(pattern) :]
             end = rest.find("'" if pattern.endswith("'") else '"')
             if end > 0:
                 return rest[:end]
@@ -401,7 +415,7 @@ def _resolve_alias(
         if alias_pattern.endswith("/*"):
             prefix = alias_pattern[:-2]
             if import_path.startswith(prefix + "/"):
-                remainder = import_path[len(prefix) + 1:]
+                remainder = import_path[len(prefix) + 1 :]
                 for target in targets:
                     if target.endswith("/*"):
                         base = target[:-2]

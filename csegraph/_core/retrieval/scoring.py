@@ -8,7 +8,6 @@ from csegraph._core.languages.registry import registry
 from csegraph._core.text.query_tokenizer import query_tokenizer
 from csegraph._core.text.tokens import tokenize_node_content
 
-
 RELATION_WEIGHTS: Dict[str, float] = {
     "calls": 2.5,
     "inherits": 1.5,
@@ -221,6 +220,4 @@ def apply_graph_expansion(
         boost = RELATION_WEIGHTS.get(relation, 0.2) / depth
         scores[neighbor] += boost
         evidence[neighbor].append(f"graph-{relation}")
-        evidence[neighbor].append(
-            f"expanded-from-{row['source']}-via-{relation}-depth{depth}"
-        )
+        evidence[neighbor].append(f"expanded-from-{row['source']}-via-{relation}-depth{depth}")

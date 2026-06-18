@@ -3,6 +3,7 @@
 Simulates the context loop agents should follow (minimal → context → optional graph)
 and records estimated tokens, response bytes, and tool-call counts per workflow.
 """
+
 from __future__ import annotations
 
 import json

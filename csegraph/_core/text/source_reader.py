@@ -1,4 +1,5 @@
 """Shared utility for reading source code line ranges from files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,9 +20,7 @@ def read_source_lines(
     root = Path(repo_root).resolve()
     resolved = (root / file_path).resolve()
     if not resolved.is_relative_to(root):
-        raise ValueError(
-            f"Path escapes repo root: {file_path!r} resolves to {resolved}"
-        )
+        raise ValueError(f"Path escapes repo root: {file_path!r} resolves to {resolved}")
     if not resolved.is_file():
         return None
     try:

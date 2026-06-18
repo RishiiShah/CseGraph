@@ -12,7 +12,6 @@ from csegraph._core.graph.queries import clear_hub_cache
 from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.services import RefreshService
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +23,8 @@ def watch(
     extensions: Optional[set[str]] = None,
 ) -> None:
     try:
-        from watchfiles import watch as _watch, Change
+        from watchfiles import Change
+        from watchfiles import watch as _watch
     except ImportError:
         logger.error(
             "csegraph watch requires the 'watchfiles' package.\n"
@@ -35,6 +35,7 @@ def watch(
     repo_path = Path(repo).resolve()
     if extensions is None:
         from csegraph._core.languages.registry import registry
+
         extensions = set(registry.supported_extensions())
 
     def _should_watch(_change: Change, path: str) -> bool:

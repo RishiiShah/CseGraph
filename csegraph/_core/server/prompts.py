@@ -1,11 +1,11 @@
 """MCP prompt catalog and rendering helpers."""
+
 from __future__ import annotations
 
 import json
 from typing import Any
 
 from mcp.types import GetPromptResult, Prompt, PromptArgument, PromptMessage, TextContent
-
 
 PROMPTS: list[Prompt] = [
     Prompt(
@@ -32,7 +32,11 @@ PROMPTS: list[Prompt] = [
         description="Run csegraph_minimal first to get a compact summary and next-tool suggestions.",
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="task", description="Optional task description for keyword routing.", required=False),
+            PromptArgument(
+                name="task",
+                description="Optional task description for keyword routing.",
+                required=False,
+            ),
         ],
     ),
     Prompt(
@@ -42,7 +46,9 @@ PROMPTS: list[Prompt] = [
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
             PromptArgument(name="task", description="Natural-language coding task.", required=True),
-            PromptArgument(name="target", description="Optional symbol, node ID, or file path.", required=False),
+            PromptArgument(
+                name="target", description="Optional symbol, node ID, or file path.", required=False
+            ),
         ],
     ),
     Prompt(
@@ -275,7 +281,7 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
                 "Step 1: Call `csegraph_minimal` (task may mention the focus area).",
                 "Step 2: Call `csegraph_graph` on "
                 + repr(focus)
-                + " with depth=2 and detail_level=minimal; use relations=[\"calls\",\"imports\"] if exploring dependencies.",
+                + ' with depth=2 and detail_level=minimal; use relations=["calls","imports"] if exploring dependencies.',
                 "Summarize modules, coupling hints from confidence_breakdown/hubs_skipped, and suggested next targets.",
                 "Stop after at most 3 csegraph MCP tool calls (second call may be another graph if focus was wrong).",
             ],
@@ -325,6 +331,7 @@ def prompt_text(goal: str, steps: list[str], arguments: dict[str, Any]) -> str:
 
 def prompts_for_tools(allowed_tool_names: set[str]) -> list[Prompt]:
     return [
-        prompt for prompt in PROMPTS
+        prompt
+        for prompt in PROMPTS
         if PROMPT_TOOL_DEPENDENCIES.get(prompt.name, set()).issubset(allowed_tool_names)
     ]

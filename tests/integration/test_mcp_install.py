@@ -49,7 +49,10 @@ def test_copilot_install_uses_vscode_servers_key(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     config = repo / ".vscode" / "mcp.json"
     config.parent.mkdir(parents=True)
-    config.write_text(json.dumps({"servers": {"other": {"type": "http", "url": "https://example.test"}}}), encoding="utf-8")
+    config.write_text(
+        json.dumps({"servers": {"other": {"type": "http", "url": "https://example.test"}}}),
+        encoding="utf-8",
+    )
 
     McpInstallService(repo).install(platform="copilot", dry_run=False)
 
@@ -80,8 +83,13 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
         "command": "csegraph",
         "args": ["serve"],
     }
-    assert _read_json(repo / ".cursor" / "mcp.json")["mcpServers"]["csegraph"]["command"] == "csegraph"
-    assert _read_json(repo / ".gemini" / "settings.json")["mcpServers"]["csegraph"]["command"] == "csegraph"
+    assert (
+        _read_json(repo / ".cursor" / "mcp.json")["mcpServers"]["csegraph"]["command"] == "csegraph"
+    )
+    assert (
+        _read_json(repo / ".gemini" / "settings.json")["mcpServers"]["csegraph"]["command"]
+        == "csegraph"
+    )
     assert (
         _read_json(repo / ".kiro" / "settings" / "mcp.json")["mcpServers"]["csegraph"]["command"]
         == "csegraph"
@@ -91,7 +99,11 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
     assert "PostToolUse" in codex_hooks["hooks"]
     assert "PreToolUse" in codex_hooks["hooks"]
     assert "hooks" in _read_json(repo / ".claude" / "settings.json")
-    assert {path.name for path in repo.glob("*.md") if "csegraph" in path.read_text(encoding="utf-8").lower()} >= {
+    assert {
+        path.name
+        for path in repo.glob("*.md")
+        if "csegraph" in path.read_text(encoding="utf-8").lower()
+    } >= {
         "AGENTS.md",
         "CLAUDE.md",
         "CODEX.md",
@@ -159,7 +171,9 @@ def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:
     assert result.installed[0].scope == "project"
     assert not (home / ".codex" / "config.toml").exists()
     hooks = _read_json(repo / ".codex" / "hooks.json")
-    assert hooks["hooks"]["PostToolUse"][0]["hooks"][0]["statusMessage"] == "Refreshing CseGraph index"
+    assert (
+        hooks["hooks"]["PostToolUse"][0]["hooks"][0]["statusMessage"] == "Refreshing CseGraph index"
+    )
     assert hooks["hooks"]["PreToolUse"][0]["hooks"][0]["statusMessage"] == "Checking CseGraph index"
     assert (repo / "AGENTS.md").exists()
     assert (repo / "CODEX.md").exists()
@@ -348,7 +362,8 @@ def test_vscode_install_creates_three_files(tmp_path: Path) -> None:
     repo.mkdir()
 
     result = McpInstallService(repo, command="csegraph").install(
-        platform="vscode", dry_run=False,
+        platform="vscode",
+        dry_run=False,
     )
 
     vscode_targets = [t for t in result.installed if t.platform == "vscode"]
@@ -378,7 +393,8 @@ def test_vscode_install_merges_with_existing_settings(tmp_path: Path) -> None:
     )
 
     McpInstallService(repo, command="my-csegraph").install(
-        platform="vscode", dry_run=False,
+        platform="vscode",
+        dry_run=False,
     )
 
     data = _read_json(settings_path)
@@ -393,13 +409,15 @@ def test_vscode_install_merges_tasks_without_duplicating(tmp_path: Path) -> None
     tasks_path = repo / ".vscode" / "tasks.json"
     tasks_path.parent.mkdir(parents=True)
     tasks_path.write_text(
-        json.dumps({
+        json.dumps(
+            {
                 "version": "1.7.1",
-            "tasks": [
-                {"label": "csegraph: Build Index", "type": "shell", "command": "old"},
-                {"label": "my-task", "type": "shell", "command": "echo hi"},
-            ],
-        }),
+                "tasks": [
+                    {"label": "csegraph: Build Index", "type": "shell", "command": "old"},
+                    {"label": "my-task", "type": "shell", "command": "echo hi"},
+                ],
+            }
+        ),
         encoding="utf-8",
     )
 

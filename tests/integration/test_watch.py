@@ -6,23 +6,24 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 
 class TestWatchImport:
     def test_module_importable(self):
         from csegraph._core.watch import watch
+
         assert callable(watch)
 
 
 class TestSupportedExtensions:
     def test_registry_has_py(self):
         from csegraph._core.languages.registry import registry
+
         exts = registry.supported_extensions()
         assert ".py" in exts
 
     def test_returns_set(self):
         from csegraph._core.languages.registry import registry
+
         exts = registry.supported_extensions()
         assert isinstance(exts, set)
 

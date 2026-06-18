@@ -28,53 +28,17 @@ def _index_repo(tmp_path: Path, files: dict[str, str], *, postprocess: bool = Tr
 
 
 _SAMPLE_FILES = {
-    "main.py": (
-        "from app import greet\n"
-        "\n"
-        "def main():\n"
-        "    print(greet('world'))\n"
-    ),
-    "app.py": (
-        "from helpers import fmt\n"
-        "\n"
-        "def greet(name):\n"
-        "    return fmt(name)\n"
-    ),
-    "helpers.py": (
-        "def fmt(name):\n"
-        "    return f'Hello, {name}'\n"
-    ),
-    "tests/test_app.py": (
-        "from app import greet\n"
-        "\n"
-        "def test_greet():\n"
-        "    assert greet('x')\n"
-    ),
+    "main.py": ("from app import greet\n\ndef main():\n    print(greet('world'))\n"),
+    "app.py": ("from helpers import fmt\n\ndef greet(name):\n    return fmt(name)\n"),
+    "helpers.py": ("def fmt(name):\n    return f'Hello, {name}'\n"),
+    "tests/test_app.py": ("from app import greet\n\ndef test_greet():\n    assert greet('x')\n"),
 }
 
 _DEEP_CHAIN = {
-    "entry.py": (
-        "from a import step_a\n"
-        "\n"
-        "def run():\n"
-        "    return step_a()\n"
-    ),
-    "a.py": (
-        "from b import step_b\n"
-        "\n"
-        "def step_a():\n"
-        "    return step_b()\n"
-    ),
-    "b.py": (
-        "from c import step_c\n"
-        "\n"
-        "def step_b():\n"
-        "    return step_c()\n"
-    ),
-    "c.py": (
-        "def step_c():\n"
-        "    return 42\n"
-    ),
+    "entry.py": ("from a import step_a\n\ndef run():\n    return step_a()\n"),
+    "a.py": ("from b import step_b\n\ndef step_a():\n    return step_b()\n"),
+    "b.py": ("from c import step_c\n\ndef step_b():\n    return step_c()\n"),
+    "c.py": ("def step_c():\n    return 42\n"),
 }
 
 _SECURITY_FILES = {

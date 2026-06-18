@@ -1,4 +1,5 @@
 """Community summaries and architecture overview from the csegraph index."""
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -111,9 +112,7 @@ def _community_label(members: List[str], node_info: Dict[str, Dict[str, Any]]) -
 
     if not dir_counts:
         symbol_names = [
-            node_info[m]["name"]
-            for m in members[:3]
-            if node_info.get(m, {}).get("name")
+            node_info[m]["name"] for m in members[:3] if node_info.get(m, {}).get("name")
         ]
         return ", ".join(symbol_names) or "unnamed"
 
@@ -126,7 +125,11 @@ def _community_label(members: List[str], node_info: Dict[str, Dict[str, Any]]) -
         and node_info.get(m, {}).get("path", "").replace("\\", "/").startswith(top_dir)
     ]
     if symbols_in_dir:
-        return f"{top_dir} ({symbols_in_dir[0]}...)" if len(symbols_in_dir) > 1 else f"{top_dir} ({symbols_in_dir[0]})"
+        return (
+            f"{top_dir} ({symbols_in_dir[0]}...)"
+            if len(symbols_in_dir) > 1
+            else f"{top_dir} ({symbols_in_dir[0]})"
+        )
     return top_dir
 
 
@@ -197,18 +200,20 @@ def _build_summaries(
 
         label = _community_label(members, node_info)
 
-        summaries.append(CommunitySummary(
-            community_id=comm_id,
-            label=label,
-            size=len(members),
-            files=len(files),
-            languages=dict(languages.most_common()),
-            type_counts=dict(type_counts.most_common()),
-            key_symbols=key_symbol_names,
-            internal_edges=comm_internal.get(comm_id, 0),
-            cross_edges=comm_cross.get(comm_id, 0),
-            test_count=test_count,
-        ))
+        summaries.append(
+            CommunitySummary(
+                community_id=comm_id,
+                label=label,
+                size=len(members),
+                files=len(files),
+                languages=dict(languages.most_common()),
+                type_counts=dict(type_counts.most_common()),
+                key_symbols=key_symbol_names,
+                internal_edges=comm_internal.get(comm_id, 0),
+                cross_edges=comm_cross.get(comm_id, 0),
+                test_count=test_count,
+            )
+        )
 
     return summaries
 
@@ -241,13 +246,15 @@ def _build_coupling(
 
     coupling: List[CouplingPair] = []
     for (a, b), weight in pair_counts.most_common():
-        coupling.append(CouplingPair(
-            community_a=a,
-            community_b=b,
-            label_a=labels.get(a, ""),
-            label_b=labels.get(b, ""),
-            weight=weight,
-            relations=dict(pair_relations[(a, b)].most_common()),
-        ))
+        coupling.append(
+            CouplingPair(
+                community_a=a,
+                community_b=b,
+                label_a=labels.get(a, ""),
+                label_b=labels.get(b, ""),
+                weight=weight,
+                relations=dict(pair_relations[(a, b)].most_common()),
+            )
+        )
 
     return coupling

@@ -37,6 +37,5 @@ def test_minimal_warns_when_index_stale(tmp_path: Path):
     result = _handle_tool("csegraph_minimal", {"repo": str(repo), "db": db})
     assert "stale" in result["summary"].lower()
     assert "csegraph_refresh" in result["summary"] or any(
-        s.get("tool") == "csegraph_refresh"
-        for s in result.get("next_tool_suggestions", [])
+        s.get("tool") == "csegraph_refresh" for s in result.get("next_tool_suggestions", [])
     )

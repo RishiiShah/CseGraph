@@ -1,8 +1,8 @@
 """MCP tool catalog for the public CseGraph context-engine surface."""
+
 from __future__ import annotations
 
 from mcp.types import Tool
-
 
 MIN_BYTE_CAP = 256
 

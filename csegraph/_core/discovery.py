@@ -4,11 +4,12 @@ Discovery prefers ``git ls-files`` (staged and committed, with submodules by
 default), then ``svn list -R`` for SVN working copies, then a bounded directory
 walk. Untracked files in git repos are skipped until ``git add``.
 """
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, Optional
 
 from csegraph._core.ignore import IgnoreFilter, load_ignore_filter
 from csegraph._core.languages.base import EXCLUDED_DIRS
@@ -45,7 +46,8 @@ def _walk_rel_paths(root: Path, ignore: IgnoreFilter) -> Iterable[str]:
     for dirpath, dirnames, filenames in os.walk(root):
         rel_root = Path(dirpath).resolve().relative_to(resolved_root).as_posix()
         dirnames[:] = sorted(
-            name for name in dirnames
+            name
+            for name in dirnames
             if name not in EXCLUDED_DIRS
             and not name.startswith(".")
             and ignore.should_descend(

@@ -1,4 +1,5 @@
 import subprocess
+
 import pytest
 
 from csegraph._core.discovery import is_discoverable_rel_path, iter_discoverable_rel_paths

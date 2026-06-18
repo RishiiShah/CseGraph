@@ -17,10 +17,7 @@ def _indexed(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.py").write_text(
-        "from b import helper\n"
-        "\n"
-        "def foo():\n"
-        "    return helper()\n",
+        "from b import helper\n\ndef foo():\n    return helper()\n",
         encoding="utf-8",
     )
     (repo / "b.py").write_text(
@@ -52,11 +49,7 @@ class TestByteCapHelper:
         assert "source_text" in result["nodes"][0]
 
     def test_drops_source_text_first(self):
-        result = {
-            "nodes": [
-                {"id": "x", "source_text": "x" * 2000, "explanation": "explain"}
-            ]
-        }
+        result = {"nodes": [{"id": "x", "source_text": "x" * 2000, "explanation": "explain"}]}
         # Tight enough to require source_text drop but explanation can stay.
         _apply_byte_cap(result, 300)
         assert "source_text" in result["truncated_fields"]
@@ -77,11 +70,7 @@ class TestByteCapHelper:
         assert result["byte_cap_applied"] is True
 
     def test_drop_order_is_stable(self):
-        result = {
-            "nodes": [
-                {"id": "n", "source_text": "x" * 1000, "explanation": "y" * 1000}
-            ]
-        }
+        result = {"nodes": [{"id": "n", "source_text": "x" * 1000, "explanation": "y" * 1000}]}
         _apply_byte_cap(result, 300)
         # source_text appears before explanation in the truncated_fields list.
         idx_source = result["truncated_fields"].index("source_text")
@@ -89,19 +78,16 @@ class TestByteCapHelper:
         assert idx_source < idx_expl
 
     def test_response_bytes_matches_actual_size(self):
-        result = {
-            "nodes": [
-                {"id": f"n{i}", "source_text": "x" * 100}
-                for i in range(3)
-            ]
-        }
+        result = {"nodes": [{"id": f"n{i}", "source_text": "x" * 100} for i in range(3)]}
         _apply_byte_cap(result, 300)
         assert result["response_bytes"] == _encoded(result)
 
     def test_small_cap_validated_by_handle_tool(self, tmp_path):
         """Validation of max_bytes < 256 is done in _handle_tool, not _apply_byte_cap."""
-        from csegraph._core.server.app import _handle_tool
         import pytest
+
+        from csegraph._core.server.app import _handle_tool
+
         repo = tmp_path / "repo"
         repo.mkdir()
         with pytest.raises(ValueError, match="max_bytes must be at least 256"):
@@ -195,6 +181,7 @@ class TestByteCapSchemas:
     def test_path_schema_declares_max_bytes(self):
         p = next(t for t in _TOOLS if t.name == "csegraph_path")
         assert "max_bytes" in p.inputSchema["properties"]
+
 
 class TestGenericListTrim:
     def test_trims_change_detection_style_result(self):

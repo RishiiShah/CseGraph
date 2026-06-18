@@ -57,13 +57,21 @@ def test_markdown_output_uses_language_fence(tmp_path):
 
     proc = subprocess.run(
         [
-            sys.executable, "-m", "csegraph._cli",
-            "context", "Implement run",
-            "--target", "run",
-            "--db", str(db_path),
-            "--repo", str(repo),
-            "--format", "markdown",
-            "--detail-level", "standard",
+            sys.executable,
+            "-m",
+            "csegraph._cli",
+            "context",
+            "Implement run",
+            "--target",
+            "run",
+            "--db",
+            str(db_path),
+            "--repo",
+            str(repo),
+            "--format",
+            "markdown",
+            "--detail-level",
+            "standard",
         ],
         check=True,
         capture_output=True,
@@ -113,7 +121,9 @@ def test_context_node_with_empty_language_raises():
 
 def test_schema_v5_language_column_notnull(tmp_path):
     import sqlite3
+
     from csegraph._core.index.repository import ProjectIndex
+
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     db_path = _scratch_path(repo, "test.db")
@@ -129,22 +139,24 @@ def test_schema_v5_language_column_notnull(tmp_path):
 
 def test_real_index_produces_no_null_language(tmp_path):
     import sqlite3
+
     from csegraph import IndexService
+
     repo = tmp_path / "repo"
     db_path = _scratch_path(repo, "index.db")
     _write_repo(repo)
     IndexService(db_path).index(repo, profile="small")
     with sqlite3.connect(db_path) as conn:
-        null_count = conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE language IS NULL"
-        ).fetchone()[0]
+        null_count = conn.execute("SELECT COUNT(*) FROM nodes WHERE language IS NULL").fetchone()[0]
     assert null_count == 0
 
 
 def test_no_empty_language_in_fresh_index(tmp_path):
     """Every nodes row in a fresh index must have a non-empty language."""
     import sqlite3
+
     from csegraph import IndexService
+
     repo = tmp_path / "repo"
     db_path = _scratch_path(repo, "index.db")
     _write_repo(repo)
@@ -159,6 +171,7 @@ def test_no_empty_language_in_fresh_index(tmp_path):
 def test_writer_guard_fires_before_file_insert(tmp_path):
     """IndexService must raise before writing any nodes when language is empty."""
     import sqlite3
+
     from csegraph._core.index.repository import ProjectIndex
     from csegraph._core.index.services import _write_parsed_files
     from csegraph._core.languages.types import ParsedFile

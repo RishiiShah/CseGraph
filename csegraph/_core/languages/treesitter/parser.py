@@ -91,7 +91,7 @@ def _extract_line_doc(node: Node, lines: List[str], prefix: str = "///") -> str:
     while i >= 0:
         line = lines[i].strip()
         if line.startswith(prefix):
-            doc_lines.insert(0, line[len(prefix):].strip())
+            doc_lines.insert(0, line[len(prefix) :].strip())
             i -= 1
         else:
             break
@@ -161,7 +161,11 @@ class TreeSitterParser(BaseParser):
         if self._config.extract_imports_fn:
             parsed.imports = self._config.extract_imports_fn(tree.root_node)
         self._extract_symbols(
-            tree.root_node, rel_path, lines, parsed.symbols, file_is_test,
+            tree.root_node,
+            rel_path,
+            lines,
+            parsed.symbols,
+            file_is_test,
         )
         return parsed
 
@@ -181,7 +185,9 @@ class TreeSitterParser(BaseParser):
     ) -> Optional[str]:
         if self._config.resolve_import_fn:
             return self._config.resolve_import_fn(
-                import_name, module_to_file_id, current_module,
+                import_name,
+                module_to_file_id,
+                current_module,
             )
         return None
 
@@ -219,37 +225,75 @@ class TreeSitterParser(BaseParser):
         for child in root.children:
             if child.type in cfg.class_types:
                 self._extract_class(
-                    child, rel_path, lines, symbols, file_is_test, class_map,
+                    child,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
+                    class_map,
                 )
             elif child.type in cfg.function_types:
                 self._extract_function(
-                    child, rel_path, lines, symbols, file_is_test,
-                    parent_class_id, class_name, class_map,
+                    child,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
+                    parent_class_id,
+                    class_name,
+                    class_map,
                 )
             elif cfg.export_type and child.type == cfg.export_type:
                 self._extract_symbols(
-                    child, rel_path, lines, symbols, file_is_test,
-                    parent_class_id, class_name, class_map,
+                    child,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
+                    parent_class_id,
+                    class_name,
+                    class_map,
                 )
             elif child.type in cfg.declaration_wrapper_types:
                 body = child.child_by_field_name("body")
                 target = body if body else child
                 self._extract_symbols(
-                    target, rel_path, lines, symbols, file_is_test,
-                    parent_class_id, class_name, class_map,
+                    target,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
+                    parent_class_id,
+                    class_name,
+                    class_map,
                 )
             elif child.type in cfg.lambda_decl_types:
                 self._extract_arrow_functions(
-                    child, rel_path, lines, symbols, file_is_test,
+                    child,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
                 )
             elif child.type in cfg.impl_types:
                 self._extract_impl_block(
-                    child, rel_path, lines, symbols, file_is_test, class_map,
+                    child,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
+                    class_map,
                 )
             elif cfg.decorator_wrapper_type and child.type == cfg.decorator_wrapper_type:
                 self._extract_symbols(
-                    child, rel_path, lines, symbols, file_is_test,
-                    parent_class_id, class_name, class_map,
+                    child,
+                    rel_path,
+                    lines,
+                    symbols,
+                    file_is_test,
+                    parent_class_id,
+                    class_name,
+                    class_map,
                 )
 
         if top_level:
@@ -269,7 +313,11 @@ class TreeSitterParser(BaseParser):
         if not name:
             return
         effective_node = node
-        if cfg.decorator_wrapper_type and node.parent and node.parent.type == cfg.decorator_wrapper_type:
+        if (
+            cfg.decorator_wrapper_type
+            and node.parent
+            and node.parent.type == cfg.decorator_wrapper_type
+        ):
             effective_node = node.parent
         start_line = effective_node.start_point[0] + 1
         end_line = effective_node.end_point[0] + 1
@@ -307,7 +355,11 @@ class TreeSitterParser(BaseParser):
             for child in body.children:
                 if child.type in cfg.function_types:
                     self._extract_function(
-                        child, rel_path, lines, symbols, file_is_test,
+                        child,
+                        rel_path,
+                        lines,
+                        symbols,
+                        file_is_test,
                         parent_class_id=class_symbol.node_id,
                         class_name=name,
                     )
@@ -315,7 +367,11 @@ class TreeSitterParser(BaseParser):
                     for inner in child.children:
                         if inner.type in cfg.function_types:
                             self._extract_function(
-                                inner, rel_path, lines, symbols, file_is_test,
+                                inner,
+                                rel_path,
+                                lines,
+                                symbols,
+                                file_is_test,
                                 parent_class_id=class_symbol.node_id,
                                 class_name=name,
                             )
@@ -336,7 +392,11 @@ class TreeSitterParser(BaseParser):
         if not name:
             return
         effective_node = node
-        if cfg.decorator_wrapper_type and node.parent and node.parent.type == cfg.decorator_wrapper_type:
+        if (
+            cfg.decorator_wrapper_type
+            and node.parent
+            and node.parent.type == cfg.decorator_wrapper_type
+        ):
             effective_node = node.parent
         start_line = effective_node.start_point[0] + 1
         end_line = effective_node.end_point[0] + 1
@@ -365,22 +425,24 @@ class TreeSitterParser(BaseParser):
             and any(name.startswith(p) for p in cfg.test_name_prefixes)
         )
 
-        symbols.append(ParsedSymbol(
-            node_id=symbol_node_id(rel_path, kind, display_name),
-            kind=kind,
-            name=display_name,
-            file_path=rel_path,
-            start_line=start_line,
-            end_line=end_line,
-            signature=_signature_from_node(node, lines),
-            docstring=self._extract_doc(node, lines),
-            source=source,
-            source_hash=sha256_text(source),
-            parent_symbol_id=parent_class_id,
-            calls=calls,
-            decorators=decorators,
-            is_test=is_test,
-        ))
+        symbols.append(
+            ParsedSymbol(
+                node_id=symbol_node_id(rel_path, kind, display_name),
+                kind=kind,
+                name=display_name,
+                file_path=rel_path,
+                start_line=start_line,
+                end_line=end_line,
+                signature=_signature_from_node(node, lines),
+                docstring=self._extract_doc(node, lines),
+                source=source,
+                source_hash=sha256_text(source),
+                parent_symbol_id=parent_class_id,
+                calls=calls,
+                decorators=decorators,
+                is_test=is_test,
+            )
+        )
 
     def _extract_arrow_functions(
         self,
@@ -404,24 +466,24 @@ class TreeSitterParser(BaseParser):
             end_line = child.end_point[0] + 1
             source = _source_of(child, lines)
             calls = self._extract_calls(value)
-            is_test = file_is_test and any(
-                name.startswith(p) for p in cfg.test_name_prefixes
-            )
+            is_test = file_is_test and any(name.startswith(p) for p in cfg.test_name_prefixes)
 
-            symbols.append(ParsedSymbol(
-                node_id=symbol_node_id(rel_path, "function", name),
-                kind="function",
-                name=name,
-                file_path=rel_path,
-                start_line=start_line,
-                end_line=end_line,
-                signature=_signature_from_node(child, lines),
-                docstring="",
-                source=source,
-                source_hash=sha256_text(source),
-                calls=calls,
-                is_test=is_test,
-            ))
+            symbols.append(
+                ParsedSymbol(
+                    node_id=symbol_node_id(rel_path, "function", name),
+                    kind="function",
+                    name=name,
+                    file_path=rel_path,
+                    start_line=start_line,
+                    end_line=end_line,
+                    signature=_signature_from_node(child, lines),
+                    docstring="",
+                    source=source,
+                    source_hash=sha256_text(source),
+                    calls=calls,
+                    is_test=is_test,
+                )
+            )
 
     def _extract_impl_block(
         self,
@@ -443,7 +505,11 @@ class TreeSitterParser(BaseParser):
             for child in body.children:
                 if child.type in cfg.function_types:
                     self._extract_function(
-                        child, rel_path, lines, symbols, file_is_test,
+                        child,
+                        rel_path,
+                        lines,
+                        symbols,
+                        file_is_test,
                         parent_class_id=parent_id,
                         class_name=impl_name,
                     )
@@ -564,7 +630,9 @@ class TreeSitterParser(BaseParser):
         return ""
 
     def _fixup_methods(
-        self, symbols: List[ParsedSymbol], class_map: Dict[str, str],
+        self,
+        symbols: List[ParsedSymbol],
+        class_map: Dict[str, str],
     ) -> None:
         for sym in symbols:
             if sym.kind == "method" and not sym.parent_symbol_id:

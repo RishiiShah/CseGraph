@@ -86,7 +86,5 @@ def test_partial_legacy_tables_gain_current_columns(tmp_path):
         edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
 
     assert metadata["schema_version"] == SCHEMA_VERSION
-    assert {"type", "name", "path", "language", "source_hash", "is_test"}.issubset(
-        node_columns
-    )
+    assert {"type", "name", "path", "language", "source_hash", "is_test"}.issubset(node_columns)
     assert {"metadata", "confidence", "confidence_tier"}.issubset(edge_columns)

@@ -1,10 +1,9 @@
 """Tests for vulnerability scanning service."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.graph.vulnerabilities import VulnerabilityService
@@ -65,7 +64,9 @@ class TestVulnerabilities:
         result = VulnerabilityService(db).scan()
 
         all_vulns = result.critical + result.high + result.medium + result.low
-        assert any(v.symbol_name == "execute_dynamic" and v.category == "injection" for v in all_vulns)
+        assert any(
+            v.symbol_name == "execute_dynamic" and v.category == "injection" for v in all_vulns
+        )
 
     def test_detects_system_call(self, tmp_path):
         repo = tmp_path / "repo"
@@ -130,8 +131,11 @@ class TestVulnerabilities:
 
         result = VulnerabilityService(db).scan()
 
-        untested_vulns = [v for v in result.medium + result.high + result.critical
-                         if v.category == "untested_security" and v.symbol_name == "validate_token"]
+        untested_vulns = [
+            v
+            for v in result.medium + result.high + result.critical
+            if v.category == "untested_security" and v.symbol_name == "validate_token"
+        ]
         assert len(untested_vulns) == 0
 
     def test_test_files_excluded(self, tmp_path):
@@ -155,25 +159,21 @@ class TestVulnerabilities:
             encoding="utf-8",
         )
         callers = "\n".join(
-            f"from core import dangerous\ndef caller_{i}():\n    dangerous()\n"
-            for i in range(6)
+            f"from core import dangerous\ndef caller_{i}():\n    dangerous()\n" for i in range(6)
         )
         (repo / "users.py").write_text(callers, encoding="utf-8")
         db = _index_repo(tmp_path, repo)
 
         result = VulnerabilityService(db).scan()
 
-        danger_vulns = [v for v in result.critical + result.high
-                        if v.symbol_name == "dangerous"]
+        danger_vulns = [v for v in result.critical + result.high if v.symbol_name == "dangerous"]
         assert len(danger_vulns) >= 1
         assert any(v.severity in ("critical", "high") for v in danger_vulns)
 
     def test_limit_respected(self, tmp_path):
         repo = tmp_path / "repo"
         repo.mkdir()
-        funcs = "\n".join(
-            f"def auth_func_{i}():\n    pass\n" for i in range(10)
-        )
+        funcs = "\n".join(f"def auth_func_{i}():\n    pass\n" for i in range(10))
         (repo / "auth.py").write_text(funcs, encoding="utf-8")
         db = _index_repo(tmp_path, repo)
 
@@ -226,16 +226,17 @@ class TestVulnerabilities:
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "app.py").write_text(
-            "def get_api_key():\n    return eval('key')\n\n"
-            "def validate_session(s):\n    pass\n",
+            "def get_api_key():\n    return eval('key')\n\ndef validate_session(s):\n    pass\n",
             encoding="utf-8",
         )
         db = _index_repo(tmp_path, repo)
 
         result = VulnerabilityService(db).scan()
 
-        categories = {v.category for v in
-                      result.critical + result.high + result.medium + result.low + result.info}
+        categories = {
+            v.category
+            for v in result.critical + result.high + result.medium + result.low + result.info
+        }
         assert len(categories) >= 2
 
     def test_community_context(self, tmp_path):

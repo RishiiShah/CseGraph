@@ -1,7 +1,4 @@
 import pytest
-from pathlib import Path
-
-import tree_sitter
 
 from csegraph._core.languages.treesitter.languages import make_typescript_config
 from csegraph._core.languages.treesitter.parser import TreeSitterParser
@@ -32,13 +29,19 @@ def test_parse_function(tmp_path, parser):
 
 
 def test_parse_class_with_methods(tmp_path, parser):
-    f = _write(tmp_path, "svc.ts", "\n".join([
-        "class Svc {",
-        "  run(): void {}",
-        "  stop(): void {}",
-        "}",
-        "",
-    ]))
+    f = _write(
+        tmp_path,
+        "svc.ts",
+        "\n".join(
+            [
+                "class Svc {",
+                "  run(): void {}",
+                "  stop(): void {}",
+                "}",
+                "",
+            ]
+        ),
+    )
     result = parser.parse(f, tmp_path)
     names = [(s.kind, s.name) for s in result.symbols]
     assert ("class", "Svc") in names
@@ -81,7 +84,9 @@ def test_parse_exported_function(tmp_path, parser):
 
 
 def test_extract_es_imports(tmp_path, parser):
-    f = _write(tmp_path, "app.ts", "import { foo, bar } from './utils';\nimport baz from './baz';\n")
+    f = _write(
+        tmp_path, "app.ts", "import { foo, bar } from './utils';\nimport baz from './baz';\n"
+    )
     result = parser.parse(f, tmp_path)
     assert "./utils" in result.imports
     assert "./baz" in result.imports
@@ -94,13 +99,19 @@ def test_extract_require_imports(tmp_path, parser):
 
 
 def test_extract_calls(tmp_path, parser):
-    f = _write(tmp_path, "app.ts", "\n".join([
-        "function main(): void {",
-        "  createUser('alice');",
-        "  console.log('done');",
-        "}",
-        "",
-    ]))
+    f = _write(
+        tmp_path,
+        "app.ts",
+        "\n".join(
+            [
+                "function main(): void {",
+                "  createUser('alice');",
+                "  console.log('done');",
+                "}",
+                "",
+            ]
+        ),
+    )
     result = parser.parse(f, tmp_path)
     sym = result.symbols[0]
     assert "createUser" in sym.calls
@@ -108,15 +119,21 @@ def test_extract_calls(tmp_path, parser):
 
 
 def test_extract_calls_stops_at_nested_function(tmp_path, parser):
-    f = _write(tmp_path, "app.ts", "\n".join([
-        "function outer(): void {",
-        "  doStuff();",
-        "  function inner(): void {",
-        "    innerOnly();",
-        "  }",
-        "}",
-        "",
-    ]))
+    f = _write(
+        tmp_path,
+        "app.ts",
+        "\n".join(
+            [
+                "function outer(): void {",
+                "  doStuff();",
+                "  function inner(): void {",
+                "    innerOnly();",
+                "  }",
+                "}",
+                "",
+            ]
+        ),
+    )
     result = parser.parse(f, tmp_path)
     outer = next(s for s in result.symbols if s.name == "outer")
     assert "doStuff" in outer.calls
@@ -131,13 +148,19 @@ def test_extract_bases(tmp_path, parser):
 
 
 def test_extract_jsdoc(tmp_path, parser):
-    f = _write(tmp_path, "doc.ts", "\n".join([
-        "/**",
-        " * Greets a user.",
-        " */",
-        "function greet(name: string): void {}",
-        "",
-    ]))
+    f = _write(
+        tmp_path,
+        "doc.ts",
+        "\n".join(
+            [
+                "/**",
+                " * Greets a user.",
+                " */",
+                "function greet(name: string): void {}",
+                "",
+            ]
+        ),
+    )
     result = parser.parse(f, tmp_path)
     assert "Greets a user." in result.symbols[0].docstring
 
@@ -190,13 +213,19 @@ def test_parse_js_file(tmp_path, parser):
 
 
 def test_parse_tsx_file(tmp_path, parser):
-    f = _write(tmp_path, "App.tsx", "\n".join([
-        "import React from 'react';",
-        "export function App() {",
-        "  return <div>hello</div>;",
-        "}",
-        "",
-    ]))
+    f = _write(
+        tmp_path,
+        "App.tsx",
+        "\n".join(
+            [
+                "import React from 'react';",
+                "export function App() {",
+                "  return <div>hello</div>;",
+                "}",
+                "",
+            ]
+        ),
+    )
     result = parser.parse(f, tmp_path)
     assert result.parse_status == "ok"
     assert any(s.name == "App" for s in result.symbols)
@@ -205,12 +234,18 @@ def test_parse_tsx_file(tmp_path, parser):
 def test_test_file_detection(tmp_path, parser):
     tests_dir = tmp_path / "__tests__"
     tests_dir.mkdir()
-    f = _write(tests_dir, "app.test.ts", "\n".join([
-        "function testCreateUser(): void {",
-        "  expect(1).toBe(1);",
-        "}",
-        "",
-    ]))
+    f = _write(
+        tests_dir,
+        "app.test.ts",
+        "\n".join(
+            [
+                "function testCreateUser(): void {",
+                "  expect(1).toBe(1);",
+                "}",
+                "",
+            ]
+        ),
+    )
     result = parser.parse(f, tmp_path)
     sym = result.symbols[0]
     assert sym.is_test is True

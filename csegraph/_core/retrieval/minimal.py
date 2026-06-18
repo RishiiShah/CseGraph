@@ -4,7 +4,7 @@ import json
 import math
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from csegraph._core.core.models import IndexHealth, KeyEntity, MinimalResult, NextToolSuggestion
 from csegraph._core.corpus_health import (
@@ -14,9 +14,8 @@ from csegraph._core.corpus_health import (
 )
 from csegraph._core.graph.queries import _compute_hub_threshold, _hub_node_ids
 from csegraph._core.index.repository import ProjectIndex
-from csegraph._core.status import _build_warnings
 from csegraph._core.repo_state import git_head_state
-
+from csegraph._core.status import _build_warnings
 
 _KEY_ENTITY_LIMIT = 5
 
@@ -24,7 +23,19 @@ _INTENT_KEYWORDS: List[tuple[str, tuple[str, ...]]] = [
     ("review", ("review", "pr", "merge", "diff", "changes", "changeset")),
     ("debug", ("debug", "bug", "error", "fix", "broken", "failing", "crash", "regression")),
     ("refactor", ("refactor", "rename", "extract", "cleanup", "dead", "unused", "remove")),
-    ("explore", ("explore", "understand", "architecture", "overview", "map", "learn", "what is", "how does")),
+    (
+        "explore",
+        (
+            "explore",
+            "understand",
+            "architecture",
+            "overview",
+            "map",
+            "learn",
+            "what is",
+            "how does",
+        ),
+    ),
 ]
 
 
@@ -32,7 +43,9 @@ class MinimalService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
 
-    def first(self, task: Optional[str] = None, inferred_intent: Optional[str] = None) -> MinimalResult:
+    def first(
+        self, task: Optional[str] = None, inferred_intent: Optional[str] = None
+    ) -> MinimalResult:
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -55,7 +68,9 @@ class MinimalService:
             metrics = collect_index_metrics(index.conn)
             meta = metadata
             current_branch, current_commit = (
-                git_head_state(repo_root) if repo_root and Path(repo_root).exists() else (None, None)
+                git_head_state(repo_root)
+                if repo_root and Path(repo_root).exists()
+                else (None, None)
             )
             ext_warnings = _build_warnings(meta, repo_root, current_branch, current_commit)
             age_h = index_age_hours(metadata_updated_at=meta.get("updated_at"), conn=index.conn)
@@ -91,9 +106,7 @@ class MinimalService:
 
 
 def _graph_totals(index: ProjectIndex) -> Dict[str, int]:
-    rows = index.conn.execute(
-        "SELECT type, COUNT(*) as c FROM nodes GROUP BY type"
-    ).fetchall()
+    rows = index.conn.execute("SELECT type, COUNT(*) as c FROM nodes GROUP BY type").fetchall()
     counts = {row["type"]: int(row["c"]) for row in rows}
     total_edges = index.conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()
     return {
@@ -127,9 +140,7 @@ def _top_entities(
 ) -> List[KeyEntity]:
     exclude_ids = list(exclude or ())
     exclude_clause = (
-        f"AND n.id NOT IN ({','.join('?' for _ in exclude_ids)})"
-        if exclude_ids
-        else ""
+        f"AND n.id NOT IN ({','.join('?' for _ in exclude_ids)})" if exclude_ids else ""
     )
     test_clause = (
         ""
@@ -188,9 +199,7 @@ def _explore_suggested_queries(entities: List[KeyEntity], limit: int = 2) -> Lis
     for entity in entities[:limit]:
         name = entity.name or entity.id
         path = entity.path or "this area"
-        queries.append(
-            f"How does {name} connect to the rest of the codebase (see {path})?"
-        )
+        queries.append(f"How does {name} connect to the rest of the codebase (see {path})?")
     return queries
 
 

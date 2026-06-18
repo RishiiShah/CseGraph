@@ -1,4 +1,5 @@
 """Target disambiguation returns a compact card instead of guessing."""
+
 from __future__ import annotations
 
 from pathlib import Path

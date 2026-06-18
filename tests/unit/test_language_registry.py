@@ -66,6 +66,7 @@ def test_tokenizer_for_unknown_raises():
 def test_python_parser_registered_on_import():
     from csegraph._core.languages import registry
     from csegraph._core.languages.treesitter.parser import TreeSitterParser
+
     parser = registry.for_extension(".py")
     assert isinstance(parser, TreeSitterParser)
     assert parser.language == "python"
@@ -74,12 +75,14 @@ def test_python_parser_registered_on_import():
 def test_python_tokenizer_registered_on_import():
     from csegraph._core.languages import registry
     from csegraph._core.languages.base import DefaultTokenizer
+
     tokenizer = registry.tokenizer_for("python")
     assert isinstance(tokenizer, DefaultTokenizer)
 
 
 def test_iter_files_yields_parser_path_pairs(tmp_path):
     from csegraph._core.languages import registry
+
     (tmp_path / "a.py").write_text("x = 1")
     (tmp_path / "b.txt").write_text("not python")
     pairs = list(registry.iter_files(tmp_path))
@@ -107,8 +110,9 @@ def test_parser_specific_excluded_dirs_do_not_prune_other_languages(tmp_path):
 
 
 def test_python_parser_satisfies_widened_protocol():
-    from csegraph._core.languages.base import Parser
     from csegraph._core.languages import registry
+    from csegraph._core.languages.base import Parser
+
     parser = registry.for_extension(".py")
     assert isinstance(parser, Parser)
     assert hasattr(parser, "module_name_from_relpath")
@@ -118,6 +122,7 @@ def test_python_parser_satisfies_widened_protocol():
 def test_typescript_parser_registered():
     from csegraph._core.languages import registry
     from csegraph._core.languages.treesitter.parser import TreeSitterParser
+
     parser = registry.for_extension(".ts")
     assert isinstance(parser, TreeSitterParser)
     assert parser.language == "typescript"

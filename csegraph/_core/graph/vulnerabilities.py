@@ -1,4 +1,5 @@
 """Vulnerability scanning: detects security anti-patterns using the graph."""
+
 from __future__ import annotations
 
 import re
@@ -7,7 +8,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from csegraph._core.index.repository import ProjectIndex
-
 
 SEVERITY_CRITICAL = "critical"
 SEVERITY_HIGH = "high"
@@ -26,19 +26,84 @@ SEVERITY_ORDER = {
 _DANGEROUS_SOURCE_PATTERNS: List[Tuple[re.Pattern, str, str, str]] = [
     (re.compile(r"\beval\s*\("), "eval", "injection", "eval() executes arbitrary code"),
     (re.compile(r"\bexec\s*\("), "exec", "injection", "exec() executes arbitrary code"),
-    (re.compile(r"\bcompile\s*\("), "compile", "injection", "compile() can execute arbitrary code when combined with eval/exec"),
-    (re.compile(r"\bos\.system\s*\("), "os.system", "injection", "os.system() is vulnerable to shell injection"),
-    (re.compile(r"\bos\.popen\s*\("), "os.popen", "injection", "os.popen() is vulnerable to shell injection"),
-    (re.compile(r"\b__import__\s*\("), "__import__", "injection", "dynamic __import__() can load untrusted modules"),
-    (re.compile(r"\bpickle\.loads?\s*\("), "pickle.load", "deserialization", "pickle can execute arbitrary code during deserialization"),
-    (re.compile(r"\byaml\.load\s*\("), "yaml.load", "deserialization", "yaml.load can execute arbitrary code; use yaml.safe_load"),
-    (re.compile(r"\bmarshal\.loads?\s*\("), "marshal.load", "deserialization", "marshal can execute arbitrary code during deserialization"),
-    (re.compile(r"\binnerHTML\s*="), "innerHTML", "xss", "direct HTML injection enables cross-site scripting"),
-    (re.compile(r"\bdangerouslySetInnerHTML"), "dangerouslySetInnerHTML", "xss", "direct HTML injection enables cross-site scripting"),
-    (re.compile(r"\bdocument\.write\s*\("), "document.write", "xss", "document.write() enables cross-site scripting"),
-    (re.compile(r"\bmark_safe\s*\("), "mark_safe", "xss", "mark_safe() bypasses Django auto-escaping"),
-    (re.compile(r"\b(?:hashlib\.)?md5\s*\(", re.IGNORECASE), "md5", "weak_crypto", "MD5 is cryptographically broken; use SHA-256+"),
-    (re.compile(r"\b(?:hashlib\.)?sha1\s*\(", re.IGNORECASE), "sha1", "weak_crypto", "SHA1 is cryptographically broken; use SHA-256+"),
+    (
+        re.compile(r"\bcompile\s*\("),
+        "compile",
+        "injection",
+        "compile() can execute arbitrary code when combined with eval/exec",
+    ),
+    (
+        re.compile(r"\bos\.system\s*\("),
+        "os.system",
+        "injection",
+        "os.system() is vulnerable to shell injection",
+    ),
+    (
+        re.compile(r"\bos\.popen\s*\("),
+        "os.popen",
+        "injection",
+        "os.popen() is vulnerable to shell injection",
+    ),
+    (
+        re.compile(r"\b__import__\s*\("),
+        "__import__",
+        "injection",
+        "dynamic __import__() can load untrusted modules",
+    ),
+    (
+        re.compile(r"\bpickle\.loads?\s*\("),
+        "pickle.load",
+        "deserialization",
+        "pickle can execute arbitrary code during deserialization",
+    ),
+    (
+        re.compile(r"\byaml\.load\s*\("),
+        "yaml.load",
+        "deserialization",
+        "yaml.load can execute arbitrary code; use yaml.safe_load",
+    ),
+    (
+        re.compile(r"\bmarshal\.loads?\s*\("),
+        "marshal.load",
+        "deserialization",
+        "marshal can execute arbitrary code during deserialization",
+    ),
+    (
+        re.compile(r"\binnerHTML\s*="),
+        "innerHTML",
+        "xss",
+        "direct HTML injection enables cross-site scripting",
+    ),
+    (
+        re.compile(r"\bdangerouslySetInnerHTML"),
+        "dangerouslySetInnerHTML",
+        "xss",
+        "direct HTML injection enables cross-site scripting",
+    ),
+    (
+        re.compile(r"\bdocument\.write\s*\("),
+        "document.write",
+        "xss",
+        "document.write() enables cross-site scripting",
+    ),
+    (
+        re.compile(r"\bmark_safe\s*\("),
+        "mark_safe",
+        "xss",
+        "mark_safe() bypasses Django auto-escaping",
+    ),
+    (
+        re.compile(r"\b(?:hashlib\.)?md5\s*\(", re.IGNORECASE),
+        "md5",
+        "weak_crypto",
+        "MD5 is cryptographically broken; use SHA-256+",
+    ),
+    (
+        re.compile(r"\b(?:hashlib\.)?sha1\s*\(", re.IGNORECASE),
+        "sha1",
+        "weak_crypto",
+        "SHA1 is cryptographically broken; use SHA-256+",
+    ),
 ]
 
 _SECRET_NAME_RE = re.compile(
@@ -55,10 +120,31 @@ _HARDCODED_SECRET_RE = re.compile(
 _SHELL_TRUE_RE = re.compile(r"shell\s*=\s*True", re.IGNORECASE)
 
 _SECURITY_SENSITIVE_KEYWORDS = {
-    "auth", "login", "password", "credential", "token", "session",
-    "permission", "encrypt", "decrypt", "hash", "sign", "verify",
-    "sanitize", "validate", "escape", "certificate", "ssl", "tls",
-    "cookie", "csrf", "cors", "oauth", "jwt", "api_key", "secret",
+    "auth",
+    "login",
+    "password",
+    "credential",
+    "token",
+    "session",
+    "permission",
+    "encrypt",
+    "decrypt",
+    "hash",
+    "sign",
+    "verify",
+    "sanitize",
+    "validate",
+    "escape",
+    "certificate",
+    "ssl",
+    "tls",
+    "cookie",
+    "csrf",
+    "cors",
+    "oauth",
+    "jwt",
+    "api_key",
+    "secret",
 }
 
 
@@ -101,9 +187,15 @@ def _line_range(row) -> Optional[List[int]]:
 
 def _is_test_path(path: str) -> bool:
     p = path.lower()
-    return ("test_" in p or "_test." in p or "/tests/" in p
-            or "\\tests\\" in p or p.startswith("test_") or "/test/" in p
-            or "\\test\\" in p)
+    return (
+        "test_" in p
+        or "_test." in p
+        or "/tests/" in p
+        or "\\tests\\" in p
+        or p.startswith("test_")
+        or "/test/" in p
+        or "\\test\\" in p
+    )
 
 
 class VulnerabilityService:
@@ -182,7 +274,9 @@ class VulnerabilityService:
         )
 
     def _check_dangerous_calls(
-        self, index: ProjectIndex, warnings: List[str],
+        self,
+        index: ProjectIndex,
+        warnings: List[str],
     ) -> List[Vulnerability]:
         vulns: List[Vulnerability] = []
         repo_root = index.metadata()["root_dir"]
@@ -201,9 +295,9 @@ class VulnerabilityService:
             if _is_test_path(row["path"]):
                 continue
 
-            snippet = self._read_snippet(repo_root, row["path"],
-                                         row["start_line"], row["end_line"],
-                                         file_cache)
+            snippet = self._read_snippet(
+                repo_root, row["path"], row["start_line"], row["end_line"], file_cache
+            )
             if snippet is None:
                 continue
 
@@ -227,26 +321,30 @@ class VulnerabilityService:
                     if caller_count > 0:
                         evidence.append(f"{caller_count} caller(s)")
 
-                    vulns.append(Vulnerability(
-                        id=row["id"],
-                        symbol_name=row["name"],
-                        symbol_kind=row["type"],
-                        path=row["path"],
-                        line_range=_line_range(row),
-                        severity=severity,
-                        category=category,
-                        description=desc,
-                        caller_count=caller_count,
-                        has_test_coverage=has_test,
-                        community_id=row["community_id"],
-                        evidence=evidence,
-                    ))
+                    vulns.append(
+                        Vulnerability(
+                            id=row["id"],
+                            symbol_name=row["name"],
+                            symbol_kind=row["type"],
+                            path=row["path"],
+                            line_range=_line_range(row),
+                            severity=severity,
+                            category=category,
+                            description=desc,
+                            caller_count=caller_count,
+                            has_test_coverage=has_test,
+                            community_id=row["community_id"],
+                            evidence=evidence,
+                        )
+                    )
                     break
 
         return vulns
 
     def _check_shell_true(
-        self, index: ProjectIndex, warnings: List[str],
+        self,
+        index: ProjectIndex,
+        warnings: List[str],
     ) -> List[Vulnerability]:
         vulns: List[Vulnerability] = []
         repo_root = index.metadata()["root_dir"]
@@ -264,9 +362,9 @@ class VulnerabilityService:
         for row in rows:
             if _is_test_path(row["path"]):
                 continue
-            snippet = self._read_snippet(repo_root, row["path"],
-                                         row["start_line"], row["end_line"],
-                                         file_cache)
+            snippet = self._read_snippet(
+                repo_root, row["path"], row["start_line"], row["end_line"], file_cache
+            )
             if snippet is None:
                 continue
             if not _SHELL_TRUE_RE.search(snippet):
@@ -276,25 +374,32 @@ class VulnerabilityService:
             has_test = self._has_test_coverage(index, row["id"])
             severity = SEVERITY_CRITICAL if not has_test else SEVERITY_HIGH
 
-            vulns.append(Vulnerability(
-                id=row["id"],
-                symbol_name=row["name"],
-                symbol_kind=row["type"],
-                path=row["path"],
-                line_range=_line_range(row),
-                severity=severity,
-                category="injection",
-                description="subprocess call with shell=True is vulnerable to command injection",
-                caller_count=caller_count,
-                has_test_coverage=has_test,
-                community_id=row["community_id"],
-                evidence=["shell=True in source", "no test coverage" if not has_test else "has tests"],
-            ))
+            vulns.append(
+                Vulnerability(
+                    id=row["id"],
+                    symbol_name=row["name"],
+                    symbol_kind=row["type"],
+                    path=row["path"],
+                    line_range=_line_range(row),
+                    severity=severity,
+                    category="injection",
+                    description="subprocess call with shell=True is vulnerable to command injection",
+                    caller_count=caller_count,
+                    has_test_coverage=has_test,
+                    community_id=row["community_id"],
+                    evidence=[
+                        "shell=True in source",
+                        "no test coverage" if not has_test else "has tests",
+                    ],
+                )
+            )
 
         return vulns
 
     def _check_hardcoded_secrets(
-        self, index: ProjectIndex, warnings: List[str],
+        self,
+        index: ProjectIndex,
+        warnings: List[str],
     ) -> List[Vulnerability]:
         vulns: List[Vulnerability] = []
 
@@ -310,25 +415,29 @@ class VulnerabilityService:
                 continue
             if _SECRET_NAME_RE.search(row["name"]):
                 has_test = self._has_test_coverage(index, row["id"])
-                vulns.append(Vulnerability(
-                    id=row["id"],
-                    symbol_name=row["name"],
-                    symbol_kind=row["type"],
-                    path=row["path"],
-                    line_range=_line_range(row),
-                    severity=SEVERITY_MEDIUM,
-                    category="hardcoded_secret",
-                    description=f"Symbol name '{row['name']}' suggests it handles secrets; verify no hardcoded credentials",
-                    caller_count=self._caller_count(index, row["id"]),
-                    has_test_coverage=has_test,
-                    community_id=row["community_id"],
-                    evidence=[f"name matches secret pattern: {row['name']}"],
-                ))
+                vulns.append(
+                    Vulnerability(
+                        id=row["id"],
+                        symbol_name=row["name"],
+                        symbol_kind=row["type"],
+                        path=row["path"],
+                        line_range=_line_range(row),
+                        severity=SEVERITY_MEDIUM,
+                        category="hardcoded_secret",
+                        description=f"Symbol name '{row['name']}' suggests it handles secrets; verify no hardcoded credentials",
+                        caller_count=self._caller_count(index, row["id"]),
+                        has_test_coverage=has_test,
+                        community_id=row["community_id"],
+                        evidence=[f"name matches secret pattern: {row['name']}"],
+                    )
+                )
 
         return vulns
 
     def _check_untested_security_code(
-        self, index: ProjectIndex, warnings: List[str],
+        self,
+        index: ProjectIndex,
+        warnings: List[str],
     ) -> List[Vulnerability]:
         vulns: List[Vulnerability] = []
 
@@ -354,29 +463,33 @@ class VulnerabilityService:
             caller_count = self._caller_count(index, row["id"])
             severity = SEVERITY_HIGH if caller_count >= 3 else SEVERITY_MEDIUM
 
-            vulns.append(Vulnerability(
-                id=row["id"],
-                symbol_name=row["name"],
-                symbol_kind=row["type"],
-                path=row["path"],
-                line_range=_line_range(row),
-                severity=severity,
-                category="untested_security",
-                description=f"Security-sensitive symbol '{row['name']}' has no test coverage",
-                caller_count=caller_count,
-                has_test_coverage=False,
-                community_id=row["community_id"],
-                evidence=[
-                    f"matches security keywords: {', '.join(matched_keywords)}",
-                    "no test coverage",
-                    f"{caller_count} caller(s)" if caller_count > 0 else "no callers",
-                ],
-            ))
+            vulns.append(
+                Vulnerability(
+                    id=row["id"],
+                    symbol_name=row["name"],
+                    symbol_kind=row["type"],
+                    path=row["path"],
+                    line_range=_line_range(row),
+                    severity=severity,
+                    category="untested_security",
+                    description=f"Security-sensitive symbol '{row['name']}' has no test coverage",
+                    caller_count=caller_count,
+                    has_test_coverage=False,
+                    community_id=row["community_id"],
+                    evidence=[
+                        f"matches security keywords: {', '.join(matched_keywords)}",
+                        "no test coverage",
+                        f"{caller_count} caller(s)" if caller_count > 0 else "no callers",
+                    ],
+                )
+            )
 
         return vulns
 
     def _check_high_exposure_sensitive(
-        self, index: ProjectIndex, warnings: List[str],
+        self,
+        index: ProjectIndex,
+        warnings: List[str],
     ) -> List[Vulnerability]:
         vulns: List[Vulnerability] = []
         repo_root = index.metadata()["root_dir"]
@@ -399,9 +512,9 @@ class VulnerabilityService:
             if _is_test_path(row["path"]):
                 continue
 
-            snippet = self._read_snippet(repo_root, row["path"],
-                                         row["start_line"], row["end_line"],
-                                         file_cache)
+            snippet = self._read_snippet(
+                repo_root, row["path"], row["start_line"], row["end_line"], file_cache
+            )
             if snippet is None:
                 continue
 
@@ -427,20 +540,22 @@ class VulnerabilityService:
             if not has_test:
                 evidence.append("no test coverage")
 
-            vulns.append(Vulnerability(
-                id=row["id"],
-                symbol_name=row["name"],
-                symbol_kind=row["type"],
-                path=row["path"],
-                line_range=_line_range(row),
-                severity=severity,
-                category="high_exposure",
-                description=f"High-exposure symbol ({row['caller_count']} callers) calls dangerous API(s): {', '.join(sorted(found_dangerous))}",
-                caller_count=row["caller_count"],
-                has_test_coverage=has_test,
-                community_id=row["community_id"],
-                evidence=evidence,
-            ))
+            vulns.append(
+                Vulnerability(
+                    id=row["id"],
+                    symbol_name=row["name"],
+                    symbol_kind=row["type"],
+                    path=row["path"],
+                    line_range=_line_range(row),
+                    severity=severity,
+                    category="high_exposure",
+                    description=f"High-exposure symbol ({row['caller_count']} callers) calls dangerous API(s): {', '.join(sorted(found_dangerous))}",
+                    caller_count=row["caller_count"],
+                    has_test_coverage=has_test,
+                    community_id=row["community_id"],
+                    evidence=evidence,
+                )
+            )
 
         return vulns
 
@@ -466,7 +581,7 @@ class VulnerabilityService:
         lines = cache[rel_path]
         if not lines:
             return None
-        return "\n".join(lines[max(0, start_line - 1):end_line])
+        return "\n".join(lines[max(0, start_line - 1) : end_line])
 
     def _caller_count(self, index: ProjectIndex, sym_id: str) -> int:
         return index.conn.execute(
@@ -475,12 +590,17 @@ class VulnerabilityService:
         ).fetchone()["cnt"]
 
     def _has_test_coverage(self, index: ProjectIndex, sym_id: str) -> bool:
-        return index.conn.execute(
-            "SELECT COUNT(*) AS cnt FROM edges WHERE (source = ? OR target = ?) AND relation = 'tested_by'",
-            (sym_id, sym_id),
-        ).fetchone()["cnt"] > 0
+        return (
+            index.conn.execute(
+                "SELECT COUNT(*) AS cnt FROM edges WHERE (source = ? OR target = ?) AND relation = 'tested_by'",
+                (sym_id, sym_id),
+            ).fetchone()["cnt"]
+            > 0
+        )
 
-    def _cross_community_count(self, index: ProjectIndex, sym_id: str, community_id: Optional[int]) -> int:
+    def _cross_community_count(
+        self, index: ProjectIndex, sym_id: str, community_id: Optional[int]
+    ) -> int:
         if community_id is None:
             return 0
         return index.conn.execute(

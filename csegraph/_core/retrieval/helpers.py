@@ -12,7 +12,4 @@ def line_count(row: Dict[str, Any]) -> int:
 
 
 def is_small_helper_row(row: Dict[str, Any], max_lines: int = 12) -> bool:
-    return (
-        row.get("kind") in {"function", "method"}
-        and line_count(row) <= max_lines
-    )
+    return row.get("kind") in {"function", "method"} and line_count(row) <= max_lines

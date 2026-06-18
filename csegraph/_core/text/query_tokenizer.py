@@ -3,6 +3,7 @@
 Currently identical to the Python source tokenizer; held separately so
 query-side and source-side can diverge in future without touching call sites.
 """
+
 from __future__ import annotations
 
 from typing import List

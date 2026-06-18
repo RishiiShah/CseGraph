@@ -22,11 +22,14 @@ from csegraph._core.retrieval.explain import (
     build_reason_details,
     normalize_reasons,
 )
-from csegraph._core.retrieval.target_resolution import TargetResolution, resolve_target
 from csegraph._core.retrieval.helpers import is_small_helper_row
-from csegraph._core.retrieval.scoring import apply_graph_expansion, fts_lexical_scores, lexical_scores
+from csegraph._core.retrieval.scoring import (
+    apply_graph_expansion,
+    fts_lexical_scores,
+    lexical_scores,
+)
+from csegraph._core.retrieval.target_resolution import TargetResolution, resolve_target
 from csegraph._core.text.source_reader import read_source_lines
-
 
 DETAIL_LEVELS = {"auto", "minimal", "standard", "full"}
 MINIMAL_NODE_LIMIT = 5
@@ -110,9 +113,16 @@ class ContextService:
             timings["scoring"] = _elapsed_ms(t0)
 
             t0 = time.perf_counter()
-            anchors = [target_id] if target_id else [
-                node_id for node_id, _ in heapq.nlargest(config.top_k, scores.items(), key=lambda item: item[1])
-            ]
+            anchors = (
+                [target_id]
+                if target_id
+                else [
+                    node_id
+                    for node_id, _ in heapq.nlargest(
+                        config.top_k, scores.items(), key=lambda item: item[1]
+                    )
+                ]
+            )
             for anchor in anchors:
                 apply_graph_expansion(
                     anchor,
@@ -287,7 +297,11 @@ def _assemble_context_nodes(
         lineage = sorted({e for e in raw_evidence if e.startswith("expanded-from-")})
         clean_evidence = sorted({e for e in raw_evidence if not e.startswith("expanded-from-")})
         raw_summary = summaries.get(node_id, "")
-        summary = _truncate_text(raw_summary, MINIMAL_SUMMARY_CHAR_LIMIT) if returned_detail_level == "minimal" else raw_summary
+        summary = (
+            _truncate_text(raw_summary, MINIMAL_SUMMARY_CHAR_LIMIT)
+            if returned_detail_level == "minimal"
+            else raw_summary
+        )
         source_text = _read_node_source(repo_root, row) if node_id in source_ids else None
         estimated_tokens = _estimate_node_tokens(row, summary, source_text)
         reason = normalize_reasons(
@@ -557,9 +571,7 @@ def _source_candidate_ids(
         if edge["relation"] == "calls" and edge["target_id"] in context_set
     }
     small_helpers = {
-        node_id
-        for node_id in context_set
-        if is_small_helper_row(symbols.get(node_id, {}))
+        node_id for node_id in context_set if is_small_helper_row(symbols.get(node_id, {}))
     }
     return ({target_id} | set(raw_nodes) | direct_calls | small_helpers) & context_set
 
@@ -570,18 +582,22 @@ def _next_actions(
 ) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     if returned_detail_level == "minimal":
-        actions.append({
-            "action": "expand_context",
-            "detail_level": "standard",
-            "reason": "Request working context with selected source before editing.",
-        })
+        actions.append(
+            {
+                "action": "expand_context",
+                "detail_level": "standard",
+                "reason": "Request working context with selected source before editing.",
+            }
+        )
     if target_id:
-        actions.append({
-            "action": "inspect_graph",
-            "tool": "csegraph_graph",
-            "node": target_id,
-            "reason": "Inspect graph neighbors when blast radius or dependencies matter.",
-        })
+        actions.append(
+            {
+                "action": "inspect_graph",
+                "tool": "csegraph_graph",
+                "node": target_id,
+                "reason": "Inspect graph neighbors when blast radius or dependencies matter.",
+            }
+        )
     return actions
 
 
@@ -632,8 +648,13 @@ def _build_detail_pass(
             symbols[node_id].update(heavy_row)
 
     source_ids = _source_candidate_ids_for_detail(
-        detail_level, include_source, target_id, response_ids,
-        outgoing, symbols, raw_nodes,
+        detail_level,
+        include_source,
+        target_id,
+        response_ids,
+        outgoing,
+        symbols,
+        raw_nodes,
     )
     nodes = _assemble_context_nodes(
         repo_root=repo_root,
@@ -723,11 +744,21 @@ def _truncate_text(text: str, limit: int) -> str:
 def _strip_source(node: ContextNode) -> ContextNode:
     reason = [item for item in node.reason if item != "raw_code_fallback"] or list(node.reason)
     return ContextNode(
-        id=node.id, kind=node.kind, name=node.name, path=node.path,
-        line_range=node.line_range, score=node.score, language=node.language,
-        raw_code=False, evidence=node.evidence, summary=node.summary,
-        lineage=node.lineage, source_text=None,
-        estimated_tokens=_estimate_tokens(" ".join(v for v in (node.name, node.path, node.summary) if v)),
+        id=node.id,
+        kind=node.kind,
+        name=node.name,
+        path=node.path,
+        line_range=node.line_range,
+        score=node.score,
+        language=node.language,
+        raw_code=False,
+        evidence=node.evidence,
+        summary=node.summary,
+        lineage=node.lineage,
+        source_text=None,
+        estimated_tokens=_estimate_tokens(
+            " ".join(v for v in (node.name, node.path, node.summary) if v)
+        ),
         reason=reason,
         explanation=build_explanation(reason) if node.explanation is not None else None,
     )

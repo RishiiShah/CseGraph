@@ -1,4 +1,5 @@
 """Minimal Language Server Protocol support for indexed CseGraph repos."""
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,6 @@ from typing import Any, BinaryIO, Mapping, Optional, cast
 from urllib.parse import unquote, urlparse
 
 from csegraph._core.index.repository import ProjectIndex
-
 
 LOG = logging.getLogger(__name__)
 _EXIT = object()

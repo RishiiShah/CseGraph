@@ -1,4 +1,5 @@
 """Evaluation harness: measures precision/recall of review intelligence."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -147,16 +148,17 @@ class ReviewEvalService:
         try:
             index.initialize_schema()
             for gid in sorted(gt_set):
-                exists = index.conn.execute(
-                    "SELECT 1 FROM nodes WHERE id = ?", (gid,)
-                ).fetchone()
+                exists = index.conn.execute("SELECT 1 FROM nodes WHERE id = ?", (gid,)).fetchone()
                 if exists is None:
                     warnings.append(f"Ground-truth ID not in index: {gid}")
         finally:
             index.close()
 
     def _question_coverage(
-        self, gt_set: Set[str], base_ref: str, warnings: List[str],
+        self,
+        gt_set: Set[str],
+        base_ref: str,
+        warnings: List[str],
     ) -> float:
         if not gt_set:
             return 0.0
@@ -171,9 +173,7 @@ class ReviewEvalService:
             index.initialize_schema()
             name_to_ids: dict[str, set[str]] = {}
             for gid in gt_set:
-                row = index.conn.execute(
-                    "SELECT name FROM nodes WHERE id = ?", (gid,)
-                ).fetchone()
+                row = index.conn.execute("SELECT name FROM nodes WHERE id = ?", (gid,)).fetchone()
                 if row:
                     name_to_ids.setdefault(row["name"], set()).add(gid)
         finally:

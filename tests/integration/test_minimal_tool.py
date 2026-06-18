@@ -16,7 +16,7 @@ def _make_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text(
-        'from helpers import fmt\n\ndef greet(name: str) -> str:\n    return fmt(name)\n',
+        "from helpers import fmt\n\ndef greet(name: str) -> str:\n    return fmt(name)\n",
         encoding="utf-8",
     )
     (repo / "helpers.py").write_text(

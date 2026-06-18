@@ -7,6 +7,7 @@ Positive tests elsewhere use ``<repo>/.scratch/csegraph/`` or ``<repo>/.csegraph
 Integration tests that call ``tempfile.gettempdir()`` are *negative* tests: they
 assert that paths outside the repo raise ``ValueError``.
 """
+
 from __future__ import annotations
 
 import tempfile

@@ -1,9 +1,9 @@
-from pathlib import Path
 import json
 import os
 import site
 import subprocess
 import sys
+from pathlib import Path
 
 try:
     import tomllib
@@ -96,13 +96,17 @@ def _create_test_venv(path: Path) -> None:
     subprocess.run([sys.executable, "-m", "venv", str(path)], check=True)
     child_site_packages = Path(
         subprocess.check_output(
-        [
-            str(path / ("Scripts" if sys.platform.startswith("win") else "bin") / ("python.exe" if sys.platform.startswith("win") else "python")),
-            "-c",
-            "import site; print(site.getsitepackages()[0])",
-        ],
-        text=True,
-    ).strip()
+            [
+                str(
+                    path
+                    / ("Scripts" if sys.platform.startswith("win") else "bin")
+                    / ("python.exe" if sys.platform.startswith("win") else "python")
+                ),
+                "-c",
+                "import site; print(site.getsitepackages()[0])",
+            ],
+            text=True,
+        ).strip()
     )
     parent_site_packages = Path(site.getsitepackages()[0])
     excluded_prefixes = (
@@ -283,11 +287,11 @@ def test_private_core_module_entrypoint_points_to_public_cli(tmp_path):
 
 
 def test_status_and_postprocess_exports():
-    from csegraph._core import StatusService, StatusResult, PostprocessService, PostprocessResult
-    from csegraph import StatusService as SDKStatusService
+    from csegraph import PostprocessResult as SDKPostprocessResult
     from csegraph import PostprocessService as SDKPostprocessService
     from csegraph import StatusResult as SDKStatusResult
-    from csegraph import PostprocessResult as SDKPostprocessResult
+    from csegraph import StatusService as SDKStatusService
+    from csegraph._core import PostprocessResult, PostprocessService, StatusResult, StatusService
 
     assert StatusService is SDKStatusService
     assert PostprocessService is SDKPostprocessService
@@ -296,8 +300,8 @@ def test_status_and_postprocess_exports():
 
 
 def test_sdk_exports_context_engine_facade_only():
-    import csegraph._core as core
     import csegraph
+    import csegraph._core as core
 
     sdk_all = set(csegraph.__all__)
     expected = {
@@ -358,11 +362,11 @@ def test_sdk_exports_context_engine_facade_only():
 
 
 def test_diagnostic_services_are_module_path_only():
-    import csegraph._core as core
     import csegraph
+    import csegraph._core as core
     from csegraph._core.benchmark import BenchmarkService
-    from csegraph._core.graph.test_gaps import TestGapService
     from csegraph._core.graph.review_questions import ReviewQuestionsService
+    from csegraph._core.graph.test_gaps import TestGapService
 
     assert BenchmarkService is not None
     assert TestGapService is not None

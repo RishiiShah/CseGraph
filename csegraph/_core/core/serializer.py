@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 from typing import Any, Dict
 
-
 CONTEXT_OUTPUT_SCHEMA_VERSION = "csegraph-context-v2"
 
 

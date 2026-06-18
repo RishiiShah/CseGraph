@@ -1,4 +1,5 @@
 """Change detection: maps git diffs to graph nodes and scores risk."""
+
 from __future__ import annotations
 
 import re
@@ -66,12 +67,14 @@ def _parse_diff(diff_text: str) -> List[DiffRegion]:
     def _flush() -> None:
         nonlocal current_path, current_lines, is_new, is_deleted
         if current_path is not None:
-            regions.append(DiffRegion(
-                path=current_path,
-                changed_lines=current_lines,
-                is_new_file=is_new,
-                is_deleted_file=is_deleted,
-            ))
+            regions.append(
+                DiffRegion(
+                    path=current_path,
+                    changed_lines=current_lines,
+                    is_new_file=is_new,
+                    is_deleted_file=is_deleted,
+                )
+            )
         current_path = None
         current_lines = []
         is_new = False
@@ -206,7 +209,8 @@ class ChangeDetectionService:
                     (region.path,),
                 ).fetchall()
                 rows = [
-                    r for r in rows
+                    r
+                    for r in rows
                     if _lines_overlap(r["start_line"], r["end_line"], region.changed_lines)
                 ]
 
@@ -259,33 +263,40 @@ class ChangeDetectionService:
 
             has_test = bool(row["is_test"])
             if not has_test:
-                has_test = index.conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM edges WHERE (source = ? OR target = ?) AND relation = 'tested_by'",
-                    (sym_id, sym_id),
-                ).fetchone()["cnt"] > 0
+                has_test = (
+                    index.conn.execute(
+                        "SELECT COUNT(*) AS cnt FROM edges WHERE (source = ? OR target = ?) AND relation = 'tested_by'",
+                        (sym_id, sym_id),
+                    ).fetchone()["cnt"]
+                    > 0
+                )
 
             risk_score, risk_level, risk_factors = _compute_risk(
-                caller_count, cross_community, has_test,
+                caller_count,
+                cross_community,
+                has_test,
             )
 
             start = row["start_line"]
             end = row["end_line"]
             line_range = [start, end] if start is not None and end is not None else None
 
-            changed_symbols.append(ChangedSymbol(
-                id=sym_id,
-                name=row["name"],
-                kind=row["type"],
-                path=row["path"],
-                line_range=line_range,
-                risk_score=risk_score,
-                risk_level=risk_level,
-                caller_count=caller_count,
-                cross_community_edges=cross_community,
-                has_test_coverage=has_test,
-                community_id=community_id,
-                risk_factors=risk_factors,
-            ))
+            changed_symbols.append(
+                ChangedSymbol(
+                    id=sym_id,
+                    name=row["name"],
+                    kind=row["type"],
+                    path=row["path"],
+                    line_range=line_range,
+                    risk_score=risk_score,
+                    risk_level=risk_level,
+                    caller_count=caller_count,
+                    cross_community_edges=cross_community,
+                    has_test_coverage=has_test,
+                    community_id=community_id,
+                    risk_factors=risk_factors,
+                )
+            )
 
         changed_symbols.sort(key=lambda s: (-s.risk_score, s.name))
 
@@ -331,7 +342,7 @@ def _git_diff(repo_root: str, base_ref: str) -> str:
                 f"git diff failed (exit {result.returncode}): {result.stderr.strip()}"
             )
         return result.stdout
-    except FileNotFoundError:
-        raise RuntimeError("git is not available on the system PATH")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("git diff timed out after 30 seconds")
+    except FileNotFoundError as exc:
+        raise RuntimeError("git is not available on the system PATH") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("git diff timed out after 30 seconds") from exc

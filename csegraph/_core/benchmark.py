@@ -17,7 +17,6 @@ from csegraph._core.core.models import (
 )
 from csegraph._core.core.serializer import to_dict
 
-
 _DEFAULT_QUERY = "Benchmark context retrieval"
 _CORPUS_SCHEMA_VERSION = "csegraph-context-benchmark-v1"
 _T = TypeVar("_T")
@@ -101,16 +100,11 @@ class BenchmarkService:
         )
         context_payload = to_dict(context_result)
         context_node_ids = {node.id for node in context_result.nodes}
-        expected_node_hits = {
-            node_id: node_id in context_node_ids
-            for node_id in expected_node_ids
-        }
+        expected_node_hits = {node_id: node_id in context_node_ids for node_id in expected_node_ids}
         expected_node_hit_count = sum(1 for present in expected_node_hits.values() if present)
         expected_node_total = len(expected_node_hits)
         expected_node_hit_rate = (
-            round(expected_node_hit_count / expected_node_total, 4)
-            if expected_node_total
-            else 1.0
+            round(expected_node_hit_count / expected_node_total, 4) if expected_node_total else 1.0
         )
         steps.append(
             BenchmarkStep(
@@ -138,9 +132,7 @@ class BenchmarkService:
             )
         )
 
-        graph_result, elapsed = _time_call(
-            lambda: VisualExportService(self.db_path).export(output)
-        )
+        graph_result, elapsed = _time_call(lambda: VisualExportService(self.db_path).export(output))
         steps.append(
             BenchmarkStep(
                 name="graph",
@@ -154,9 +146,7 @@ class BenchmarkService:
             )
         )
 
-        report_result, elapsed = _time_call(
-            lambda: ReportService(self.db_path).report()
-        )
+        report_result, elapsed = _time_call(lambda: ReportService(self.db_path).report())
         steps.append(
             BenchmarkStep(
                 name="report",
@@ -171,13 +161,9 @@ class BenchmarkService:
             )
         )
 
-        raw_tokens, raw_elapsed = _time_call(
-            lambda: _count_raw_tokens(Path(repo_root))
-        )
+        raw_tokens, raw_elapsed = _time_call(lambda: _count_raw_tokens(Path(repo_root)))
 
-        diff_tokens, diff_elapsed = _time_call(
-            lambda: _count_diff_tokens(Path(repo_root))
-        )
+        diff_tokens, diff_elapsed = _time_call(lambda: _count_diff_tokens(Path(repo_root)))
 
         context_with_source, ctx_elapsed = _time_call(
             lambda: ContextService(self.db_path).build_context(
@@ -189,16 +175,8 @@ class BenchmarkService:
         )
         context_tokens = context_with_source.total_estimated_tokens
 
-        reduction_pct = (
-            round((1 - context_tokens / raw_tokens) * 100, 2)
-            if raw_tokens > 0
-            else 0.0
-        )
-        naive_to_graph_ratio = (
-            round(raw_tokens / context_tokens, 2)
-            if context_tokens > 0
-            else 0.0
-        )
+        reduction_pct = round((1 - context_tokens / raw_tokens) * 100, 2) if raw_tokens > 0 else 0.0
+        naive_to_graph_ratio = round(raw_tokens / context_tokens, 2) if context_tokens > 0 else 0.0
         diff_to_graph_ratio = (
             round(diff_tokens / context_tokens, 2)
             if context_tokens > 0 and diff_tokens > 0
@@ -222,8 +200,8 @@ class BenchmarkService:
 
         # Optional custom workflow steps: run arbitrary tools/services and record response sizes.
         if workflows:
-            from csegraph._core.retrieval.minimal import MinimalService
             from csegraph._core.graph.queries import GraphQueryService
+            from csegraph._core.retrieval.minimal import MinimalService
 
             for wf in workflows:
                 tool = wf.get("tool")
@@ -236,7 +214,9 @@ class BenchmarkService:
                     elif tool == "context":
                         resp = ContextService(self.db_path).build_context(**args)
                     elif tool == "graph":
-                        resp = VisualExportService(self.db_path).export(args.get("output") or output)
+                        resp = VisualExportService(self.db_path).export(
+                            args.get("output") or output
+                        )
                     elif tool == "path":
                         resp = GraphQueryService(self.db_path).shortest_path(**args)
                     elif tool == "index":
@@ -248,7 +228,11 @@ class BenchmarkService:
                         continue
                 except Exception as exc:
                     elapsed = _elapsed_ms(start)
-                    steps.append(BenchmarkStep(name=f"workflow:{tool}", elapsed_ms=elapsed, stats={"error": str(exc)}))
+                    steps.append(
+                        BenchmarkStep(
+                            name=f"workflow:{tool}", elapsed_ms=elapsed, stats={"error": str(exc)}
+                        )
+                    )
                     continue
                 elapsed = _elapsed_ms(start)
                 try:
@@ -256,7 +240,13 @@ class BenchmarkService:
                     resp_bytes = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
                 except Exception:
                     resp_bytes = 0
-                steps.append(BenchmarkStep(name=f"workflow:{tool}", elapsed_ms=elapsed, stats={"mcp_response_bytes": resp_bytes}))
+                steps.append(
+                    BenchmarkStep(
+                        name=f"workflow:{tool}",
+                        elapsed_ms=elapsed,
+                        stats={"mcp_response_bytes": resp_bytes},
+                    )
+                )
 
         return BenchmarkResult(
             command="benchmark",
@@ -386,7 +376,9 @@ def _load_corpus(path: Path) -> list[BenchmarkCorpusTask]:
             target = target.strip() or None
 
         expected_nodes = _string_list(raw_task, "expected_nodes", task_id)
-        expected_files = [_normalize_rel_path(p) for p in _string_list(raw_task, "expected_files", task_id)]
+        expected_files = [
+            _normalize_rel_path(p) for p in _string_list(raw_task, "expected_files", task_id)
+        ]
         expected_symbols = _string_list(raw_task, "expected_symbols", task_id)
 
         if not (expected_nodes or expected_files or expected_symbols):
@@ -445,9 +437,7 @@ def _run_corpus_task(
         )
     except Exception as exc:
         expected_total = (
-            len(task.expected_nodes)
-            + len(task.expected_files)
-            + len(task.expected_symbols)
+            len(task.expected_nodes) + len(task.expected_files) + len(task.expected_symbols)
         )
         return BenchmarkCorpusTaskResult(
             task_id=task.id,
@@ -482,19 +472,16 @@ def _run_corpus_task(
     returned_symbols = _returned_symbol_names(context.nodes)
 
     missing_nodes = [node_id for node_id in task.expected_nodes if node_id not in returned_ids]
-    missing_files = [path for path in task.expected_files if _normalize_rel_path(path) not in returned_files]
-    missing_symbols = [
-        symbol for symbol in task.expected_symbols
-        if symbol not in returned_symbols
+    missing_files = [
+        path for path in task.expected_files if _normalize_rel_path(path) not in returned_files
     ]
+    missing_symbols = [symbol for symbol in task.expected_symbols if symbol not in returned_symbols]
 
     node_hits = len(task.expected_nodes) - len(missing_nodes)
     file_hits = len(task.expected_files) - len(missing_files)
     symbol_hits = len(task.expected_symbols) - len(missing_symbols)
     expected_total = (
-        len(task.expected_nodes)
-        + len(task.expected_files)
-        + len(task.expected_symbols)
+        len(task.expected_nodes) + len(task.expected_files) + len(task.expected_symbols)
     )
     expected_hit_count = node_hits + file_hits + symbol_hits
 
@@ -578,6 +565,7 @@ def _file_size(path: str | Path) -> int:
 def _count_raw_tokens(repo_root: Path) -> int:
     total = 0
     from csegraph._core.languages.registry import registry
+
     for _parser, file_path in registry.iter_files(repo_root):
         try:
             text = file_path.read_text(encoding="utf-8", errors="replace")

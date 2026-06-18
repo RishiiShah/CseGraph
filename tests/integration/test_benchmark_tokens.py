@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 from pathlib import Path
 
 import pytest
-import subprocess
 
 from csegraph._core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
 from csegraph._core.core.models import to_dict
@@ -51,8 +51,7 @@ def _make_corpus_repo(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (repo / "storage.py").write_text(
-        "def save_user(user: dict) -> None:\n"
-        "    user['saved'] = True\n",
+        "def save_user(user: dict) -> None:\n    user['saved'] = True\n",
         encoding="utf-8",
     )
     return repo
@@ -108,9 +107,8 @@ class TestCountRawTokens:
         tokens = _count_raw_tokens(repo)
         app_text = (repo / "app.py").read_text(encoding="utf-8")
         helpers_text = (repo / "helpers.py").read_text(encoding="utf-8")
-        expected = (
-            max(1, math.ceil(len(app_text) / 2.7))
-            + max(1, math.ceil(len(helpers_text) / 2.7))
+        expected = max(1, math.ceil(len(app_text) / 2.7)) + max(
+            1, math.ceil(len(helpers_text) / 2.7)
         )
         assert tokens == expected
 
@@ -189,6 +187,7 @@ class TestBenchmarkTokenReduction:
 
     def test_json_serializable(self, tmp_path):
         import json
+
         repo = _make_repo(tmp_path)
         db = str(_scratch_path(repo, "bench.db"))
         result = BenchmarkService(db).run(
@@ -197,6 +196,7 @@ class TestBenchmarkTokenReduction:
             graph_output_path=_scratch_path(repo, "csegraph-graph.html"),
         )
         from csegraph._core.core.models import to_dict
+
         payload = to_dict(result)
         serialized = json.dumps(payload)
         assert "token_reduction" in serialized
@@ -210,9 +210,13 @@ class TestCountDiffTokens:
             check=True,
             capture_output=True,
             stdin=subprocess.DEVNULL,
-            env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
-                 "PATH": "/usr/bin:/bin:/usr/local/bin"},
+            env={
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+                "PATH": "/usr/bin:/bin:/usr/local/bin",
+            },
         )
 
     def test_non_git_repo_returns_zero(self, tmp_path):
@@ -357,7 +361,9 @@ class TestBenchmarkCorpusQuality:
             (
                 {
                     "schema_version": "csegraph-context-benchmark-v1",
-                    "tasks": [{"query": "Explain create_user", "expected_symbols": ["create_user"]}],
+                    "tasks": [
+                        {"query": "Explain create_user", "expected_symbols": ["create_user"]}
+                    ],
                 },
                 "non-empty id",
             ),

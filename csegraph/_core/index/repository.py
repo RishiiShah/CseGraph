@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from csegraph._core.core.errors import UnsupportedSchemaError
 from csegraph._core.core.ids import file_node_id
-from csegraph._core.repo_state import git_head_state
 from csegraph._core.index.migrations import migrate_schema
 from csegraph._core.index.schema import (
     METADATA_UPSERT,
@@ -16,6 +15,7 @@ from csegraph._core.index.schema import (
     SCHEMA_USER_VERSION,
     SCHEMA_VERSION,
 )
+from csegraph._core.repo_state import git_head_state
 
 
 class ProjectIndex:
@@ -122,11 +122,12 @@ class ProjectIndex:
     def metadata(self, *, raise_if_empty: bool = True) -> Dict[str, str]:
         if not self._table_exists("metadata"):
             if raise_if_empty:
-                raise ValueError("No project is indexed in this database. Run csegraph index first.")
+                raise ValueError(
+                    "No project is indexed in this database. Run csegraph index first."
+                )
             return {}
         values = {
-            row["key"]: row["value"]
-            for row in self.conn.execute("SELECT key, value FROM metadata")
+            row["key"]: row["value"] for row in self.conn.execute("SELECT key, value FROM metadata")
         }
         if raise_if_empty and "root_dir" not in values:
             raise ValueError("No project is indexed in this database. Run csegraph index first.")

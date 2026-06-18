@@ -9,13 +9,13 @@ private implementation modules for repo-local maintainer tooling.
 
 __version__ = "1.7.1"
 
-from csegraph._core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph._core.async_services import (
     AsyncContextService,
     AsyncGraphQueryService,
     AsyncIndexService,
     AsyncRefreshService,
 )
+from csegraph._core.config.profiles import PROFILES, ProfileConfig, get_profile, load_profile
 from csegraph._core.core.models import (
     ContextNode,
     ContextResult,
@@ -44,6 +44,7 @@ from csegraph._core.core.models import (
     to_dict,
 )
 from csegraph._core.cse.metrics import SufficiencyMetrics
+from csegraph._core.daemon import DaemonService
 from csegraph._core.graph.exports import EXPORT_FORMATS, ExportService
 from csegraph._core.graph.queries import GraphQueryService
 from csegraph._core.graph.tree import TreeExportService
@@ -54,14 +55,13 @@ from csegraph._core.languages.base import BaseParser, DefaultTokenizer, Tokenize
 from csegraph._core.languages.plugins import register_parser, register_tree_sitter_language
 from csegraph._core.languages.treesitter.config import LanguageConfig
 from csegraph._core.languages.types import ParsedFile, ParsedSymbol
-from csegraph._core.postprocess import POSTPROCESS_LEVELS, PostprocessService
-from csegraph._core.retrieval.constants import VALID_REASONS
 from csegraph._core.mcp_install import McpInstallService
+from csegraph._core.postprocess import POSTPROCESS_LEVELS, PostprocessService
+from csegraph._core.registry import RegistryService
+from csegraph._core.retrieval.constants import VALID_REASONS
 from csegraph._core.retrieval.context import ContextService
 from csegraph._core.retrieval.minimal import MinimalService
 from csegraph._core.server.session import SessionState
-from csegraph._core.daemon import DaemonService
-from csegraph._core.registry import RegistryService
 from csegraph._core.status import StatusService
 
 __all__ = [

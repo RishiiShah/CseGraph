@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import fields as dc_fields, replace
+from dataclasses import fields as dc_fields
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Union
 
 from csegraph._core.core.models import ProfileConfig
-
 
 PROFILES = {
     "small": ProfileConfig(
@@ -79,8 +79,7 @@ def load_profile(
     unknown = set(overrides) - valid_fields
     if unknown:
         raise ValueError(
-            f"Unknown config keys: {sorted(unknown)}. "
-            f"Valid keys: {sorted(valid_fields)}"
+            f"Unknown config keys: {sorted(unknown)}. Valid keys: {sorted(valid_fields)}"
         )
 
     if not overrides:

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
-from csegraph._core.registry import RegistryService
 from csegraph._core.core.models import to_dict
+from csegraph._core.registry import RegistryService
 
 
 class TestRegistryRegister:

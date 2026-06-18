@@ -45,9 +45,7 @@ def test_lsp_initialize_and_document_symbols(sample_repo: Path) -> None:
                 "jsonrpc": "2.0",
                 "id": 2,
                 "method": "textDocument/documentSymbol",
-                "params": {
-                    "textDocument": {"uri": (sample_repo / "service.py").as_uri()}
-                },
+                "params": {"textDocument": {"uri": (sample_repo / "service.py").as_uri()}},
             }
         )
         + _frame({"jsonrpc": "2.0", "id": 3, "method": "shutdown"})

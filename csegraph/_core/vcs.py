@@ -1,4 +1,5 @@
 """Version-control helpers for file discovery (git-first, SVN fallback)."""
+
 from __future__ import annotations
 
 import subprocess

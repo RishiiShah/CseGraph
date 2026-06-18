@@ -3,6 +3,7 @@
 Stores serialized ParsedFile objects in a SQLite table keyed by (rel_path, sha256).
 Used by RefreshService to skip AST parsing for unchanged files.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ from typing import Optional
 
 from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.languages.types import ParsedFile, ParsedSymbol
-
 
 CACHE_VERSION = f"{SCHEMA_VERSION}:parser-v2"
 
@@ -79,14 +79,9 @@ class ExtractionCache:
         return {"cached_files": row["c"], "hits": self.hits, "misses": self.misses}
 
     def _ensure_version_column(self) -> None:
-        columns = {
-            row["name"]
-            for row in self.conn.execute("PRAGMA table_info(parse_cache)")
-        }
+        columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(parse_cache)")}
         if "version" not in columns:
-            self.conn.execute(
-                "ALTER TABLE parse_cache ADD COLUMN version TEXT NOT NULL DEFAULT ''"
-            )
+            self.conn.execute("ALTER TABLE parse_cache ADD COLUMN version TEXT NOT NULL DEFAULT ''")
             self.conn.commit()
 
 

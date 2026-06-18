@@ -1,4 +1,5 @@
 """CI guardrails for the locked six-tool MCP context-engine surface."""
+
 from __future__ import annotations
 
 from csegraph._core.server.app import (

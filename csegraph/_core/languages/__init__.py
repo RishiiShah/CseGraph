@@ -1,5 +1,5 @@
-from csegraph._core.languages.registry import registry
 from csegraph._core.languages.base import DefaultTokenizer
+from csegraph._core.languages.registry import registry
 from csegraph._core.languages.treesitter.languages import available_language_factories
 from csegraph._core.languages.treesitter.parser import TreeSitterParser
 

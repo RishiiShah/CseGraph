@@ -12,11 +12,11 @@ from unittest.mock import patch
 
 from csegraph._core.graph import queries as queries_module
 from csegraph._core.graph.queries import (
-    GraphQueryService,
     _HUB_FLOOR,
-    clear_hub_cache,
+    GraphQueryService,
     _compute_hub_threshold,
     _hub_node_ids,
+    clear_hub_cache,
 )
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.services import IndexService
@@ -26,7 +26,7 @@ def _tiny_repo(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text(
-        'from helpers import fmt\n\ndef greet(name: str) -> str:\n    return fmt(name)\n',
+        "from helpers import fmt\n\ndef greet(name: str) -> str:\n    return fmt(name)\n",
         encoding="utf-8",
     )
     (repo / "helpers.py").write_text(
@@ -139,9 +139,7 @@ class TestHubCache:
 class TestHubAwareNeighborhood:
     def test_tiny_graph_unaffected(self, tmp_path):
         repo, db = _tiny_repo(tmp_path)
-        result = GraphQueryService(db).neighborhood(
-            "greet", depth=1, detail_level="standard"
-        )
+        result = GraphQueryService(db).neighborhood("greet", depth=1, detail_level="standard")
         assert result.hubs_skipped == 0
         assert "Skipped" not in result.summary
 
@@ -157,9 +155,7 @@ class TestHubAwareNeighborhood:
 
         # depth=2 from `greet` would normally reach all 60 synthetic callers via fmt.
         # Hub-aware BFS should NOT expand through fmt -> caller_*.
-        result = GraphQueryService(db).neighborhood(
-            "greet", depth=2, detail_level="standard"
-        )
+        result = GraphQueryService(db).neighborhood("greet", depth=2, detail_level="standard")
         synthetic_in_visited = [n for n in result.nodes if n.path == "synthetic.py"]
         assert synthetic_in_visited == []
         assert result.hubs_skipped >= 1
@@ -177,9 +173,7 @@ class TestHubAwareNeighborhood:
 
         # When fmt itself is the resolved target, expansion FROM fmt must still
         # happen so the agent can see its 1-hop neighbors.
-        result = GraphQueryService(db).neighborhood(
-            "fmt", depth=1, detail_level="standard"
-        )
+        result = GraphQueryService(db).neighborhood("fmt", depth=1, detail_level="standard")
         synthetic_in_visited = [n for n in result.nodes if n.path == "synthetic.py"]
         assert len(synthetic_in_visited) >= 60
         # The hub-of-others is removed from the hub set before BFS for the target case.

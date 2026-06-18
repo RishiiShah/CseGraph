@@ -1,4 +1,5 @@
 """Export the csegraph index to GraphML, Obsidian vault, or portable JSON."""
+
 from __future__ import annotations
 
 import json
@@ -10,7 +11,7 @@ from typing import Any, Dict, List, Set
 from csegraph._core.core.models import ExportResult
 from csegraph._core.core.paths import assert_repo_local_path
 from csegraph._core.index.loaders import load_edges, load_nodes
-from csegraph._core.index.repository import ProjectIndex, json_loads
+from csegraph._core.index.repository import ProjectIndex
 
 EXPORT_FORMATS = ("graphml", "obsidian", "json")
 
@@ -26,7 +27,9 @@ class ExportService:
         fmt: str = "graphml",
     ) -> ExportResult:
         if fmt not in EXPORT_FORMATS:
-            raise ValueError(f"Unknown export format '{fmt}'. Choose from: {', '.join(EXPORT_FORMATS)}")
+            raise ValueError(
+                f"Unknown export format '{fmt}'. Choose from: {', '.join(EXPORT_FORMATS)}"
+            )
 
         index = ProjectIndex(self.db_path)
         try:
@@ -58,7 +61,10 @@ class ExportService:
             )
         finally:
             index.close()
+
+
 # -- GraphML ------------------------------------------------------------------
+
 
 def _write_graphml(
     output: Path,
@@ -69,13 +75,39 @@ def _write_graphml(
     ns = "http://graphml.graphstruct.org/xmlns"
     root = ET.Element("graphml", xmlns=ns)
 
-    ET.SubElement(root, "key", id="d_name", attrib={"for": "node", "attr.name": "name", "attr.type": "string"})
-    ET.SubElement(root, "key", id="d_type", attrib={"for": "node", "attr.name": "type", "attr.type": "string"})
-    ET.SubElement(root, "key", id="d_path", attrib={"for": "node", "attr.name": "path", "attr.type": "string"})
-    ET.SubElement(root, "key", id="d_lang", attrib={"for": "node", "attr.name": "language", "attr.type": "string"})
-    ET.SubElement(root, "key", id="d_community", attrib={"for": "node", "attr.name": "community_id", "attr.type": "int"})
-    ET.SubElement(root, "key", id="d_relation", attrib={"for": "edge", "attr.name": "relation", "attr.type": "string"})
-    ET.SubElement(root, "key", id="d_confidence", attrib={"for": "edge", "attr.name": "confidence", "attr.type": "double"})
+    ET.SubElement(
+        root, "key", id="d_name", attrib={"for": "node", "attr.name": "name", "attr.type": "string"}
+    )
+    ET.SubElement(
+        root, "key", id="d_type", attrib={"for": "node", "attr.name": "type", "attr.type": "string"}
+    )
+    ET.SubElement(
+        root, "key", id="d_path", attrib={"for": "node", "attr.name": "path", "attr.type": "string"}
+    )
+    ET.SubElement(
+        root,
+        "key",
+        id="d_lang",
+        attrib={"for": "node", "attr.name": "language", "attr.type": "string"},
+    )
+    ET.SubElement(
+        root,
+        "key",
+        id="d_community",
+        attrib={"for": "node", "attr.name": "community_id", "attr.type": "int"},
+    )
+    ET.SubElement(
+        root,
+        "key",
+        id="d_relation",
+        attrib={"for": "edge", "attr.name": "relation", "attr.type": "string"},
+    )
+    ET.SubElement(
+        root,
+        "key",
+        id="d_confidence",
+        attrib={"for": "edge", "attr.name": "confidence", "attr.type": "double"},
+    )
 
     graph = ET.SubElement(root, "graph", id="csegraph", edgedefault="directed")
 
@@ -96,7 +128,8 @@ def _write_graphml(
             continue
         seen.add(key)
         edge_el = ET.SubElement(
-            graph, "edge",
+            graph,
+            "edge",
             source=edge["source_id"],
             target=edge["target_id"],
         )
@@ -116,6 +149,7 @@ def _graphml_data(parent: ET.Element, key: str, value: str) -> None:
 
 
 # -- Obsidian vault ------------------------------------------------------------
+
 
 def _write_obsidian(
     output: Path,
@@ -211,10 +245,21 @@ def _write_obsidian(
 
 
 def _safe_filename(name: str) -> str:
-    return name.replace("/", "_").replace("\\", "_").replace(":", "_").replace("<", "_").replace(">", "_").replace("|", "_").replace("?", "_").replace("*", "_").replace('"', "_")
+    return (
+        name.replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+        .replace("<", "_")
+        .replace(">", "_")
+        .replace("|", "_")
+        .replace("?", "_")
+        .replace("*", "_")
+        .replace('"', "_")
+    )
 
 
 # -- JSON ----------------------------------------------------------------------
+
 
 def _write_json(
     output: Path,
@@ -224,17 +269,19 @@ def _write_json(
 ) -> int:
     nodes_out = []
     for node_id, row in sorted(all_nodes.items()):
-        nodes_out.append({
-            "id": node_id,
-            "name": row.get("name", ""),
-            "type": row.get("type", ""),
-            "path": row.get("path", ""),
-            "language": row.get("language", ""),
-            "community_id": row.get("community_id"),
-            "is_test": bool(row.get("is_test")),
-            "start_line": row.get("start_line"),
-            "end_line": row.get("end_line"),
-        })
+        nodes_out.append(
+            {
+                "id": node_id,
+                "name": row.get("name", ""),
+                "type": row.get("type", ""),
+                "path": row.get("path", ""),
+                "language": row.get("language", ""),
+                "community_id": row.get("community_id"),
+                "is_test": bool(row.get("is_test")),
+                "start_line": row.get("start_line"),
+                "end_line": row.get("end_line"),
+            }
+        )
 
     seen: Set[tuple] = set()
     edges_out = []
@@ -243,13 +290,15 @@ def _write_json(
         if key in seen:
             continue
         seen.add(key)
-        edges_out.append({
-            "source": edge["source_id"],
-            "target": edge["target_id"],
-            "relation": edge["relation"],
-            "confidence": edge.get("confidence", 1.0),
-            "confidence_tier": edge.get("confidence_tier", "EXTRACTED"),
-        })
+        edges_out.append(
+            {
+                "source": edge["source_id"],
+                "target": edge["target_id"],
+                "relation": edge["relation"],
+                "confidence": edge.get("confidence", 1.0),
+                "confidence_tier": edge.get("confidence_tier", "EXTRACTED"),
+            }
+        )
 
     payload = {
         "schema_version": "csegraph-export-v1",

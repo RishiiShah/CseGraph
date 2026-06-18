@@ -21,9 +21,7 @@ class StatusService:
 
     def status(self, *, verbose: bool = False) -> StatusResult:
         if not Path(self.db_path).exists():
-            raise ValueError(
-                "No csegraph index found. Run csegraph index first."
-            )
+            raise ValueError("No csegraph index found. Run csegraph index first.")
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -33,25 +31,20 @@ class StatusService:
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='metadata'"
             ).fetchone()
             if not table_check:
-                raise ValueError(
-                    "No csegraph index found. Run csegraph index first."
-                )
+                raise ValueError("No csegraph index found. Run csegraph index first.")
 
             meta = {
-                row["key"]: row["value"]
-                for row in conn.execute("SELECT key, value FROM metadata")
+                row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM metadata")
             }
             if "root_dir" not in meta:
-                raise ValueError(
-                    "No csegraph index found. Run csegraph index first."
-                )
+                raise ValueError("No csegraph index found. Run csegraph index first.")
 
             repo_root = meta["root_dir"]
             total_nodes = conn.execute("SELECT count(*) FROM nodes").fetchone()[0]
             total_edges = conn.execute("SELECT count(*) FROM edges").fetchone()[0]
-            total_files = conn.execute(
-                "SELECT count(*) FROM nodes WHERE type = 'file'"
-            ).fetchone()[0]
+            total_files = conn.execute("SELECT count(*) FROM nodes WHERE type = 'file'").fetchone()[
+                0
+            ]
 
             languages = sorted(
                 row[0]
@@ -120,9 +113,7 @@ def _epoch_to_iso(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
     try:
-        return datetime.fromtimestamp(float(value), tz=timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     except (ValueError, OSError):
         return None
 

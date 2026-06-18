@@ -18,14 +18,11 @@ from csegraph._core.status import StatusService, _build_warnings, _epoch_to_iso
 def _write_repo(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "a.py").write_text(
-        "from b import helper\n\n"
-        "def main():\n"
-        "    return helper()\n",
+        "from b import helper\n\ndef main():\n    return helper()\n",
         encoding="utf-8",
     )
     (root / "b.py").write_text(
-        "def helper():\n"
-        "    return 1\n",
+        "def helper():\n    return 1\n",
         encoding="utf-8",
     )
 
@@ -40,7 +37,9 @@ def _init_git_repo(repo: Path) -> None:
     }
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, env=env)
     subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, env=env)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True, env=env
+    )
 
 
 def test_status_and_postprocess_results_serialize() -> None:

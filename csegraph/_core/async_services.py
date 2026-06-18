@@ -15,7 +15,6 @@ from csegraph._core.graph.queries import GraphQueryService
 from csegraph._core.index.services import IndexService, RefreshService
 from csegraph._core.retrieval.context import ContextService
 
-
 __all__ = [
     "AsyncContextService",
     "AsyncGraphQueryService",

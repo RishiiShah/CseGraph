@@ -17,7 +17,6 @@ from csegraph._core.core.models import (
 )
 from csegraph._core.index.repository import ProjectIndex, json_loads
 
-
 _MINIMAL_GRAPH_KEY_NODES = 5
 _HUB_FLOOR = 50
 _HUB_PERCENTILE = 0.99
@@ -121,7 +120,9 @@ class GraphQueryService:
         if tier_filter:
             unknown = set(tier_filter) - VALID_CONFIDENCE_TIERS
             if unknown:
-                raise ValueError(f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}")
+                raise ValueError(
+                    f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}"
+                )
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -171,7 +172,11 @@ class GraphQueryService:
             SELECT DISTINCT node_id FROM bfs
             """
             bfs_params: Tuple[Any, ...] = (
-                resolved, depth, *hub_params, *relations_filter, *tier_filter
+                resolved,
+                depth,
+                *hub_params,
+                *relations_filter,
+                *tier_filter,
             )
             for row in index.conn.execute(bfs_cte, bfs_params):
                 visited.add(row["node_id"])
@@ -220,9 +225,7 @@ class GraphQueryService:
             conf_note = _confidence_note(confidence_breakdown)
             summary = (
                 f"{total_nodes} nodes, {total_edges} edges within depth {depth} around "
-                f"'{_short_name(resolved, node_rows)}'."
-                + hubs_note
-                + conf_note
+                f"'{_short_name(resolved, node_rows)}'." + hubs_note + conf_note
             )
 
             if detail_level == "minimal":
@@ -286,7 +289,6 @@ class GraphQueryService:
         finally:
             index.close()
 
-
     def shortest_path(
         self,
         source: str,
@@ -303,7 +305,9 @@ class GraphQueryService:
         if tier_filter:
             unknown = set(tier_filter) - VALID_CONFIDENCE_TIERS
             if unknown:
-                raise ValueError(f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}")
+                raise ValueError(
+                    f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}"
+                )
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
@@ -356,7 +360,11 @@ class GraphQueryService:
             SELECT node_id, depth, parent, relation, tier FROM bfs
             """
             cte_params: Tuple[Any, ...] = (
-                src, max_depth, *hub_params, *(relations_filter or []), *tier_filter
+                src,
+                max_depth,
+                *hub_params,
+                *(relations_filter or []),
+                *tier_filter,
             )
 
             # Execute CTE and build parent map for path reconstruction.
@@ -542,16 +550,12 @@ def _resolve_graph_node(
     node: str,
     repo_root: str = "",
 ) -> str:
-    row = index.conn.execute(
-        "SELECT id FROM nodes WHERE id = ?", (node,)
-    ).fetchone()
+    row = index.conn.execute("SELECT id FROM nodes WHERE id = ?", (node,)).fetchone()
     if row:
         return row["id"]
 
     if node == ".":
-        repo_row = index.conn.execute(
-            "SELECT id FROM nodes WHERE type = 'repo' LIMIT 1"
-        ).fetchone()
+        repo_row = index.conn.execute("SELECT id FROM nodes WHERE type = 'repo' LIMIT 1").fetchone()
         if repo_row:
             return repo_row["id"]
 
@@ -564,9 +568,7 @@ def _resolve_graph_node(
 
     repo_basename = Path(repo_root).name if repo_root else ""
     if repo_basename and node == repo_basename:
-        repo_row = index.conn.execute(
-            "SELECT id FROM nodes WHERE type = 'repo' LIMIT 1"
-        ).fetchone()
+        repo_row = index.conn.execute("SELECT id FROM nodes WHERE type = 'repo' LIMIT 1").fetchone()
         if repo_row:
             return repo_row["id"]
 

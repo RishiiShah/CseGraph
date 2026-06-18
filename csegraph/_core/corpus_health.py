@@ -4,6 +4,7 @@ Surfaces whether the SQLite index is substantial enough to trust, stale relative
 to git or node timestamps, or expensive to query — without running a full status
 command.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,9 +26,7 @@ _PARSE_ERROR_RATIO = float(os.environ.get("CSEGRAPH_HEALTH_PARSE_ERROR_RATIO", "
 
 def collect_index_metrics(conn: sqlite3.Connection) -> Dict[str, int]:
     """Aggregate counts used for health assessment."""
-    file_count = int(
-        conn.execute("SELECT COUNT(*) FROM nodes WHERE type = 'file'").fetchone()[0]
-    )
+    file_count = int(conn.execute("SELECT COUNT(*) FROM nodes WHERE type = 'file'").fetchone()[0])
     symbol_count = int(
         conn.execute(
             """
@@ -173,7 +172,9 @@ def assess_index_health(
             f"Large index ({files} files, {symbols} symbols). "
             "Use `detail_level=auto` and a specific target to limit tokens."
         )
-        hints.append("Pass `target` on `csegraph_context`; avoid `detail_level=full` without a narrow symbol.")
+        hints.append(
+            "Pass `target` on `csegraph_context`; avoid `detail_level=full` without a narrow symbol."
+        )
 
     if parse_errors > 0 and files > 0:
         ratio = parse_errors / files

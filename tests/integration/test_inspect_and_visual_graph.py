@@ -8,7 +8,6 @@ from pathlib import Path
 
 from tests.conftest import run_cli
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -301,9 +300,9 @@ def test_graph_visual_export_has_default_pan_zoom_drag_interactions(tmp_path):
 
     content = output_html.read_text(encoding="utf-8")
     assert "function toWorld(x, y)" in content
-    assert "canvas.addEventListener(\"wheel\"" in content
-    assert "canvas.addEventListener(\"mousemove\"" in content
-    assert "canvas.addEventListener(\"mouseup\"" in content
+    assert 'canvas.addEventListener("wheel"' in content
+    assert 'canvas.addEventListener("mousemove"' in content
+    assert 'canvas.addEventListener("mouseup"' in content
     assert "dragNodeIndex" in content
     assert "panStart" in content
     assert "function showDetail(i)" in content
@@ -477,7 +476,7 @@ def test_graph_visual_export_contains_interactive_explorer(tmp_path):
     assert 'id="search"' in html
     assert 'id="btn-play-pause"' in html
     assert 'id="sld-repulsion"' in html
-    assert 'function stepSim()' in html
+    assert "function stepSim()" in html
     assert 'canvas.addEventListener("wheel"' in html
     assert 'canvas.addEventListener("mousedown"' in html
 

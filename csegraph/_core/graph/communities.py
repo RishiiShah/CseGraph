@@ -3,15 +3,15 @@
 Uses a pure-Python Louvain/Leiden-style greedy modularity optimization.
 No external dependencies required.
 """
+
 from __future__ import annotations
 
-import sys
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
-from csegraph._core.index.loaders import load_edges, load_nodes, SYMBOL_TYPES
+from csegraph._core.index.loaders import SYMBOL_TYPES, load_edges, load_nodes
 from csegraph._core.index.repository import ProjectIndex
 
 
@@ -136,7 +136,12 @@ def _louvain_pass(
                 if c == current_comm:
                     continue
                 sigma_c = comm_totals[c]
-                gain = (ki_in - remove_cost) / total_weight - ki * (sigma_c - sigma_current) / (m2 * total_weight) if total_weight > 0 else 0
+                gain = (
+                    (ki_in - remove_cost) / total_weight
+                    - ki * (sigma_c - sigma_current) / (m2 * total_weight)
+                    if total_weight > 0
+                    else 0
+                )
                 if gain > best_gain:
                     best_gain = gain
                     best_comm = c
@@ -201,12 +206,14 @@ def detect_communities(db_path: str | Path) -> CommunityResult:
         for comm_id, members in sorted(groups.items()):
             names = [all_nodes[m].get("name", "") for m in members[:3]]
             label = ", ".join(n for n in names if n)
-            communities.append(Community(
-                id=comm_id,
-                node_ids=sorted(members),
-                size=len(members),
-                label=label,
-            ))
+            communities.append(
+                Community(
+                    id=comm_id,
+                    node_ids=sorted(members),
+                    size=len(members),
+                    label=label,
+                )
+            )
 
         communities.sort(key=lambda c: c.size, reverse=True)
 

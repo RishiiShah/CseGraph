@@ -10,6 +10,7 @@ caps depth, and computes flow metadata: depth, node count, file count,
 criticality (file spread, cross-community, test coverage gap, security
 sensitivity, depth).
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -19,20 +20,51 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from csegraph._core.index.repository import ProjectIndex
 
+_CONVENTIONAL_ENTRY_NAMES = frozenset(
+    {
+        "main",
+        "run",
+        "cli",
+        "entrypoint",
+        "entry_point",
+        "handler",
+        "execute",
+        "start",
+        "serve",
+        "app",
+        "setup",
+        "configure",
+        "init",
+        "initialize",
+        "__main__",
+        "lambda_handler",
+        "wsgi",
+        "asgi",
+    }
+)
 
-_CONVENTIONAL_ENTRY_NAMES = frozenset({
-    "main", "run", "cli", "entrypoint", "entry_point",
-    "handler", "execute", "start", "serve", "app",
-    "setup", "configure", "init", "initialize",
-    "__main__", "lambda_handler", "wsgi", "asgi",
-})
-
-_SECURITY_KEYWORDS = frozenset({
-    "auth", "login", "logout", "authenticate", "authorize",
-    "password", "token", "secret", "encrypt", "decrypt",
-    "hash", "verify", "session", "permission", "credential",
-    "sanitize", "validate", "escape",
-})
+_SECURITY_KEYWORDS = frozenset(
+    {
+        "auth",
+        "login",
+        "logout",
+        "authenticate",
+        "authorize",
+        "password",
+        "token",
+        "secret",
+        "encrypt",
+        "decrypt",
+        "hash",
+        "verify",
+        "session",
+        "permission",
+        "credential",
+        "sanitize",
+        "validate",
+        "escape",
+    }
+)
 
 
 @dataclass
@@ -115,8 +147,7 @@ class FlowService:
 
             if len(entries) > limit:
                 warnings.append(
-                    f"Showing {limit} of {len(entries)} entry points. "
-                    f"Use --limit to see more."
+                    f"Showing {limit} of {len(entries)} entry points. Use --limit to see more."
                 )
 
             return FlowResult(
@@ -137,9 +168,7 @@ def _build_call_graph(
 ) -> Tuple[Dict[str, Set[str]], Dict[str, Set[str]]]:
     outgoing: Dict[str, Set[str]] = defaultdict(set)
     incoming: Dict[str, Set[str]] = defaultdict(set)
-    for row in index.conn.execute(
-        "SELECT source, target FROM edges WHERE relation = 'calls'"
-    ):
+    for row in index.conn.execute("SELECT source, target FROM edges WHERE relation = 'calls'"):
         outgoing[row["source"]].add(row["target"])
         incoming[row["target"]].add(row["source"])
     return outgoing, incoming
@@ -157,9 +186,7 @@ def _load_callable_nodes(index: ProjectIndex) -> Dict[str, Dict[str, Any]]:
 
 def _load_tested_ids(index: ProjectIndex) -> Set[str]:
     tested: Set[str] = set()
-    for row in index.conn.execute(
-        "SELECT DISTINCT source FROM edges WHERE relation = 'tested_by'"
-    ):
+    for row in index.conn.execute("SELECT DISTINCT source FROM edges WHERE relation = 'tested_by'"):
         tested.add(row["source"])
     return tested
 
@@ -174,11 +201,12 @@ def _resolve_entry(
         return [_make_entry(nodes[name], "specified")]
 
     lowered = name.lower()
-    for nid, n in nodes.items():
+    for n in nodes.values():
         if n["name"].lower() == lowered:
             return [_make_entry(n, "specified")]
 
     from csegraph._core.graph.queries import _resolve_graph_node
+
     try:
         resolved = _resolve_graph_node(index, name, repo_root)
         if resolved in nodes:
@@ -252,9 +280,7 @@ def _trace_flow(
 ) -> Flow:
     steps: List[FlowStep] = []
     visited: Set[str] = {entry.id}
-    frontier: List[Tuple[str, int]] = [
-        (t, 1) for t in sorted(outgoing.get(entry.id, set()))
-    ]
+    frontier: List[Tuple[str, int]] = [(t, 1) for t in sorted(outgoing.get(entry.id, set()))]
     files: Set[str] = set()
     communities: Set[int] = set()
     untested_count = 0
@@ -291,14 +317,16 @@ def _trace_flow(
             start = n.get("start_line")
             end = n.get("end_line")
             lr = [int(start), int(end)] if start is not None and end is not None else None
-            steps.append(FlowStep(
-                id=target_id,
-                name=n["name"],
-                kind=n["type"],
-                path=n.get("path", ""),
-                depth=depth,
-                line_range=lr,
-            ))
+            steps.append(
+                FlowStep(
+                    id=target_id,
+                    name=n["name"],
+                    kind=n["type"],
+                    path=n.get("path", ""),
+                    depth=depth,
+                    line_range=lr,
+                )
+            )
 
             files.add(n.get("path", ""))
             cid = n.get("community_id")

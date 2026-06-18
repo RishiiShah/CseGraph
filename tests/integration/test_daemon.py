@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from csegraph._core.daemon import DaemonService, _is_alive
-from csegraph._core.registry import RegistryService
 from csegraph._core.core.models import to_dict
+from csegraph._core.daemon import DaemonService
+from csegraph._core.registry import RegistryService
 
 
 def _setup_registry(tmp_path: Path, names: list[str]) -> Path:

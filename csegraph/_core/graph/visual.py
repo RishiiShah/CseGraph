@@ -1,4 +1,5 @@
 """Self-contained HTML graph export from the SQLite index."""
+
 from __future__ import annotations
 
 import html
@@ -57,20 +58,22 @@ def _build_graph_nodes(all_nodes: Dict[str, Dict[str, Any]]) -> List[Dict[str, A
             child_counts[parent_id] = child_counts.get(parent_id, 0) + 1
 
     for node_id, row in sorted(all_nodes.items()):
-        result.append({
-            "id": node_id,
-            "name": row.get("name", ""),
-            "kind": row.get("type") or row.get("kind", ""),
-            "path": row.get("path") or row.get("file_path", ""),
-            "parent_id": row.get("parent_id"),
-            "child_count": child_counts.get(node_id, 0),
-            "line_range": _line_range(row.get("start_line"), row.get("end_line")),
-            "search_text": _search_text(
-                node_id,
-                row.get("name", ""),
-                row.get("path") or row.get("file_path", ""),
-            ),
-        })
+        result.append(
+            {
+                "id": node_id,
+                "name": row.get("name", ""),
+                "kind": row.get("type") or row.get("kind", ""),
+                "path": row.get("path") or row.get("file_path", ""),
+                "parent_id": row.get("parent_id"),
+                "child_count": child_counts.get(node_id, 0),
+                "line_range": _line_range(row.get("start_line"), row.get("end_line")),
+                "search_text": _search_text(
+                    node_id,
+                    row.get("name", ""),
+                    row.get("path") or row.get("file_path", ""),
+                ),
+            }
+        )
     return result
 
 
@@ -121,11 +124,17 @@ def _render_html(
         },
         separators=(",", ":"),
     )
-    return _load_template("graph.html").replace(
-        "__CSEGRAPH_REPO_NAME__",
-        html.escape(Path(repo_root).name),
-    ).replace("__CSEGRAPH_DATA_JSON__", data_json)
+    return (
+        _load_template("graph.html")
+        .replace(
+            "__CSEGRAPH_REPO_NAME__",
+            html.escape(Path(repo_root).name),
+        )
+        .replace("__CSEGRAPH_DATA_JSON__", data_json)
+    )
 
 
 def _load_template(name: str) -> str:
-    return resources.files("csegraph._core.graph.templates").joinpath(name).read_text(encoding="utf-8")
+    return (
+        resources.files("csegraph._core.graph.templates").joinpath(name).read_text(encoding="utf-8")
+    )

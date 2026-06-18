@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 
 import pytest
+
 import csegraph._cli.main as cli_main
 from csegraph._core.retrieval.constants import VALID_REASONS
-
 from tests.conftest import run_cli, run_dev_cli
 
 
@@ -36,13 +36,17 @@ def _create_test_venv(path: Path) -> None:
     subprocess.run([sys.executable, "-m", "venv", str(path)], check=True)
     child_site_packages = Path(
         subprocess.check_output(
-        [
-            str(path / ("Scripts" if sys.platform.startswith("win") else "bin") / ("python.exe" if sys.platform.startswith("win") else "python")),
-            "-c",
-            "import site; print(site.getsitepackages()[0])",
-        ],
-        text=True,
-    ).strip()
+            [
+                str(
+                    path
+                    / ("Scripts" if sys.platform.startswith("win") else "bin")
+                    / ("python.exe" if sys.platform.startswith("win") else "python")
+                ),
+                "-c",
+                "import site; print(site.getsitepackages()[0])",
+            ],
+            text=True,
+        ).strip()
     )
     parent_site_packages = Path(site.getsitepackages()[0])
     excluded_prefixes = (
@@ -98,8 +102,7 @@ def test_cli_json_contracts(tmp_path):
     assert "thresholds" not in context
     assert "is_sufficient" not in context
     assert any(
-        node["id"] == "symbol::helpers.py::function::clean_name"
-        for node in context["nodes"]
+        node["id"] == "symbol::helpers.py::function::clean_name" for node in context["nodes"]
     )
     assert context["total_estimated_tokens"] >= 1
     canonical_by_id = {node["id"]: node for node in context["nodes"]}
@@ -110,12 +113,10 @@ def test_cli_json_contracts(tmp_path):
     assert "target" in target_node["reason"]
     if "symbol::helpers.py::function::clean_name" in canonical_by_id:
         assert "direct_call" in helper_node["reason"]
+    assert all(reason in VALID_REASONS for node in context["nodes"] for reason in node["reason"])
     assert all(
-        reason in VALID_REASONS
-        for node in context["nodes"]
-        for reason in node["reason"]
+        "expanded-from-" not in reason for node in context["nodes"] for reason in node["reason"]
     )
-    assert all("expanded-from-" not in reason for node in context["nodes"] for reason in node["reason"])
     assert all("explanation" not in node for node in context["nodes"])
     assert "source_text" not in target_node
     assert target_node["estimated_tokens"] >= 1
@@ -134,12 +135,14 @@ def test_cli_json_contracts(tmp_path):
     )
     standard_by_id = {node["id"]: node for node in standard_context["nodes"]}
     assert standard_context["returned_detail_level"] == "standard"
-    assert "def create_user(name: str) -> dict:" in standard_by_id[
-        "symbol::service.py::function::create_user"
-    ]["source_text"]
-    assert "def clean_name(value: str) -> str:" in standard_by_id[
-        "symbol::helpers.py::function::clean_name"
-    ]["source_text"]
+    assert (
+        "def create_user(name: str) -> dict:"
+        in standard_by_id["symbol::service.py::function::create_user"]["source_text"]
+    )
+    assert (
+        "def clean_name(value: str) -> str:"
+        in standard_by_id["symbol::helpers.py::function::clean_name"]["source_text"]
+    )
 
     neighborhood = run_cli(
         "inspect",
@@ -471,7 +474,14 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     assert result["total_elapsed_ms"] >= 0
 
     steps = result["steps"]
-    assert [step["name"] for step in steps] == ["index", "refresh", "context", "graph", "report", "token_reduction"]
+    assert [step["name"] for step in steps] == [
+        "index",
+        "refresh",
+        "context",
+        "graph",
+        "report",
+        "token_reduction",
+    ]
     assert all(step["elapsed_ms"] >= 0 for step in steps)
 
     by_name = {step["name"]: step for step in steps}
@@ -485,10 +495,7 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
         "write_graph",
         "parse_errors",
     }
-    assert all(
-        elapsed_ms >= 0
-        for elapsed_ms in by_name["index"]["stats"]["phases"].values()
-    )
+    assert all(elapsed_ms >= 0 for elapsed_ms in by_name["index"]["stats"]["phases"].values())
     assert by_name["refresh"]["stats"]["changed_files"] == 0
     assert by_name["refresh"]["stats"]["deleted_files"] == 0
     assert by_name["context"]["stats"]["nodes"] >= 1
@@ -787,7 +794,10 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
     assert "```python" in proc.stdout
     assert "## Next Actions" in proc.stdout
     # Verify next action rendering includes tool and node fields
-    assert "`inspect_graph`; tool `csegraph_graph`; node `symbol::service.py::function::create_user`" in proc.stdout
+    assert (
+        "`inspect_graph`; tool `csegraph_graph`; node `symbol::service.py::function::create_user`"
+        in proc.stdout
+    )
 
 
 def test_context_cli_minimal_markdown_shows_expand_context(tmp_path):
@@ -1069,8 +1079,14 @@ def test_private_maintainer_cli_exposes_benchmark(tmp_path):
 
 def _init_git_repo(repo: Path) -> None:
     subprocess.run(["git", "-C", str(repo), "init"], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@test.com"], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@test.com"],
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "Test"], capture_output=True, check=True
+    )
 
 
 def test_detect_changes_json(tmp_path):
@@ -1083,14 +1099,18 @@ def test_detect_changes_json(tmp_path):
         encoding="utf-8",
     )
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True
+    )
 
     (repo / "core.py").write_text(
         "def target():\n    return 42\n\ndef caller():\n    target()\n",
         encoding="utf-8",
     )
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True
+    )
 
     run_cli("index", str(repo), "--json")
     result = run_dev_cli("detect-changes", str(repo), "--base-ref", "HEAD~1", "--json")
@@ -1111,16 +1131,27 @@ def test_detect_changes_human_output(tmp_path):
 
     (repo / "mod.py").write_text("def leaf():\n    pass\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True
+    )
 
     (repo / "mod.py").write_text("def leaf():\n    return 1\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "modify"], capture_output=True, check=True
+    )
 
     run_cli("index", str(repo), "--json")
 
     proc = subprocess.run(
-        [sys.executable, "tools/csegraph_dev.py", "detect-changes", str(repo), "--base-ref", "HEAD~1"],
+        [
+            sys.executable,
+            "tools/csegraph_dev.py",
+            "detect-changes",
+            str(repo),
+            "--base-ref",
+            "HEAD~1",
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -1136,7 +1167,9 @@ def test_detect_changes_no_changes(tmp_path):
 
     (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "initial"], capture_output=True, check=True
+    )
 
     run_cli("index", str(repo), "--json")
     result = run_dev_cli("detect-changes", str(repo), "--base-ref", "HEAD", "--json")
@@ -1150,6 +1183,7 @@ def test_single_package_install_exposes_cli_and_sdk(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     if not (repo_root / "pyproject.toml").exists():
         import pytest
+
         pytest.skip("root csegraph package not present in this checkout")
 
     venv = tmp_path / "v"
@@ -1159,18 +1193,22 @@ def test_single_package_install_exposes_cli_and_sdk(tmp_path):
     csegraph_bin = bin_dir / ("csegraph.exe" if sys.platform.startswith("win") else "csegraph")
 
     subprocess.run(
-        [str(pip), "install", "--quiet", "--no-index", "--no-build-isolation", "--no-deps",
-         "-e", str(repo_root)],
+        [
+            str(pip),
+            "install",
+            "--quiet",
+            "--no-index",
+            "--no-build-isolation",
+            "--no-deps",
+            "-e",
+            str(repo_root),
+        ],
         check=True,
         env=_offline_pip_env(),
     )
 
     listing = subprocess.run([str(pip), "list"], check=True, capture_output=True, text=True).stdout
-    project_lines = [
-        line
-        for line in listing.splitlines()
-        if line.lower().startswith("csegraph")
-    ]
+    project_lines = [line for line in listing.splitlines() if line.lower().startswith("csegraph")]
     assert len(project_lines) == 1
     assert project_lines[0].startswith("csegraph ")
     import_check = subprocess.run(
@@ -1191,7 +1229,10 @@ def test_single_package_install_exposes_cli_and_sdk(tmp_path):
     _env = _offline_pip_env()
     proc = subprocess.run(
         [str(csegraph_bin), "index", str(sample), "--json"],
-        check=True, capture_output=True, text=True, env=_env,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_env,
     )
     assert json.loads(proc.stdout)["files_indexed"] == 2
     proc = subprocess.run(

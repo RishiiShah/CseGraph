@@ -1,16 +1,16 @@
 """Optional local-first embedding service for semantic code search."""
+
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
 import struct
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ class EmbeddingService:
                     continue
 
                 now = time.time()
-                for (node_id, _text, source_hash), vec in zip(batch, vectors):
+                for (node_id, _text, source_hash), vec in zip(batch, vectors, strict=True):
                     blob = _vector_to_blob(vec)
                     index.conn.execute(
                         "INSERT OR REPLACE INTO embedding_cache "
@@ -193,14 +193,16 @@ class EmbeddingService:
                 info = node_map.get(node_id)
                 if not info:
                     continue
-                hits.append(EmbeddingSearchHit(
-                    node_id=node_id,
-                    name=info["name"],
-                    kind=info["type"],
-                    path=info["path"],
-                    score=round(score, 4),
-                    source=source,
-                ))
+                hits.append(
+                    EmbeddingSearchHit(
+                        node_id=node_id,
+                        name=info["name"],
+                        kind=info["type"],
+                        path=info["path"],
+                        score=round(score, 4),
+                        source=source,
+                    )
+                )
 
             return EmbeddingResult(
                 command="embeddings",
@@ -293,11 +295,11 @@ class EmbeddingService:
 def _make_local_embedder(model_name: str) -> Callable[[List[str]], List[List[float]]]:
     try:
         from sentence_transformers import SentenceTransformer
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "Local embeddings require sentence-transformers. "
             "Install with: pip install sentence-transformers"
-        )
+        ) from exc
     st_model = SentenceTransformer(model_name, trust_remote_code=False)
 
     def embed(texts: List[str]) -> List[List[float]]:
@@ -338,9 +340,7 @@ def _make_openai_embedder(
 
         data = body.get("data", [])
         if len(data) != len(texts):
-            raise ValueError(
-                f"Embedding API returned {len(data)} vectors for {len(texts)} inputs"
-            )
+            raise ValueError(f"Embedding API returned {len(data)} vectors for {len(texts)} inputs")
 
         indexed = all("index" in d for d in data)
         if indexed:
@@ -397,7 +397,7 @@ def _blob_to_vector(blob: bytes) -> List[float]:
 
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0 or norm_b == 0:

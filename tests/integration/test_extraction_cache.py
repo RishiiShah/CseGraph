@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from csegraph._core.index import cache as cache_module
 from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.index.services import IndexService, RefreshService
@@ -53,8 +51,11 @@ class TestExtractionCache:
     def test_clear(self, tmp_path):
         cache = ExtractionCache(str(tmp_path / "cache.db"))
         parsed = ParsedFile(
-            rel_path="test.py", abs_path="/repo/test.py",
-            sha256="abc", mtime=1.0, size=10,
+            rel_path="test.py",
+            abs_path="/repo/test.py",
+            sha256="abc",
+            mtime=1.0,
+            size=10,
         )
         cache.put(parsed)
         assert cache.stats()["cached_files"] == 1
@@ -64,17 +65,27 @@ class TestExtractionCache:
 
     def test_preserves_symbols(self, tmp_path):
         from csegraph._core.languages.types import ParsedSymbol
+
         cache = ExtractionCache(str(tmp_path / "cache.db"))
         sym = ParsedSymbol(
             node_id="symbol::test.py::function::foo",
-            kind="function", name="foo", file_path="test.py",
-            start_line=1, end_line=3, signature="def foo()",
-            docstring="Does stuff", source="def foo(): pass",
+            kind="function",
+            name="foo",
+            file_path="test.py",
+            start_line=1,
+            end_line=3,
+            signature="def foo()",
+            docstring="Does stuff",
+            source="def foo(): pass",
             source_hash="hash1",
         )
         parsed = ParsedFile(
-            rel_path="test.py", abs_path="/repo/test.py",
-            sha256="abc", mtime=1.0, size=10, symbols=[sym],
+            rel_path="test.py",
+            abs_path="/repo/test.py",
+            sha256="abc",
+            mtime=1.0,
+            size=10,
+            symbols=[sym],
         )
         cache.put(parsed)
         result = cache.get("test.py", "abc")

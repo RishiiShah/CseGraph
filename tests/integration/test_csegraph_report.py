@@ -258,8 +258,7 @@ def test_report_surprising_connections_deduped(tmp_path):
     a.mkdir()
     (a / "__init__.py").write_text("", encoding="utf-8")
     (a / "caller.py").write_text(
-        "from beta.target import do_thing\n\n"
-        "def run():\n    do_thing()\n    do_thing()\n",
+        "from beta.target import do_thing\n\ndef run():\n    do_thing()\n    do_thing()\n",
         encoding="utf-8",
     )
     b = repo / "beta"
@@ -273,10 +272,7 @@ def test_report_surprising_connections_deduped(tmp_path):
     run_cli("index", str(repo), "--json")
     result = run_dev_cli("report", str(repo), "--json")
 
-    triples = [
-        (c["source"], c["relation"], c["target"])
-        for c in result["surprising_connections"]
-    ]
+    triples = [(c["source"], c["relation"], c["target"]) for c in result["surprising_connections"]]
     assert len(triples) == len(set(triples)), "surprising_connections has duplicates"
 
 

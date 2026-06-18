@@ -4,6 +4,7 @@ These dataclasses represent the output of any Parser implementation and are
 intentionally not tied to any specific language. They live here so
 Parser.parse() can reference them without importing from a language-specific module.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

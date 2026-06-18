@@ -1,4 +1,5 @@
 """Agent workflow benchmarks exercise the MCP context loop end-to-end."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,11 +23,7 @@ def test_agent_workflow_benchmark_respects_tool_budget(tmp_path):
     result = BenchmarkService(str(db)).run_agent_workflows(repo, profile="small")
     assert result.command == "benchmark-agent-workflows"
 
-    summaries = [
-        step
-        for step in result.steps
-        if step.name.endswith(":summary")
-    ]
+    summaries = [step for step in result.steps if step.name.endswith(":summary")]
     assert len(summaries) == 3
     for step in summaries:
         stats = step.stats

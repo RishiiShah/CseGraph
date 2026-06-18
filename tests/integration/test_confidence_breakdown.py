@@ -22,15 +22,11 @@ def _tiny_repo(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text(
-        "from helpers import fmt\n"
-        "\n"
-        "def greet(name: str) -> str:\n"
-        "    return fmt(name)\n",
+        "from helpers import fmt\n\ndef greet(name: str) -> str:\n    return fmt(name)\n",
         encoding="utf-8",
     )
     (repo / "helpers.py").write_text(
-        "def fmt(name: str) -> str:\n"
-        "    return f\"hi {name}\"\n",
+        'def fmt(name: str) -> str:\n    return f"hi {name}"\n',
         encoding="utf-8",
     )
     db = str(tmp_path / "test.db")
@@ -111,9 +107,7 @@ class TestBreakdownHelpers:
 class TestBreakdownOnNeighborhood:
     def test_minimal_includes_breakdown(self, tmp_path):
         _, db = _tiny_repo(tmp_path)
-        result = GraphQueryService(db).neighborhood(
-            "file::app.py", depth=2, detail_level="minimal"
-        )
+        result = GraphQueryService(db).neighborhood("file::app.py", depth=2, detail_level="minimal")
         assert result.confidence_breakdown
         assert result.confidence_breakdown.get("EXTRACTED", 0) >= 1
 
@@ -141,9 +135,7 @@ class TestBreakdownOnNeighborhood:
             target_prefix="symbol::synthetic.py::function::inferred_",
             tier="INFERRED",
         )
-        result = GraphQueryService(db).neighborhood(
-            "greet", depth=1, detail_level="standard"
-        )
+        result = GraphQueryService(db).neighborhood("greet", depth=1, detail_level="standard")
         assert result.confidence_breakdown.get("INFERRED", 0) >= 3
         assert "inferred" in result.summary
 

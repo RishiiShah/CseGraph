@@ -292,7 +292,11 @@ class McpInstallService:
                     "Codex MCP install requires tomlkit. Install csegraph with its dependencies."
                 ) from exc
 
-            doc = tomlkit.parse(path.read_text(encoding="utf-8")) if path.exists() else tomlkit.document()
+            doc = (
+                tomlkit.parse(path.read_text(encoding="utf-8"))
+                if path.exists()
+                else tomlkit.document()
+            )
             servers = doc.setdefault("mcp_servers", tomlkit.table())
             table = tomlkit.table()
             table["command"] = self.command

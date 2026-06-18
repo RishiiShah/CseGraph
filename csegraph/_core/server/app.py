@@ -11,24 +11,46 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, GetPromptResult, Prompt, TextContent, Tool
 
 from csegraph._core.core.models import to_dict
-from csegraph._core.postprocess import attach_postprocess_metadata
 from csegraph._core.core.paths import assert_safe_db_path
+from csegraph._core.postprocess import attach_postprocess_metadata
 from csegraph._core.server.mcp_surface import is_blocking_mcp_tool
 from csegraph._core.server.prompts import (
     CORE_MCP_PROMPT_NAMES as _CORE_MCP_PROMPT_NAMES,
+)
+from csegraph._core.server.prompts import (
     PROMPTS as _PROMPTS,
+)
+from csegraph._core.server.prompts import (
     handle_prompt as _handle_prompt,
+)
+from csegraph._core.server.prompts import (
     prompts_for_tools as _prompts_for_tools,
 )
 from csegraph._core.server.session import _SESSION
 from csegraph._core.server.tools import (
     CORE_MCP_TOOL_NAMES as _CORE_MCP_TOOL_NAMES,
+)
+from csegraph._core.server.tools import (
     CORE_TOOL_NAMES,
+)
+from csegraph._core.server.tools import (
     MIN_BYTE_CAP as _MIN_BYTE_CAP,
+)
+from csegraph._core.server.tools import (
     TOOLS as _TOOLS,
 )
 
 logger = logging.getLogger("csegraph.mcp")
+
+__all__ = [
+    "_CORE_MCP_PROMPT_NAMES",
+    "_CORE_MCP_TOOL_NAMES",
+    "_PROMPTS",
+    "_TOOLS",
+    "CORE_TOOL_NAMES",
+    "create_server",
+    "run_stdio",
+]
 
 
 def _db_path(repo: str, db: str | None = None) -> str:
@@ -75,8 +97,7 @@ def _apply_session_filter(result: dict[str, Any]) -> None:
         if not isinstance(items, list):
             continue
         result[key] = [
-            item for item in items
-            if not (isinstance(item, dict) and item.get("tool") in called)
+            item for item in items if not (isinstance(item, dict) and item.get("tool") in called)
         ]
     result["tools_already_called"] = _SESSION.snapshot()
 
@@ -206,12 +227,14 @@ def _finalize_response_bytes(result: dict[str, Any]) -> None:
         result["response_bytes"] = new_size
 
 
-_TRIM_SKIP_KEYS = frozenset({
-    "truncated_fields",
-    "tools_already_called",
-    "warnings",
-    "omitted_counts",
-})
+_TRIM_SKIP_KEYS = frozenset(
+    {
+        "truncated_fields",
+        "tools_already_called",
+        "warnings",
+        "omitted_counts",
+    }
+)
 
 
 def _mark_truncated(truncated: list[str], key: str) -> None:
@@ -246,14 +269,11 @@ def _trim_list_field(
         _mark_truncated(truncated, key)
 
 
-def _generic_list_trim(
-    result: dict[str, Any], max_bytes: int, truncated: list[str]
-) -> None:
+def _generic_list_trim(result: dict[str, Any], max_bytes: int, truncated: list[str]) -> None:
     """Trim list-valued payload keys deterministically until under budget."""
     while _encoded_size(result) > max_bytes:
         candidates = [
-            k for k, v in result.items()
-            if isinstance(v, list) and v and k not in _TRIM_SKIP_KEYS
+            k for k, v in result.items() if isinstance(v, list) and v and k not in _TRIM_SKIP_KEYS
         ]
         if not candidates:
             break
@@ -262,9 +282,7 @@ def _generic_list_trim(
         _mark_truncated(truncated, largest_key)
 
 
-def _final_compact_to_cap(
-    result: dict[str, Any], max_bytes: int, truncated: list[str]
-) -> None:
+def _final_compact_to_cap(result: dict[str, Any], max_bytes: int, truncated: list[str]) -> None:
     """Last-resort compaction that keeps cap metadata and drops payload bulk."""
     for key, value in list(result.items()):
         if _encoded_size(result) <= max_bytes:
@@ -349,9 +367,9 @@ def _replace_with_minimal_cap_notice(
 
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
+        from csegraph._core.graph.queries import clear_hub_cache
         from csegraph._core.index.services import IndexService
         from csegraph._core.postprocess import PostprocessService
-        from csegraph._core.graph.queries import clear_hub_cache
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
@@ -369,9 +387,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return to_dict(index_result)
 
     if name == "csegraph_refresh":
+        from csegraph._core.graph.queries import clear_hub_cache
         from csegraph._core.index.services import RefreshService
         from csegraph._core.postprocess import PostprocessService
-        from csegraph._core.graph.queries import clear_hub_cache
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
@@ -500,10 +518,12 @@ def create_server(*, allowed_tools: list[str] | None = None) -> Server:
             logger.exception("Tool %s failed", name)
             error_payload = {"error": str(exc), "tool": name}
             return CallToolResult(
-                content=[TextContent(
-                    type="text",
-                    text=json.dumps(error_payload, indent=2),
-                )],
+                content=[
+                    TextContent(
+                        type="text",
+                        text=json.dumps(error_payload, indent=2),
+                    )
+                ],
                 isError=True,
             )
 

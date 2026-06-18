@@ -1,4 +1,5 @@
 """Regression guard for context-quality benchmark corpus on this repository."""
+
 from __future__ import annotations
 
 from pathlib import Path
