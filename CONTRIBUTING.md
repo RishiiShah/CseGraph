@@ -7,13 +7,13 @@ Use one editable Python package from the repository root:
 ```bash
 python -m venv env
 env/bin/python -m pip install --upgrade pip
-env/bin/python -m pip install -e ".[test]"
+env/bin/python -m pip install -e ".[test,all]"
 ```
 
 Optional local quality tools are grouped in the `dev` extra:
 
 ```bash
-env/bin/python -m pip install -e ".[test,dev]"
+env/bin/python -m pip install -e ".[test,dev,all]"
 env/bin/python -m pre_commit install
 ```
 

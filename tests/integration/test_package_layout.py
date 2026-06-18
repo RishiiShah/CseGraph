@@ -23,6 +23,34 @@ CORE_LANGUAGE_DEPENDENCIES = [
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
     "tree-sitter-javascript>=0.23",
+]
+
+
+OPTIONAL_LANGUAGE_DEPENDENCIES = {
+    "go": ["tree-sitter-go>=0.23"],
+    "rust": ["tree-sitter-rust>=0.23"],
+    "java": ["tree-sitter-java>=0.23"],
+    "c": ["tree-sitter-c>=0.23"],
+    "cpp": ["tree-sitter-cpp>=0.23"],
+    "ruby": ["tree-sitter-ruby>=0.23"],
+    "csharp": ["tree-sitter-c-sharp>=0.23"],
+    "kotlin": ["tree-sitter-kotlin>=0.23"],
+    "groovy": ["tree-sitter-groovy>=0.1.2"],
+    "scala": ["tree-sitter-scala>=0.23"],
+    "php": ["tree-sitter-php>=0.23"],
+    "swift": ["tree-sitter-swift>=0.7"],
+    "lua": ["tree-sitter-lua>=0.2"],
+    "zig": ["tree-sitter-zig>=0.1"],
+    "powershell": ["tree-sitter-powershell>=0.1"],
+    "elixir": ["tree-sitter-elixir>=0.3"],
+    "objc": ["tree-sitter-objc>=0.23"],
+    "julia": ["tree-sitter-julia>=0.23"],
+    "verilog": ["tree-sitter-verilog>=0.23"],
+    "fortran": ["tree-sitter-fortran>=0.6"],
+}
+
+
+ALL_OPTIONAL_LANGUAGE_DEPENDENCIES = [
     "tree-sitter-go>=0.23",
     "tree-sitter-rust>=0.23",
     "tree-sitter-java>=0.23",
@@ -104,7 +132,17 @@ def test_one_distribution_package_layout_and_versions():
     assert root_project["readme"] == "README.md"
     assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"test", "dev", "embeddings"}
+    optional_deps = root_project.get("optional-dependencies", {})
+    assert set(optional_deps) == {
+        "test",
+        "dev",
+        "embeddings",
+        "all",
+        *OPTIONAL_LANGUAGE_DEPENDENCIES,
+    }
+    for extra, dependencies in OPTIONAL_LANGUAGE_DEPENDENCIES.items():
+        assert optional_deps[extra] == dependencies
+    assert optional_deps["all"] == ALL_OPTIONAL_LANGUAGE_DEPENDENCIES
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
     classifiers = set(root_project["classifiers"])

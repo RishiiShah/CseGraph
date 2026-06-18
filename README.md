@@ -24,6 +24,14 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 pip install csegraph
 ```
 
+The base package includes Python, JavaScript, and TypeScript grammars. Install
+extra grammars only when you need them:
+
+```bash
+pip install "csegraph[go,rust]"
+pip install "csegraph[all]"
+```
+
 Then run `csegraph --help` to confirm the CLI is on your PATH.
 
 ## Five Minute Quickstart
@@ -58,7 +66,7 @@ env/bin/pip install -e .
 For local development and test runs, install the test extra:
 
 ```bash
-env/bin/python -m pip install -e ".[test]"
+env/bin/python -m pip install -e ".[test,all]"
 ```
 
 `requirements.txt` contains the product-only editable install.

@@ -34,6 +34,38 @@ dependencies = [
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
     "tree-sitter-javascript>=0.23",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=9.0.3", "setuptools>=68"]
+dev = [
+    "coverage[toml]>=7.6",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "ruff>=0.8",
+]
+embeddings = ["sentence-transformers>=1.7.1"]
+go = ["tree-sitter-go>=0.23"]
+rust = ["tree-sitter-rust>=0.23"]
+java = ["tree-sitter-java>=0.23"]
+c = ["tree-sitter-c>=0.23"]
+cpp = ["tree-sitter-cpp>=0.23"]
+ruby = ["tree-sitter-ruby>=0.23"]
+csharp = ["tree-sitter-c-sharp>=0.23"]
+kotlin = ["tree-sitter-kotlin>=0.23"]
+groovy = ["tree-sitter-groovy>=0.1.2"]
+scala = ["tree-sitter-scala>=0.23"]
+php = ["tree-sitter-php>=0.23"]
+swift = ["tree-sitter-swift>=0.7"]
+lua = ["tree-sitter-lua>=0.2"]
+zig = ["tree-sitter-zig>=0.1"]
+powershell = ["tree-sitter-powershell>=0.1"]
+elixir = ["tree-sitter-elixir>=0.3"]
+objc = ["tree-sitter-objc>=0.23"]
+julia = ["tree-sitter-julia>=0.23"]
+verilog = ["tree-sitter-verilog>=0.23"]
+fortran = ["tree-sitter-fortran>=0.6"]
+all = [
     "tree-sitter-go>=0.23",
     "tree-sitter-rust>=0.23",
     "tree-sitter-java>=0.23",
@@ -55,16 +87,6 @@ dependencies = [
     "tree-sitter-verilog>=0.23",
     "tree-sitter-fortran>=0.6",
 ]
-
-[project.optional-dependencies]
-test = ["pytest>=9.0.3", "setuptools>=68"]
-dev = [
-    "coverage[toml]>=7.6",
-    "mypy>=1.13",
-    "pre-commit>=4.0",
-    "ruff>=0.8",
-]
-embeddings = ["sentence-transformers>=1.7.1"]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"

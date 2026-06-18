@@ -19,6 +19,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added CI checks for Ruff and test coverage.
 - Added a SQLite schema migration framework for known older csegraph index
   versions.
+- Added optional tree-sitter grammar extras so installs can stay small while
+  `csegraph[all]` preserves full language coverage.
 
 ### Changed
 

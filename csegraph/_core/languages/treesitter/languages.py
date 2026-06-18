@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from importlib import import_module
+from importlib.util import find_spec
 from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from tree_sitter import Language, Node
@@ -161,6 +162,19 @@ def _make_config(name: str) -> LanguageConfig:
         module_name_fn=spec.module_name_fn,
         resolve_import_fn=spec.resolve_import_fn,
     )
+
+
+def is_language_available(name: str) -> bool:
+    spec = _spec(name)
+    return all(find_spec(loader.module) is not None for loader in spec.loaders.values())
+
+
+def available_language_factories() -> List[Callable[[], LanguageConfig]]:
+    return [
+        factory
+        for name, factory in LANGUAGE_FACTORIES
+        if is_language_available(name)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -844,27 +858,29 @@ def make_python_config() -> LanguageConfig: return _make_config("python")
 # Registry of all config factories
 # ---------------------------------------------------------------------------
 
-ALL_LANGUAGE_FACTORIES = [
-    make_python_config,
-    make_typescript_config,
-    make_go_config,
-    make_rust_config,
-    make_java_config,
-    make_c_config,
-    make_cpp_config,
-    make_ruby_config,
-    make_csharp_config,
-    make_kotlin_config,
-    make_groovy_config,
-    make_scala_config,
-    make_php_config,
-    make_swift_config,
-    make_lua_config,
-    make_zig_config,
-    make_powershell_config,
-    make_elixir_config,
-    make_objc_config,
-    make_julia_config,
-    make_verilog_config,
-    make_fortran_config,
+LANGUAGE_FACTORIES = [
+    ("python", make_python_config),
+    ("typescript", make_typescript_config),
+    ("go", make_go_config),
+    ("rust", make_rust_config),
+    ("java", make_java_config),
+    ("c", make_c_config),
+    ("cpp", make_cpp_config),
+    ("ruby", make_ruby_config),
+    ("csharp", make_csharp_config),
+    ("kotlin", make_kotlin_config),
+    ("groovy", make_groovy_config),
+    ("scala", make_scala_config),
+    ("php", make_php_config),
+    ("swift", make_swift_config),
+    ("lua", make_lua_config),
+    ("zig", make_zig_config),
+    ("powershell", make_powershell_config),
+    ("elixir", make_elixir_config),
+    ("objc", make_objc_config),
+    ("julia", make_julia_config),
+    ("verilog", make_verilog_config),
+    ("fortran", make_fortran_config),
 ]
+
+ALL_LANGUAGE_FACTORIES = [factory for _, factory in LANGUAGE_FACTORIES]
