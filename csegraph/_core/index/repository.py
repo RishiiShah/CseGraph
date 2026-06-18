@@ -88,7 +88,12 @@ class ProjectIndex:
         ).fetchone()
         return row is not None
 
-    def set_metadata(self, root_dir: str, profile: str) -> None:
+    def set_metadata(
+        self,
+        root_dir: str,
+        profile: str,
+        include_roots: Optional[Sequence[str]] = None,
+    ) -> None:
         now = time.time()
         existing = self.metadata(raise_if_empty=False)
         created_at = existing.get("created_at", str(now))
@@ -102,6 +107,8 @@ class ProjectIndex:
             "built_branch": branch or "",
             "built_commit": commit or "",
         }
+        if include_roots is not None:
+            rows["include_roots"] = json.dumps(list(include_roots), sort_keys=True)
         self.conn.executemany(
             """
             INSERT INTO metadata(key, value)

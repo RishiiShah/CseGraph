@@ -216,6 +216,39 @@ def test_async_sdk_services(tmp_path):
     asyncio.run(run_scenario())
 
 
+def test_index_include_roots_limit_monorepo_subtrees(tmp_path):
+    repo = tmp_path / "repo"
+    api = repo / "apps" / "api"
+    web = repo / "apps" / "web"
+    api.mkdir(parents=True)
+    web.mkdir(parents=True)
+    (api / "service.py").write_text("def api_handler():\n    return 'api'\n", encoding="utf-8")
+    (web / "view.py").write_text("def web_view():\n    return 'web'\n", encoding="utf-8")
+    db_path = _scratch_path(repo, "monorepo.db")
+
+    indexed = IndexService(db_path).index(repo, profile="small", include_roots=["apps/api"])
+
+    assert indexed.files_indexed == 1
+    assert indexed.changed_files == ["apps/api/service.py"]
+
+    with sqlite3.connect(db_path) as conn:
+        paths = {row[0] for row in conn.execute("SELECT path FROM nodes WHERE type = 'file'")}
+        include_roots = conn.execute(
+            "SELECT value FROM metadata WHERE key = 'include_roots'"
+        ).fetchone()[0]
+
+    assert paths == {"apps/api/service.py"}
+    assert json.loads(include_roots) == ["apps/api"]
+
+    (api / "service.py").write_text("def api_handler():\n    return 'api v2'\n", encoding="utf-8")
+    (web / "view.py").write_text("def web_view():\n    return 'web v2'\n", encoding="utf-8")
+
+    refreshed = RefreshService(db_path).refresh(profile="small")
+
+    assert refreshed.changed_files == ["apps/api/service.py"]
+    assert "apps/web/view.py" not in refreshed.changed_files
+
+
 def test_benchmark_service_runs_core_pipeline(tmp_path):
     repo = tmp_path / "repo"
     db_path = _scratch_path(repo, "repo.csegraph.db")

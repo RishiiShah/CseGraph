@@ -206,6 +206,13 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATTERN",
         help="Extra gitignore-style exclusion (repeatable); applies without editing .csegraphignore.",
     )
+    index.add_argument(
+        "--include-root",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="Limit indexing to a repo-local subtree. Repeat for monorepo projects.",
+    )
     _add_json(index)
 
     refresh = subparsers.add_parser("refresh", help="Refresh changed files in an index.")
@@ -219,6 +226,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATTERN",
         help="Extra gitignore-style exclusion (repeatable).",
+    )
+    refresh.add_argument(
+        "--include-root",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="Limit refresh to a repo-local subtree. Defaults to indexed include roots.",
     )
     _add_json(refresh)
 
@@ -596,6 +610,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             repo,
             profile=args.profile,
             exclude_patterns=getattr(args, "exclude", None),
+            include_roots=getattr(args, "include_root", None),
         )
         pp_level = getattr(args, "postprocess", "full")
         pp_result = None
@@ -614,6 +629,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
         refresh_result = RefreshService(db).refresh(
             profile=args.profile,
             exclude_patterns=getattr(args, "exclude", None),
+            include_roots=getattr(args, "include_root", None),
         )
         pp_level = getattr(args, "postprocess", "full")
         pp_result = None

@@ -41,6 +41,7 @@ VS Code extension install and project setup live in
 ```bash
 env/bin/csegraph index .
 env/bin/csegraph index . --profile medium --postprocess full --json
+env/bin/csegraph index . --include-root apps/api --include-root packages/shared --json
 env/bin/csegraph refresh .
 env/bin/csegraph refresh . --postprocess minimal --json
 env/bin/csegraph postprocess . --level full --json
@@ -55,6 +56,10 @@ Postprocess levels:
 - `full`: rebuild FTS, resolver edges, and communities.
 
 Default DB: `<repo>/.csegraph/index.db`.
+
+For monorepos, repeat `--include-root` to limit indexing to selected repo-local
+subtrees. Refresh reuses the indexed include roots unless new include roots are
+provided.
 
 Codex-safe temporary artifacts should live under `<repo>/.scratch/csegraph/`, not
 OS temp directories such as `/tmp` or `/private/tmp`. Use that repo-local scratch

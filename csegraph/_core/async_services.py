@@ -35,12 +35,14 @@ class AsyncIndexService:
         profile: str = "small",
         *,
         exclude_patterns: Optional[Sequence[str]] = None,
+        include_roots: Optional[Sequence[str | Path]] = None,
     ) -> IndexResult:
         return await asyncio.to_thread(
             self._sync.index,
             repo,
             profile,
             exclude_patterns=exclude_patterns,
+            include_roots=include_roots,
         )
 
 
@@ -56,6 +58,7 @@ class AsyncRefreshService:
         dependents_limit: int = 50,
         *,
         exclude_patterns: Optional[Sequence[str]] = None,
+        include_roots: Optional[Sequence[str | Path]] = None,
     ) -> RefreshResult:
         return await asyncio.to_thread(
             self._sync.refresh,
@@ -63,6 +66,7 @@ class AsyncRefreshService:
             changed_paths,
             dependents_limit,
             exclude_patterns=exclude_patterns,
+            include_roots=include_roots,
         )
 
 

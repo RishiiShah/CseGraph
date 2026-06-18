@@ -41,16 +41,23 @@ class IndexService:
         profile: str = "small",
         *,
         exclude_patterns: Optional[Sequence[str]] = None,
+        include_roots: Optional[Sequence[str | Path]] = None,
     ) -> IndexResult:
         timings_ms: Dict[str, float] = {}
         config = get_profile(profile)
-        repo_root = str(Path(repo).resolve())
+        repo_root_path = Path(repo).resolve()
+        repo_root = str(repo_root_path)
+        include_prefixes = _normalize_include_roots(repo_root_path, include_roots)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
         cache = ExtractionCache(cache_path)
         start = time.perf_counter()
         parsed_files = _parse_with_cache(
-            registry.iter_files(Path(repo_root), exclude_patterns=exclude_patterns),
-            Path(repo_root),
+            _filter_included_files(
+                registry.iter_files(repo_root_path, exclude_patterns=exclude_patterns),
+                repo_root_path,
+                include_prefixes,
+            ),
+            repo_root_path,
             cache,
         )
         timings_ms["discover_parse"] = _elapsed_ms(start)
@@ -59,7 +66,7 @@ class IndexService:
         try:
             start = time.perf_counter()
             index.initialize_schema()
-            index.set_metadata(repo_root, config.name)
+            index.set_metadata(repo_root, config.name, include_roots=include_prefixes)
             timings_ms["initialize_schema"] = _elapsed_ms(start)
 
             start = time.perf_counter()
@@ -107,6 +114,7 @@ class RefreshService:
         dependents_limit: int = 50,
         *,
         exclude_patterns: Optional[Sequence[str]] = None,
+        include_roots: Optional[Sequence[str | Path]] = None,
     ) -> RefreshResult:
         config = get_profile(profile)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
@@ -117,7 +125,12 @@ class RefreshService:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = Path(metadata["root_dir"]).resolve()
-            index.set_metadata(str(repo_root), config.name)
+            include_prefixes = (
+                _normalize_include_roots(repo_root, include_roots)
+                if include_roots is not None
+                else _include_roots_from_metadata(metadata)
+            )
+            index.set_metadata(str(repo_root), config.name, include_roots=include_prefixes)
 
             start = time.perf_counter()
             if changed_paths is not None:
@@ -143,7 +156,10 @@ class RefreshService:
                 for path in changed_abs_set:
                     if path.exists() and path.is_file():
                         rel = path.relative_to(repo_root).as_posix()
-                        if not is_discoverable_rel_path(rel, ignore):
+                        if (
+                            not _is_included_rel_path(rel, include_prefixes)
+                            or not is_discoverable_rel_path(rel, ignore)
+                        ):
                             if rel in stored:
                                 deleted.append(rel)
                             continue
@@ -157,15 +173,20 @@ class RefreshService:
                     if not path.exists():
                         try:
                             rel = path.relative_to(repo_root).as_posix()
-                            if rel in stored:
+                            if rel in stored and _is_included_rel_path(rel, include_prefixes):
                                 deleted.append(rel)
                         except Exception:
                             pass
             else:
                 current_files = {
                     path.resolve().relative_to(repo_root).as_posix(): (parser, path)
-                    for parser, path in registry.iter_files(
-                        repo_root, exclude_patterns=exclude_patterns,
+                    for parser, path in _filter_included_files(
+                        registry.iter_files(
+                            repo_root,
+                            exclude_patterns=exclude_patterns,
+                        ),
+                        repo_root,
+                        include_prefixes,
                     )
                 }
                 stored = {
@@ -823,4 +844,71 @@ def _edge(
         json_dumps(metadata),
         confidence,
         confidence_tier,
+    )
+
+
+def _normalize_include_roots(
+    repo_root: Path,
+    include_roots: Optional[Sequence[str | Path]],
+) -> tuple[str, ...]:
+    if not include_roots:
+        return ()
+
+    prefixes: List[str] = []
+    for raw_root in include_roots:
+        raw_path = Path(raw_root)
+        if raw_path.is_absolute():
+            resolved = raw_path.resolve()
+            try:
+                rel_path = resolved.relative_to(repo_root).as_posix()
+            except ValueError:
+                raise ValueError(
+                    f"Include root '{raw_root}' is outside repository root '{repo_root}'."
+                )
+        else:
+            rel_path = raw_path.as_posix()
+        rel_path = rel_path.replace("\\", "/").strip("/")
+        if rel_path in ("", "."):
+            continue
+        if ".." in Path(rel_path).parts:
+            raise ValueError(f"Include root '{raw_root}' must stay inside the repository.")
+        if rel_path not in prefixes:
+            prefixes.append(rel_path)
+    return tuple(prefixes)
+
+
+def _include_roots_from_metadata(metadata: Dict[str, str]) -> tuple[str, ...]:
+    raw_value = metadata.get("include_roots")
+    if not raw_value:
+        return ()
+    try:
+        values = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(values, list):
+        return ()
+    return tuple(str(value).strip("/") for value in values if str(value).strip("/"))
+
+
+def _filter_included_files(
+    file_iter: Iterable[tuple],
+    repo_root: Path,
+    include_roots: Sequence[str],
+) -> Iterable[tuple]:
+    if not include_roots:
+        yield from file_iter
+        return
+    for parser, path in file_iter:
+        rel_path = path.resolve().relative_to(repo_root).as_posix()
+        if _is_included_rel_path(rel_path, include_roots):
+            yield parser, path
+
+
+def _is_included_rel_path(rel_path: str, include_roots: Sequence[str]) -> bool:
+    if not include_roots:
+        return True
+    normalized = rel_path.replace("\\", "/").strip("/")
+    return any(
+        normalized == root or normalized.startswith(f"{root}/")
+        for root in include_roots
     )

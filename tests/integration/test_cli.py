@@ -245,6 +245,21 @@ def test_index_json_flag_returns_parseable_json(tmp_path):
     assert isinstance(result["changed_files"], list)
 
 
+def test_index_include_root_cli_limits_monorepo_subtree(tmp_path):
+    repo = tmp_path / "repo"
+    api = repo / "apps" / "api"
+    web = repo / "apps" / "web"
+    api.mkdir(parents=True)
+    web.mkdir(parents=True)
+    (api / "service.py").write_text("def api_handler():\n    return 'api'\n", encoding="utf-8")
+    (web / "view.py").write_text("def web_view():\n    return 'web'\n", encoding="utf-8")
+
+    result = run_cli("index", str(repo), "--include-root", "apps/api", "--json")
+
+    assert result["files_indexed"] == 1
+    assert result["changed_files"] == ["apps/api/service.py"]
+
+
 def test_refresh_json_flag_returns_parseable_json(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
