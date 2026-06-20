@@ -45,6 +45,16 @@ def test_extract_query_entities_substring_match():
     assert "build_report" in entities
 
 
+def test_extract_query_entities_does_not_count_private_suffix_matches():
+    entities = extract_query_entities(
+        "Where does load_ignore_filter work?",
+        ["load_ignore_filter", "_filter"],
+    )
+
+    assert "load_ignore_filter" in entities
+    assert "_filter" not in entities
+
+
 def test_tokenizer_for_python_returns_default_tokenizer():
     from csegraph._core.languages import registry
 

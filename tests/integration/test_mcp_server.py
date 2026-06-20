@@ -171,10 +171,36 @@ class TestHandleTool:
                 "db": db,
             },
         )
-        assert "nodes" in ctx
-        assert ctx["query"] == "How does greet work?"
-        assert ctx["detail_level"] == "auto"
-        assert ctx["returned_detail_level"] in {"minimal", "standard"}
+        assert "symbols" in ctx
+        assert "nodes" not in ctx
+        assert ctx["request"]["task"] == "How does greet work?"
+        assert ctx["request"]["detail_level"] == "auto"
+        assert ctx["request"]["returned_detail_level"] in {"minimal", "standard"}
+
+    def test_context_returns_sufficient_v3_neighborhood_without_warning(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = _scratch_db(repo)
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
+
+        ctx = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "How does greet call fmt?",
+                "repo": str(repo),
+                "target": "greet",
+                "db": db,
+                "profile": "small",
+                "detail_level": "standard",
+            },
+        )
+
+        assert ctx["schema_version"] == "csegraph-context-v3"
+        assert ctx["target"]["id"] == "symbol::app.py::function::greet"
+        assert ctx["sufficiency"]["sufficient"] is True
+        assert ctx["warnings"] == []
+        assert ctx["symbols"]
+        assert any(relationship["relation"] == "calls" for relationship in ctx["relationships"])
+        assert any(prelude["path"] == "app.py" for prelude in ctx["import_preludes"])
 
     def test_index_allows_repo_local_scratch_db_path(self, tmp_path):
         repo = _make_repo(tmp_path)

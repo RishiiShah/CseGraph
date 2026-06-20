@@ -90,22 +90,24 @@ def test_cli_json_contracts(tmp_path):
         "--json",
     )
     assert context["command"] == "context"
-    assert context["query"] == "Implement create_user with clean_name"
-    assert context["target"] == "symbol::service.py::function::create_user"
-    assert context["detail_level"] == "auto"
-    assert context["returned_detail_level"] == "minimal"
+    assert context["schema_version"] == "csegraph-context-v3"
+    assert context["request"]["task"] == "Implement create_user with clean_name"
+    assert context["target"]["id"] == "symbol::service.py::function::create_user"
+    assert context["request"]["detail_level"] == "auto"
+    assert context["request"]["returned_detail_level"] == "minimal"
     assert context["sufficiency"]["sufficient"] is True
     assert "target_node_id" not in context
     assert "context_nodes" not in context
+    assert "nodes" not in context
     assert "estimated_tokens" not in context
     assert "metrics" not in context
     assert "thresholds" not in context
     assert "is_sufficient" not in context
     assert any(
-        node["id"] == "symbol::helpers.py::function::clean_name" for node in context["nodes"]
+        node["id"] == "symbol::helpers.py::function::clean_name" for node in context["symbols"]
     )
-    assert context["total_estimated_tokens"] >= 1
-    canonical_by_id = {node["id"]: node for node in context["nodes"]}
+    assert context["budgets"]["total_estimated_tokens"] >= 1
+    canonical_by_id = {node["id"]: node for node in context["symbols"]}
     target_node = canonical_by_id["symbol::service.py::function::create_user"]
     helper_node = canonical_by_id["symbol::helpers.py::function::clean_name"]
     assert target_node["path"] == "service.py"
@@ -113,11 +115,11 @@ def test_cli_json_contracts(tmp_path):
     assert "target" in target_node["reason"]
     if "symbol::helpers.py::function::clean_name" in canonical_by_id:
         assert "direct_call" in helper_node["reason"]
-    assert all(reason in VALID_REASONS for node in context["nodes"] for reason in node["reason"])
+    assert all(reason in VALID_REASONS for node in context["symbols"] for reason in node["reason"])
     assert all(
-        "expanded-from-" not in reason for node in context["nodes"] for reason in node["reason"]
+        "expanded-from-" not in reason for node in context["symbols"] for reason in node["reason"]
     )
-    assert all("explanation" not in node for node in context["nodes"])
+    assert all("explanation" not in node for node in context["symbols"])
     assert "source_text" not in target_node
     assert target_node["estimated_tokens"] >= 1
     assert any(action["action"] == "expand_context" for action in context["next_actions"])
@@ -133,8 +135,8 @@ def test_cli_json_contracts(tmp_path):
         "standard",
         "--json",
     )
-    standard_by_id = {node["id"]: node for node in standard_context["nodes"]}
-    assert standard_context["returned_detail_level"] == "standard"
+    standard_by_id = {node["id"]: node for node in standard_context["symbols"]}
+    assert standard_context["request"]["returned_detail_level"] == "standard"
     assert (
         "def create_user(name: str) -> dict:"
         in standard_by_id["symbol::service.py::function::create_user"]["source_text"]
@@ -296,10 +298,10 @@ def test_context_detail_level_full_adds_explanations(tmp_path):
         "--json",
     )
 
-    assert result["detail_level"] == "full"
-    assert result["returned_detail_level"] == "full"
-    assert any("explanation" in node for node in result["nodes"])
-    assert all("source_text" in node for node in result["nodes"])
+    assert result["request"]["detail_level"] == "full"
+    assert result["request"]["returned_detail_level"] == "full"
+    assert any("explanation" in node for node in result["symbols"])
+    assert all("source_text" in node for node in result["symbols"])
 
 
 def test_help_lists_canonical_index_and_refresh_without_aliases():
@@ -500,7 +502,7 @@ def test_benchmark_json_profiles_core_commands(tmp_path):
     assert by_name["refresh"]["stats"]["deleted_files"] == 0
     assert by_name["context"]["stats"]["nodes"] >= 1
     assert by_name["context"]["stats"]["target"] == "symbol::service.py::function::create_user"
-    assert by_name["context"]["stats"]["schema_version"] == "csegraph-context-v2"
+    assert by_name["context"]["stats"]["schema_version"] == "csegraph-context-v3"
     assert by_name["context"]["stats"]["returned_detail_level"] in {"minimal", "standard"}
     assert by_name["context"]["stats"]["mcp_response_bytes"] > 0
     assert by_name["context"]["stats"]["expected_node_hit_count"] == 2
@@ -581,6 +583,7 @@ def test_benchmark_corpus_json_reports_quality_scoreboard(tmp_path):
     assert result["summary"]["task_count"] == 1
     assert result["summary"]["passed_task_count"] == 1
     assert result["summary"]["overall_hit_rate"] == 1.0
+    assert result["summary"]["sufficient_task_count"] == 1
     assert result["summary"]["total_tool_call_count"] == 1
     assert result["tasks"][0]["task_id"] == "create-user"
     assert result["tasks"][0]["hit_rate"] == 1.0
@@ -627,6 +630,7 @@ def test_benchmark_corpus_default_output_is_human_summary(tmp_path):
     assert "Context Quality Benchmark:" in proc.stdout
     assert "Tasks: 1" in proc.stdout
     assert "Overall hit rate: 100.0%" in proc.stdout
+    assert "Sufficient contexts:" in proc.stdout
     assert "Tool calls: 1" in proc.stdout
     assert "create-user" in proc.stdout
     assert "hit=100.0%" in proc.stdout
@@ -664,7 +668,7 @@ def test_custom_db_flags_work(tmp_path):
         "create_user",
         "--json",
     )
-    assert context["target"] == "symbol::service.py::function::create_user"
+    assert context["target"]["id"] == "symbol::service.py::function::create_user"
 
 
 def test_context_cli_source_controls_and_token_budget(tmp_path):
@@ -685,10 +689,11 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
         "standard",
         "--json",
     )
-    assert compact["total_estimated_tokens"] == sum(
-        node["estimated_tokens"] for node in compact["nodes"]
+    assert compact["budgets"]["total_estimated_tokens"] >= sum(
+        node["estimated_tokens"] for node in compact["symbols"]
     )
-    assert all("source_text" not in node for node in compact["nodes"])
+    assert compact["import_preludes"]
+    assert all("source_text" not in node for node in compact["symbols"])
 
     budgeted = run_cli(
         "context",
@@ -705,8 +710,8 @@ def test_context_cli_source_controls_and_token_budget(tmp_path):
         "standard",
         "--json",
     )
-    assert budgeted["total_estimated_tokens"] <= 50
-    budgeted_nodes = {node["id"]: node for node in budgeted["nodes"]}
+    assert budgeted["budgets"]["total_estimated_tokens"] <= 50
+    budgeted_nodes = {node["id"]: node for node in budgeted["symbols"]}
     assert "symbol::service.py::function::create_user" in budgeted_nodes
     helper = budgeted_nodes.get("symbol::helpers.py::function::clean_name")
     assert helper is None or helper.get("source_text") is not None
@@ -756,10 +761,10 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
         "--format",
         "json",
     )
-    assert all("explanation" in node for node in explained["nodes"])
+    assert all("explanation" in node for node in explained["symbols"])
     helper = next(
         node
-        for node in explained["nodes"]
+        for node in explained["symbols"]
         if node["id"] == "symbol::helpers.py::function::clean_name"
     )
     assert "directly called by the target" in helper["explanation"]
@@ -789,6 +794,8 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
     assert "Query: Implement create_user" in proc.stdout
     assert "Requested detail: `standard`" in proc.stdout
     assert "Returned detail: `standard`" in proc.stdout
+    assert "## Import Preludes" in proc.stdout
+    assert "## Relationships" in proc.stdout
     assert "Reasons: target" in proc.stdout
     assert "Included because" in proc.stdout
     assert "```python" in proc.stdout
@@ -895,9 +902,9 @@ def test_context_cli_unsupported_schema_returns_structured_error(tmp_path):
     assert proc.returncode != 0
     err = json.loads(proc.stderr)
     assert err == {
-        "error": "Unsupported csegraph index schema",
+        "error": "Unsupported csegraph index schema. Rerun csegraph index for this repository.",
         "error_code": "unsupported_schema",
-        "hint": "Rebuild the index with the current csegraph version.",
+        "hint": "Run `csegraph index <repo>` to rebuild this beta index with the current schema.",
     }
 
 
@@ -1251,7 +1258,7 @@ def test_single_package_install_exposes_cli_and_sdk(tmp_path):
         text=True,
         env=_env,
     )
-    assert json.loads(proc.stdout)["target"] == "symbol::service.py::function::create_user"
+    assert json.loads(proc.stdout)["target"]["id"] == "symbol::service.py::function::create_user"
     proc = subprocess.run(
         [
             str(csegraph_bin),

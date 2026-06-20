@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from csegraph._core.core.models import to_dict
+from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.index.services import IndexService
 from csegraph._core.postprocess import PostprocessService, _read_source_slice
 from csegraph._core.status import StatusService
@@ -86,7 +87,7 @@ class TestStatusService:
         assert result.total_edges > 0
         assert result.total_files == 3
         assert "python" in result.languages
-        assert result.schema_version == "csegraph-sqlite-v5"
+        assert result.schema_version == SCHEMA_VERSION
         assert result.active_profile == "small"
         assert result.updated_at is not None
         assert result.index_health is not None

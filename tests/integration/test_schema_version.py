@@ -1,10 +1,13 @@
 import sqlite3
 
+import pytest
+
+from csegraph._core.core.errors import UnsupportedSchemaError
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.schema import SCHEMA_USER_VERSION, SCHEMA_VERSION
 
 
-def test_old_schema_version_is_migrated(tmp_path):
+def test_old_schema_version_fails_fast_then_can_reset(tmp_path):
     db_path = tmp_path / "old.db"
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
@@ -25,16 +28,17 @@ def test_old_schema_version_is_migrated(tmp_path):
 
     idx = ProjectIndex(db_path)
     try:
-        idx.initialize_schema()
+        with pytest.raises(UnsupportedSchemaError, match="Rerun csegraph index"):
+            idx.initialize_schema()
+
+        idx.initialize_schema(reset_on_unsupported=True)
         metadata = idx.metadata(raise_if_empty=False)
     finally:
         idx.close()
 
     assert metadata["schema_version"] == SCHEMA_VERSION
-    assert metadata["root_dir"] == "/tmp/example"
-    assert metadata["active_profile"] == "small"
-    assert metadata["created_at"] == "10.0"
-    assert metadata["updated_at"] == "20.0"
+    assert "root_dir" not in metadata
+    assert "active_profile" not in metadata
 
     with sqlite3.connect(db_path) as conn:
         tables = {
@@ -48,6 +52,7 @@ def test_old_schema_version_is_migrated(tmp_path):
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
 
     assert "schema_meta" not in tables
+    assert "projects" not in tables
     assert "metadata" in tables
     assert "nodes" in tables
     assert "edges" in tables
@@ -57,7 +62,7 @@ def test_old_schema_version_is_migrated(tmp_path):
     assert user_version == SCHEMA_USER_VERSION
 
 
-def test_partial_legacy_tables_gain_current_columns(tmp_path):
+def test_partial_legacy_tables_fail_fast_then_reset(tmp_path):
     db_path = tmp_path / "partial.db"
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
@@ -76,7 +81,10 @@ def test_partial_legacy_tables_gain_current_columns(tmp_path):
 
     idx = ProjectIndex(db_path)
     try:
-        idx.initialize_schema()
+        with pytest.raises(UnsupportedSchemaError, match="Rerun csegraph index"):
+            idx.initialize_schema()
+
+        idx.initialize_schema(reset_on_unsupported=True)
         metadata = idx.metadata(raise_if_empty=False)
     finally:
         idx.close()

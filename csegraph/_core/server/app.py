@@ -110,10 +110,13 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
     """Enforce a hard ceiling on the serialized response size.
 
     Drop order (each step re-measures; stops when under budget):
-      1. `source_text` on every node
-      2. `explanation` on every node
-      3. Trim `nodes` list from the tail (assumes ordering = priority)
-      4. Trim `edges` list from the tail
+      1. `source_text` on every symbol/node
+      2. `explanation` on every symbol/node
+      3. Drop `import_preludes`
+      4. Drop `relationships[].occurrences[].snippet`
+      5. Trim `relationships`
+      6. Trim `symbols`/`nodes` from the tail (ordering = priority)
+      7. Trim graph `edges` from the tail
 
     Annotates the response with `response_bytes`, `byte_cap`, `byte_cap_applied`,
     and `truncated_fields` so the agent knows what was dropped. Mutates `result`
@@ -140,7 +143,8 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
         _finalize_response_bytes(result)
         return
 
-    nodes = result.get("nodes")
+    nodes_key = "symbols" if isinstance(result.get("symbols"), list) else "nodes"
+    nodes = result.get(nodes_key)
 
     # Step 1: drop source_text from every node.
     if isinstance(nodes, list):
@@ -170,18 +174,62 @@ def _apply_byte_cap(result: dict[str, Any], max_bytes: int | None) -> None:
                 _finalize_response_bytes(result)
                 return
 
-    # Step 3: trim nodes list (lowest-priority assumed at tail).
-    if isinstance(nodes, list) and nodes:
-        while len(nodes) > 1 and _encoded_size(result) > max_bytes:
-            _pop_omitted(result, "nodes")
-        if "nodes" in result.get("omitted_counts", {}):
-            _mark_truncated(truncated, "nodes")
+    # Step 3: drop import preludes.
+    if isinstance(result.get("import_preludes"), list) and result["import_preludes"]:
+        result["import_preludes"] = []
+        _mark_truncated(truncated, "import_preludes")
+        if _encoded_size(result) <= max_bytes:
+            result["byte_cap_applied"] = True
+            _finalize_response_bytes(result)
+            return
+
+    # Step 4: drop source snippets from relationship metadata/reference payloads.
+    relationships = result.get("relationships")
+    if isinstance(relationships, list):
+        dropped = False
+        for relationship in relationships:
+            if not isinstance(relationship, dict):
+                continue
+            metadata = relationship.get("metadata")
+            if isinstance(metadata, dict) and metadata.get("source") is not None:
+                metadata.pop("source", None)
+                dropped = True
+            occurrences = relationship.get("occurrences")
+            if isinstance(occurrences, list):
+                for occurrence in occurrences:
+                    if isinstance(occurrence, dict) and occurrence.get("snippet") is not None:
+                        occurrence.pop("snippet", None)
+                        dropped = True
+        if dropped:
+            _mark_truncated(truncated, "relationship_snippets")
             if _encoded_size(result) <= max_bytes:
                 result["byte_cap_applied"] = True
                 _finalize_response_bytes(result)
                 return
 
-    # Step 4: trim edges list.
+    # Step 5: trim relationships.
+    if isinstance(relationships, list) and relationships:
+        while relationships and _encoded_size(result) > max_bytes:
+            _pop_omitted(result, "relationships")
+        if "relationships" in result.get("omitted_counts", {}):
+            _mark_truncated(truncated, "relationships")
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 6: trim symbols/nodes list (lowest-priority assumed at tail).
+    if isinstance(nodes, list) and nodes:
+        while len(nodes) > 1 and _encoded_size(result) > max_bytes:
+            _pop_omitted(result, nodes_key)
+        if nodes_key in result.get("omitted_counts", {}):
+            _mark_truncated(truncated, nodes_key)
+            if _encoded_size(result) <= max_bytes:
+                result["byte_cap_applied"] = True
+                _finalize_response_bytes(result)
+                return
+
+    # Step 7: trim graph edges list.
     edges = result.get("edges")
     if isinstance(edges, list) and edges:
         while edges and _encoded_size(result) > max_bytes:
@@ -367,9 +415,11 @@ def _replace_with_minimal_cap_notice(
 
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "csegraph_index":
-        from csegraph._core.graph.queries import clear_hub_cache
+        from csegraph._core.graph.queries import clear_hub_cache as clear_graph_hub_cache
         from csegraph._core.index.services import IndexService
         from csegraph._core.postprocess import PostprocessService
+        from csegraph._core.retrieval.cache import CACHE
+        from csegraph._core.retrieval.minimal import clear_hub_cache as clear_minimal_hub_cache
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
@@ -383,13 +433,17 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         else:
             skipped_reason = "disabled"
         attach_postprocess_metadata(index_result, db, pp_level, pp_result, skipped_reason)
-        clear_hub_cache()
+        clear_graph_hub_cache()
+        clear_minimal_hub_cache()
+        CACHE.clear(db)
         return to_dict(index_result)
 
     if name == "csegraph_refresh":
-        from csegraph._core.graph.queries import clear_hub_cache
+        from csegraph._core.graph.queries import clear_hub_cache as clear_graph_hub_cache
         from csegraph._core.index.services import RefreshService
         from csegraph._core.postprocess import PostprocessService
+        from csegraph._core.retrieval.cache import CACHE
+        from csegraph._core.retrieval.minimal import clear_hub_cache as clear_minimal_hub_cache
 
         repo = arguments["repo"]
         profile = arguments.get("profile", "medium")
@@ -405,7 +459,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         else:
             skipped_reason = "unchanged"
         attach_postprocess_metadata(refresh_result, db, pp_level, pp_result, skipped_reason)
-        clear_hub_cache()
+        clear_graph_hub_cache()
+        clear_minimal_hub_cache()
+        CACHE.clear(db)
         return to_dict(refresh_result)
 
     if name == "csegraph_minimal":

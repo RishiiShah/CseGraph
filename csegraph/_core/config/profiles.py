@@ -13,8 +13,9 @@ PROFILES = {
         name="small",
         top_k=8,
         graph_radius=1,
-        context_budget=20,
+        context_budget=16,
         raw_code_budget=3,
+        semantic_threshold_relaxed=0.05,
     ),
     "medium": ProfileConfig(
         name="medium",
@@ -22,6 +23,7 @@ PROFILES = {
         graph_radius=2,
         context_budget=60,
         raw_code_budget=8,
+        semantic_threshold_relaxed=0.03,
     ),
     "large": ProfileConfig(
         name="large",
@@ -29,6 +31,7 @@ PROFILES = {
         graph_radius=3,
         context_budget=120,
         raw_code_budget=12,
+        semantic_threshold_relaxed=0.02,
     ),
 }
 
@@ -106,11 +109,7 @@ def _discover_config(
 
 def _load_config_file(path: Path) -> dict:
     if path.suffix == ".toml":
-        try:
-            import tomllib
-        except ImportError:
-            import tomlkit
+        import tomlkit
 
-            return dict(tomlkit.parse(path.read_text(encoding="utf-8")))
-        return tomllib.loads(path.read_text(encoding="utf-8"))
+        return dict(tomlkit.parse(path.read_text(encoding="utf-8")))
     return json.loads(path.read_text(encoding="utf-8"))

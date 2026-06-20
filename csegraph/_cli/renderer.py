@@ -205,6 +205,10 @@ def _render_benchmark_corpus_summary(payload: Dict[str, Any]) -> str:
         f"Overall hit rate: {_pct(summary.get('overall_hit_rate', 0.0))}",
         f"Task pass rate: {_pct(summary.get('task_pass_rate', 0.0))}",
         (
+            f"Sufficient contexts: {summary.get('sufficient_task_count', 0)} / "
+            f"{summary.get('task_count', 0)}"
+        ),
+        (
             f"Tokens: total={summary.get('total_context_tokens', 0)}, "
             f"avg={summary.get('avg_context_tokens', 0)}"
         ),
@@ -238,9 +242,41 @@ def _render_benchmark_corpus_summary(payload: Dict[str, Any]) -> str:
                 len(task.get("missing_expected_nodes") or [])
                 + len(task.get("missing_expected_files") or [])
                 + len(task.get("missing_expected_symbols") or [])
+                + len(task.get("missing_expected_relationships") or [])
+                + len(task.get("missing_expected_occurrence_snippets") or [])
+                + len(task.get("missing_expected_import_preludes") or [])
+                + len(task.get("violating_forbidden_source_patterns") or [])
             )
             if missing:
                 line += f", missing={missing}"
+            relationship_total = task.get("expected_relationship_total", 0)
+            if relationship_total:
+                line += (
+                    ", relationships="
+                    f"{relationship_total - len(task.get('missing_expected_relationships') or [])}/"
+                    f"{relationship_total}"
+                )
+            occurrence_total = task.get("expected_occurrence_snippet_total", 0)
+            if occurrence_total:
+                line += (
+                    ", occurrences="
+                    f"{occurrence_total - len(task.get('missing_expected_occurrence_snippets') or [])}/"
+                    f"{occurrence_total}"
+                )
+            prelude_total = task.get("expected_import_prelude_total", 0)
+            if prelude_total:
+                line += (
+                    ", imports="
+                    f"{prelude_total - len(task.get('missing_expected_import_preludes') or [])}/"
+                    f"{prelude_total}"
+                )
+            forbidden_total = task.get("forbidden_source_pattern_total", 0)
+            if forbidden_total:
+                line += (
+                    ", forbidden="
+                    f"{forbidden_total - len(task.get('violating_forbidden_source_patterns') or [])}/"
+                    f"{forbidden_total}"
+                )
         lines.append(line)
     lines.extend(
         [
@@ -561,14 +597,19 @@ def render_path_summary(payload: Dict[str, Any]) -> str:
 
 
 def render_context_markdown(payload: Dict[str, Any]) -> str:
+    request = payload.get("request") or {}
+    raw_target = payload.get("target")
+    target = raw_target if isinstance(raw_target, dict) else {}
+    budgets = payload.get("budgets") or {}
+    symbols = payload.get("symbols") or payload.get("nodes") or []
     lines: List[str] = [
         "# csegraph context",
         "",
-        f"Query: {payload['query']}",
-        f"Target: `{payload['target']}`",
-        f"Requested detail: `{payload.get('detail_level', 'auto')}`",
-        f"Returned detail: `{payload.get('returned_detail_level', 'minimal')}`",
-        f"Total estimated tokens: {payload['total_estimated_tokens']}",
+        f"Query: {request.get('task', payload.get('query', ''))}",
+        f"Target: `{target.get('id', payload.get('target', ''))}`",
+        f"Requested detail: `{request.get('detail_level', payload.get('detail_level', 'auto'))}`",
+        f"Returned detail: `{request.get('returned_detail_level', payload.get('returned_detail_level', 'minimal'))}`",
+        f"Total estimated tokens: {budgets.get('total_estimated_tokens', payload.get('total_estimated_tokens', 0))}",
         f"Sufficient: {payload['sufficiency']['sufficient']}",
         "",
     ]
@@ -587,7 +628,45 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
             lines.append(_render_next_action(action))
         lines.append("")
 
-    for rank, node in enumerate(payload["nodes"], start=1):
+    import_preludes = payload.get("import_preludes") or []
+    if import_preludes:
+        lines.extend(["## Import Preludes", ""])
+        for prelude in import_preludes:
+            line_range = _line_range_text(prelude.get("line_range"))
+            lines.extend(
+                [
+                    f"### `{prelude.get('path', '')}{line_range}`",
+                    "",
+                    f"```{prelude.get('language', '')}",
+                    str(prelude.get("text", "")).rstrip(),
+                    "```",
+                    "",
+                ]
+            )
+
+    relationships = payload.get("relationships") or []
+    if relationships:
+        lines.extend(["## Relationships", ""])
+        for relationship in relationships[:40]:
+            lines.append(
+                "- "
+                f"`{relationship.get('source')}` --"
+                f"{relationship.get('relation', '?')}--> "
+                f"`{relationship.get('target')}`"
+            )
+            for occurrence in _relationship_occurrences(relationship)[:2]:
+                line_range = _line_range_text(occurrence.get("line_range"))
+                lines.append(
+                    f"  - `{occurrence.get('path', '')}{line_range}` "
+                    f"{occurrence.get('kind', relationship.get('relation', ''))} "
+                    f"`{occurrence.get('name', '')}`"
+                )
+                snippet = occurrence.get("snippet")
+                if snippet:
+                    lines.extend(["", "```", str(snippet).rstrip(), "```", ""])
+        lines.append("")
+
+    for rank, node in enumerate(symbols, start=1):
         lines.extend(_render_node(rank, node))
     return "\n".join(lines).rstrip() + "\n"
 
@@ -608,6 +687,19 @@ def _render_next_action(action: Dict[str, Any]) -> str:
     suffix = f" - {reason}" if reason else ""
 
     return f"- {'; '.join(parts)}{suffix}"
+
+
+def _relationship_occurrences(relationship: Dict[str, Any]) -> List[Dict[str, Any]]:
+    direct = relationship.get("occurrences")
+    if isinstance(direct, list):
+        return [item for item in direct if isinstance(item, dict)]
+    metadata = relationship.get("metadata")
+    if not isinstance(metadata, dict):
+        return []
+    nested = metadata.get("occurrences")
+    if isinstance(nested, list):
+        return [item for item in nested if isinstance(item, dict)]
+    return []
 
 
 def _render_node(rank: int, node: Dict[str, Any]) -> List[str]:
@@ -954,6 +1046,12 @@ def _benchmark_stats(stats: Dict[str, Any]) -> str:
                     f"hit_rate={hit_rate}%",
                 ]
             )
+        if stats.get("relationship_count", 0):
+            parts.append(f"relationships={stats['relationship_count']}")
+        if stats.get("import_prelude_count", 0):
+            parts.append(f"imports={stats['import_prelude_count']}")
+        if stats.get("occurrence_snippet_count", 0):
+            parts.append(f"occurrences={stats['occurrence_snippet_count']}")
         return ", ".join(parts)
     preferred = (
         "files",

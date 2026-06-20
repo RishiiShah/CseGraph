@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 
 import pytest
@@ -178,6 +179,49 @@ def test_svn_list_paths_used_when_no_git(monkeypatch, tmp_path):
     assert ignore.svn_repo
     assert not ignore.git_repo
     rels = list(iter_discoverable_rel_paths(tmp_path, ignore=ignore))
+    assert "versioned.py" in rels
+    assert "local_only.py" not in rels
+
+
+def test_real_svn_working_copy_uses_versioned_paths_when_available(tmp_path):
+    svn = shutil.which("svn")
+    svnadmin = shutil.which("svnadmin")
+    if svn is None or svnadmin is None:
+        pytest.skip("svn and svnadmin binaries are required for real SVN discovery smoke test")
+
+    svn_repo = tmp_path / "svn-repo"
+    import_root = tmp_path / "import-root"
+    working_copy = tmp_path / "working-copy"
+    import_root.mkdir()
+    (import_root / "versioned.py").write_text("x = 1\n", encoding="utf-8")
+
+    subprocess.run([svnadmin, "create", str(svn_repo)], check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            svn,
+            "import",
+            str(import_root),
+            svn_repo.as_uri(),
+            "-m",
+            "initial import",
+            "--non-interactive",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [svn, "checkout", svn_repo.as_uri(), str(working_copy), "--non-interactive"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (working_copy / "local_only.py").write_text("y = 2\n", encoding="utf-8")
+
+    ignore = load_ignore_filter(working_copy)
+    assert ignore.svn_repo
+    assert not ignore.git_repo
+    rels = list(iter_discoverable_rel_paths(working_copy, ignore=ignore))
     assert "versioned.py" in rels
     assert "local_only.py" not in rels
 

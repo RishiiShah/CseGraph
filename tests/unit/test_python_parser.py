@@ -138,3 +138,37 @@ def test_python_treesitter_parser_extracts_class_methods(tmp_path):
     assert "Greeter.farewell" in by_name
     assert by_name["Greeter.greet"].kind == "method"
     assert by_name["Greeter.greet"].parent_symbol_id == by_name["Greeter"].node_id
+
+
+def test_python_treesitter_parser_records_import_aliases_and_reference_occurrences(tmp_path):
+    repo = tmp_path / "repo"
+    tests_dir = repo / "tests"
+    tests_dir.mkdir(parents=True)
+    path = tests_dir / "sample_test.py"
+    path.write_text(
+        "\n".join(
+            [
+                "from utils import format_user as fmt, helper",
+                "@decorator(arg)",
+                "class Child(Base):",
+                "    def test_run(self):",
+                "        return fmt(helper())",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = _get_python_parser().parse(path, repo)
+    import_record = parsed.import_records[0]
+    by_name = {sym.name: sym for sym in parsed.symbols}
+
+    assert import_record.metadata["aliases"]["fmt"] == "utils.format_user"
+    assert by_name["Child"].references[0].source == "Base"
+    test_refs = [
+        (ref.kind, ref.name, ref.start_line, ref.end_line, ref.source)
+        for ref in by_name["Child.test_run"].references
+    ]
+    assert ("calls", "fmt", 5, 5, "fmt(helper())") in test_refs
+    assert ("calls", "helper", 5, 5, "helper()") in test_refs
+    assert ("test", "fmt", 5, 5, "fmt(helper())") in test_refs

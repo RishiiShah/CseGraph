@@ -20,8 +20,8 @@ from csegraph._core.index.services import (
 )
 from csegraph._core.languages.registry import registry
 from csegraph._core.languages.treesitter.languages import make_cpp_config
-from csegraph._core.retrieval.context import _resolve_target
 from csegraph._core.retrieval.scoring import lexical_scores
+from csegraph._core.retrieval.target_resolution import resolve_target
 from csegraph._core.text.entities import extract_query_entities
 
 
@@ -185,8 +185,9 @@ def test_absolute_path_metadata_fallback(tmp_path):
 
     # Resolve target using empty repo_root fallback to metadata
     target_abs = str((repo / "app.py").resolve())
-    resolved = _resolve_target(target_abs, "task", {}, {}, index, repo_root="")
-    assert resolved == "file::app.py"
+    resolution = resolve_target(target_abs, "task", {}, {}, index, repo_root="")
+    assert resolution.status == "resolved"
+    assert resolution.target_id == "file::app.py"
 
     # Resolve graph node with empty repo_root
     resolved_node = _resolve_graph_node(index, target_abs, repo_root="")

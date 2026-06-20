@@ -16,7 +16,12 @@ from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.index.repository import ProjectIndex, json_dumps
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 from csegraph._core.languages.treesitter.languages import LANGUAGE_SPECS, is_language_available
-from csegraph._core.languages.types import ParsedFile, ParsedSymbol
+from csegraph._core.languages.types import (
+    ParsedFile,
+    ParsedImport,
+    ParsedReference,
+    ParsedSymbol,
+)
 
 _STRUCTURAL_LANGUAGE = "non_code"
 _EXTRACTED = "EXTRACTED"
@@ -71,7 +76,7 @@ class IndexService:
         index = ProjectIndex(self.db_path)
         try:
             start = time.perf_counter()
-            index.initialize_schema()
+            index.initialize_schema(reset_on_unsupported=True)
             index.set_metadata(repo_root, config.name, include_roots=include_prefixes)
             timings_ms["initialize_schema"] = _elapsed_ms(start)
 
@@ -108,6 +113,8 @@ class IndexService:
         finally:
             index.close()
             cache.close()
+            from csegraph._core.retrieval.cache import CACHE
+            CACHE.clear(self.db_path)
 
 
 class RefreshService:
@@ -322,6 +329,8 @@ class RefreshService:
         finally:
             index.close()
             cache.close()
+            from csegraph._core.retrieval.cache import CACHE
+            CACHE.clear(self.db_path)
 
 
 def _find_dependent_files(
@@ -453,6 +462,7 @@ def _insert_file_nodes(
     batch: _WriteBatch,
 ) -> None:
     file_node_rows: List[tuple] = []
+    file_rows: List[tuple] = []
     for parsed in parsed_files:
         node_id = file_node_id(parsed.rel_path)
         parent_dir = "/".join(parsed.rel_path.split("/")[:-1])
@@ -473,6 +483,22 @@ def _insert_file_nodes(
                 parsed.sha256,
                 parsed.parse_status,
                 parsed.parse_error,
+                file_meta,
+                now,
+            )
+        )
+        file_rows.append(
+            (
+                node_id,
+                parsed.rel_path,
+                Path(parsed.rel_path).name,
+                parsed.language,
+                parsed.sha256,
+                parsed.sha256,
+                parsed.parse_status,
+                parsed.parse_error,
+                parsed.size,
+                parsed.mtime,
                 file_meta,
                 now,
             )
@@ -506,6 +532,28 @@ def _insert_file_nodes(
             """,
             file_node_rows,
         )
+    if file_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO files(
+                id, path, name, language, sha256, source_hash,
+                parse_status, parse_error, size, mtime, metadata, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                path = excluded.path,
+                name = excluded.name,
+                language = excluded.language,
+                sha256 = excluded.sha256,
+                source_hash = excluded.source_hash,
+                parse_status = excluded.parse_status,
+                parse_error = excluded.parse_error,
+                size = excluded.size,
+                mtime = excluded.mtime,
+                metadata = excluded.metadata,
+                updated_at = excluded.updated_at
+            """,
+            file_rows,
+        )
 
 
 def _load_symbol_lookup(index: ProjectIndex, batch: _WriteBatch) -> None:
@@ -529,6 +577,7 @@ def _insert_symbol_nodes(
     batch: _WriteBatch,
 ) -> None:
     symbol_node_rows: List[tuple] = []
+    symbol_rows: List[tuple] = []
     for parsed in parsed_files:
         tokenizer = registry.tokenizer_for(parsed.language)
         for symbol in parsed.symbols:
@@ -541,6 +590,25 @@ def _insert_symbol_nodes(
                 (
                     symbol.node_id,
                     parent,
+                    symbol.kind,
+                    symbol.name,
+                    parsed.rel_path,
+                    parsed.language,
+                    symbol.signature,
+                    symbol.docstring,
+                    symbol.start_line,
+                    symbol.end_line,
+                    symbol.source_hash,
+                    metadata,
+                    1 if symbol.is_test else 0,
+                    now,
+                )
+            )
+            symbol_rows.append(
+                (
+                    symbol.node_id,
+                    file_node_id(parsed.rel_path),
+                    symbol.parent_symbol_id,
                     symbol.kind,
                     symbol.name,
                     parsed.rel_path,
@@ -602,6 +670,32 @@ def _insert_symbol_nodes(
             """,
             symbol_node_rows,
         )
+    if symbol_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO symbols(
+                id, file_id, parent_id, kind, name, path, language,
+                signature, docstring, start_line, end_line, source_hash,
+                metadata, is_test, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                file_id = excluded.file_id,
+                parent_id = excluded.parent_id,
+                kind = excluded.kind,
+                name = excluded.name,
+                path = excluded.path,
+                language = excluded.language,
+                signature = excluded.signature,
+                docstring = excluded.docstring,
+                start_line = excluded.start_line,
+                end_line = excluded.end_line,
+                source_hash = excluded.source_hash,
+                metadata = excluded.metadata,
+                is_test = excluded.is_test,
+                updated_at = excluded.updated_at
+            """,
+            symbol_rows,
+        )
 
 
 def _flush_summary_and_lexical_rows(index: ProjectIndex, batch: _WriteBatch) -> None:
@@ -642,6 +736,8 @@ def _insert_edges(
 ) -> None:
     module_to_file_id = _module_to_file_id(index)
     edge_rows: List[tuple] = list(structural_edges)
+    import_rows: List[tuple] = []
+    reference_rows: List[tuple] = []
     for parsed in parsed_files:
         try:
             parser = registry.for_extension(Path(parsed.rel_path).suffix)
@@ -658,15 +754,43 @@ def _insert_edges(
             edge_rows.append(_edge(source, symbol.node_id, "contains"))
 
         imported_file_ids: List[str] = []
-        for import_name in parsed.imports:
+        import_aliases: Dict[str, str] = {}
+        import_records = _normalized_import_records(parsed)
+        for import_record in import_records:
+            import_name = import_record.name
             target_file_id = parser.resolve_local_import(
                 import_name, module_to_file_id, current_module
+            )
+            import_record.resolved_file_id = target_file_id
+            import_rows.append(
+                (
+                    current_file_id,
+                    parsed.rel_path,
+                    parsed.language,
+                    import_name,
+                    target_file_id,
+                    import_record.start_line,
+                    import_record.end_line,
+                    import_record.source,
+                    json_dumps(import_record.metadata),
+                )
             )
             if target_file_id:
                 if target_file_id not in imported_file_ids:
                     imported_file_ids.append(target_file_id)
+                import_aliases.update(_import_aliases(import_record))
                 edge_rows.append(
-                    _edge(current_file_id, target_file_id, "imports", {"import": import_name})
+                    _edge(
+                        current_file_id,
+                        target_file_id,
+                        "imports",
+                        {
+                            "import": import_name,
+                            "start_line": import_record.start_line,
+                            "end_line": import_record.end_line,
+                            "source": import_record.source,
+                        },
+                    )
                 )
 
         _SYMBOL_EDGE_SPECS = [
@@ -678,7 +802,7 @@ def _insert_edges(
             for attr, relation, meta_key, reverse in _SYMBOL_EDGE_SPECS:
                 for name in getattr(symbol, attr):
                     target = _pick_call_target(
-                        name,
+                        import_aliases.get(name, name),
                         current_file_id,
                         batch.symbol_by_name,
                         batch.node_to_file_node,
@@ -688,10 +812,24 @@ def _insert_edges(
                     if target and target != symbol.node_id:
                         src, tgt = (target, symbol.node_id) if reverse else (symbol.node_id, target)
                         edge_rows.append(_edge(src, tgt, relation, {meta_key: name}))
+                        for reference in _references_for(symbol, relation, name):
+                            reference_rows.append(
+                                _reference(
+                                    current_file_id,
+                                    symbol.node_id,
+                                    target,
+                                    relation,
+                                    name,
+                                    reference.start_line,
+                                    reference.end_line,
+                                    reference.source,
+                                    reference.metadata,
+                                )
+                            )
             if symbol.is_test:
                 for call in symbol.calls:
                     target = _pick_call_target(
-                        call,
+                        import_aliases.get(call, call),
                         current_file_id,
                         batch.symbol_by_name,
                         batch.node_to_file_node,
@@ -699,7 +837,35 @@ def _insert_edges(
                         imported_file_ids,
                     )
                     if target and target != symbol.node_id:
-                        edge_rows.append(_edge(target, symbol.node_id, "tested_by", {"via": call}))
+                        references = _test_references_for(symbol, call)
+                        first_reference = references[0]
+                        edge_rows.append(
+                            _edge(
+                                target,
+                                symbol.node_id,
+                                "tested_by",
+                                {
+                                    "via": call,
+                                    "start_line": first_reference.start_line,
+                                    "end_line": first_reference.end_line,
+                                    "source": first_reference.source,
+                                },
+                            )
+                        )
+                        for reference in references:
+                            reference_rows.append(
+                                _reference(
+                                    current_file_id,
+                                    symbol.node_id,
+                                    target,
+                                    "tested_by",
+                                    call,
+                                    reference.start_line,
+                                    reference.end_line,
+                                    reference.source,
+                                    reference.metadata,
+                                )
+                            )
 
     if edge_rows:
         index.conn.executemany(
@@ -709,6 +875,139 @@ def _insert_edges(
             """,
             edge_rows,
         )
+        index.conn.executemany(
+            """
+            INSERT OR IGNORE INTO relationships(source, target, kind, metadata, confidence, confidence_tier)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            edge_rows,
+        )
+    if import_rows:
+        index.conn.executemany(
+            """
+            INSERT OR IGNORE INTO imports(
+                file_id, path, language, import_name, resolved_file_id,
+                start_line, end_line, source, metadata
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            import_rows,
+        )
+    if reference_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO symbol_references(
+                source_file_id, enclosing_symbol_id, target, kind, name,
+                start_line, end_line, source, metadata
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            reference_rows,
+        )
+
+
+def _normalized_import_records(parsed: ParsedFile) -> List[ParsedImport]:
+    if parsed.import_records:
+        return parsed.import_records
+    return [
+        ParsedImport(
+            name=name,
+            start_line=1,
+            end_line=1,
+            source="",
+        )
+        for name in parsed.imports
+    ]
+
+
+def _import_aliases(import_record: ParsedImport) -> Dict[str, str]:
+    aliases: Dict[str, str] = {}
+    raw_aliases = import_record.metadata.get("aliases")
+    if isinstance(raw_aliases, dict):
+        for local, target in raw_aliases.items():
+            if isinstance(local, str) and isinstance(target, str) and target != "*":
+                aliases[local] = _symbol_name_from_import_target(target)
+
+    raw_imports = import_record.metadata.get("imports")
+    if isinstance(raw_imports, list):
+        for item in raw_imports:
+            if not isinstance(item, dict):
+                continue
+            local = item.get("local")
+            target = item.get("qualified") or item.get("name")
+            if isinstance(local, str) and isinstance(target, str) and target != "*":
+                aliases[local] = _symbol_name_from_import_target(target)
+    return aliases
+
+
+def _symbol_name_from_import_target(target: str) -> str:
+    return target.rsplit(".", 1)[-1].rsplit("/", 1)[-1]
+
+
+def _references_for(
+    symbol: ParsedSymbol,
+    kind: str,
+    name: str,
+) -> List[ParsedReference]:
+    matches = [
+        reference
+        for reference in symbol.references
+        if reference.kind == kind and reference.name == name
+    ]
+    if matches:
+        return matches
+    return [
+        ParsedReference(
+            kind=kind,
+            name=name,
+            start_line=symbol.start_line,
+            end_line=symbol.end_line,
+            source="",
+        )
+    ]
+
+
+def _test_references_for(symbol: ParsedSymbol, name: str) -> List[ParsedReference]:
+    matches = [
+        reference
+        for reference in symbol.references
+        if reference.kind in {"test", "calls"} and reference.name == name
+    ]
+    if matches:
+        return matches
+    return [
+        ParsedReference(
+            kind="test",
+            name=name,
+            start_line=symbol.start_line,
+            end_line=symbol.end_line,
+            source="",
+        )
+    ]
+
+
+def _reference(
+    source_file_id: str,
+    enclosing_symbol_id: str,
+    target: str,
+    kind: str,
+    name: str,
+    start_line: int,
+    end_line: int,
+    source: str,
+    metadata: Dict[str, object],
+) -> tuple:
+    return (
+        source_file_id,
+        enclosing_symbol_id,
+        target,
+        kind,
+        name,
+        start_line,
+        end_line,
+        source,
+        json_dumps(metadata),
+    )
 
 
 def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> List[ParsedFile]:

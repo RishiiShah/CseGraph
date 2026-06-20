@@ -1,4 +1,4 @@
-from csegraph._cli.renderer import render_index_summary
+from csegraph._cli.renderer import render_benchmark_summary, render_index_summary
 
 
 def test_render_index_summary_with_parse_errors():
@@ -82,3 +82,95 @@ def test_render_index_summary_shows_postprocess_totals_inline():
         "Full index: 10 files, 40 nodes, 50 edges (postprocess=full)\n"
         "Cache: 3 hits, 7 misses | Profile: medium | DB: .csegraph/index.db\n"
     )
+
+
+def test_render_benchmark_corpus_summary_shows_sufficiency_and_v3_evidence_counts():
+    payload = {
+        "command": "benchmark-corpus",
+        "repo_root": "/repo",
+        "corpus_path": "/repo/benchmarks/context.json",
+        "summary": {
+            "task_count": 1,
+            "passed_task_count": 1,
+            "failed_task_count": 0,
+            "overall_hit_rate": 1.0,
+            "task_pass_rate": 1.0,
+            "sufficient_task_count": 1,
+            "total_context_tokens": 42,
+            "avg_context_tokens": 42.0,
+            "total_response_bytes": 512,
+            "avg_response_bytes": 512.0,
+            "total_tool_call_count": 1,
+        },
+        "index_stats": {"files": 2, "symbols": 3, "edges": 4, "parse_errors": 0},
+        "tasks": [
+            {
+                "task_id": "auth-evidence",
+                "hit_rate": 1.0,
+                "context_tokens": 42,
+                "response_bytes": 512,
+                "tool_call_count": 1,
+                "missing_expected_nodes": [],
+                "missing_expected_files": [],
+                "missing_expected_symbols": [],
+                "missing_expected_relationships": [],
+                "missing_expected_occurrence_snippets": [],
+                "missing_expected_import_preludes": [],
+                "violating_forbidden_source_patterns": [],
+                "expected_relationship_total": 2,
+                "expected_occurrence_snippet_total": 3,
+                "expected_import_prelude_total": 1,
+                "forbidden_source_pattern_total": 2,
+            }
+        ],
+        "total_elapsed_ms": 12.5,
+        "db_path": "/repo/.csegraph/bench.db",
+    }
+
+    out = render_benchmark_summary(payload)
+
+    assert "Sufficient contexts: 1 / 1" in out
+    assert "relationships=2/2" in out
+    assert "occurrences=3/3" in out
+    assert "imports=1/1" in out
+    assert "forbidden=2/2" in out
+
+
+def test_render_context_markdown_reads_relationship_occurrences():
+    from csegraph._cli.renderer import render_context_markdown
+
+    payload = {
+        "query": "Implement auth flow",
+        "target": "symbol::auth.py::function::authenticate_user",
+        "sufficiency": {"sufficient": True},
+        "request": {
+            "task": "Implement auth flow",
+            "detail_level": "standard",
+            "returned_detail_level": "standard",
+        },
+        "budgets": {"total_estimated_tokens": 42},
+        "symbols": [],
+        "relationships": [
+            {
+                "source": "symbol::auth.py::function::authenticate_user",
+                "relation": "calls",
+                "target": "symbol::passwords.py::function::verify_password",
+                "occurrences": [
+                    {
+                        "path": "auth.py",
+                        "line_range": [6, 6],
+                        "kind": "calls",
+                        "name": "verify_password",
+                        "snippet": "verify_password(password, user['password_hash'])",
+                    }
+                ],
+            }
+        ],
+        "next_actions": [],
+    }
+
+    out = render_context_markdown(payload)
+
+    assert "## Relationships" in out
+    assert "`auth.py:6-6` calls `verify_password`" in out
+    assert "verify_password(password, user['password_hash'])" in out

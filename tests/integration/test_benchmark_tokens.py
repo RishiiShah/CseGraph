@@ -9,8 +9,22 @@ from pathlib import Path
 
 import pytest
 
-from csegraph._core.benchmark import BenchmarkService, _count_diff_tokens, _count_raw_tokens
-from csegraph._core.core.models import to_dict
+from csegraph._core.benchmark import (
+    BenchmarkService,
+    _count_diff_tokens,
+    _count_raw_tokens,
+    _run_corpus_task,
+)
+from csegraph._core.core.models import (
+    BenchmarkCorpusTask,
+    ContextNode,
+    ContextRelationship,
+    ContextResult,
+    ImportPrelude,
+    SufficiencyResult,
+    to_dict,
+)
+from csegraph._core.cse.metrics import SufficiencyMetrics
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -263,7 +277,7 @@ class TestBenchmarkContextQuality:
         assert step_names == ["index", "refresh", "context", "graph", "report", "token_reduction"]
 
         context = next(s for s in result.steps if s.name == "context")
-        assert context.stats["schema_version"] == "csegraph-context-v2"
+        assert context.stats["schema_version"] == "csegraph-context-v3"
         assert context.stats["detail_level"] == "auto"
         assert context.stats["returned_detail_level"] in {"minimal", "standard"}
         assert context.stats["mcp_response_bytes"] > 0
@@ -300,6 +314,7 @@ class TestBenchmarkCorpusQuality:
         assert result.summary.failed_task_count == 0
         assert result.summary.overall_hit_rate == 1.0
         assert result.summary.task_pass_rate == 1.0
+        assert result.summary.sufficient_task_count == 3
         assert result.summary.total_tool_call_count == 3
         assert result.summary.total_context_tokens > 0
         assert result.summary.avg_context_tokens > 0
@@ -353,6 +368,156 @@ class TestBenchmarkCorpusQuality:
         assert result.summary.failed_task_count == 1
         assert result.summary.overall_hit_rate == 0.5
         assert result.summary.task_pass_rate == 0.0
+        assert result.summary.sufficient_task_count in {0, 1}
+
+    def test_corpus_supports_relationship_occurrence_import_and_forbidden_checks(self):
+        task = {
+            "id": "auth-evidence",
+            "query": "How does authenticate_user verify and issue a token?",
+            "target": "authenticate_user",
+            "expected_symbols": ["authenticate_user", "verify_password"],
+            "expected_relationships": [
+                {
+                    "source": "symbol::auth.py::function::authenticate_user",
+                    "relation": "calls",
+                    "target": "symbol::passwords.py::function::verify_password",
+                }
+            ],
+            "expected_occurrence_snippets": ["verify_password(password, user['password_hash'])"],
+            "expected_import_preludes": ["from passwords import verify_password"],
+            "forbidden_source_patterns": ["def verify_password("],
+        }
+
+        class _StubService:
+            def build_context(self, **_kwargs):
+                return ContextResult(
+                    command="context",
+                    db_path="stub.db",
+                    repo_root="/repo",
+                    profile="small",
+                    query=task["query"],
+                    target="symbol::auth.py::function::authenticate_user",
+                    detail_level="auto",
+                    returned_detail_level="standard",
+                    sufficiency=SufficiencyResult(
+                        sufficient=True,
+                        metrics=SufficiencyMetrics(1.0, 1.0, 1.0, 1.0),
+                        thresholds={"dependency_budget": 8.0},
+                    ),
+                    total_estimated_tokens=42,
+                    nodes=[
+                        ContextNode(
+                            id="symbol::auth.py::function::authenticate_user",
+                            kind="function",
+                            name="authenticate_user",
+                            path="auth.py",
+                            line_range=[4, 8],
+                            score=1.0,
+                            language="python",
+                            reason=["target"],
+                            reason_details=[],
+                            summary="",
+                            estimated_tokens=20,
+                            source_text=None,
+                            source_omitted_reason="source_policy_never",
+                        ),
+                        ContextNode(
+                            id="symbol::passwords.py::function::verify_password",
+                            kind="function",
+                            name="verify_password",
+                            path="passwords.py",
+                            line_range=[1, 2],
+                            score=0.9,
+                            language="python",
+                            reason=["direct_call"],
+                            reason_details=[],
+                            summary="",
+                            estimated_tokens=10,
+                            source_text=None,
+                            source_omitted_reason="source_policy_never",
+                        ),
+                    ],
+                    relationships=[
+                        ContextRelationship(
+                            source="symbol::auth.py::function::authenticate_user",
+                            target="symbol::passwords.py::function::verify_password",
+                            relation="calls",
+                            metadata={
+                                "occurrences": [
+                                    {
+                                        "path": "auth.py",
+                                        "snippet": "verify_password(password, user['password_hash'])",
+                                    }
+                                ]
+                            },
+                        )
+                    ],
+                    import_preludes=[
+                        ImportPrelude(
+                            path="auth.py",
+                            language="python",
+                            text="from passwords import verify_password",
+                            line_range=[1, 1],
+                            source_node_ids=["symbol::auth.py::function::authenticate_user"],
+                            resolved_imports=["file::passwords.py"],
+                        )
+                    ],
+                    source_policy="never",
+                    raw_code_nodes=[],
+                    next_actions=[],
+                    warnings=[],
+                    run_id=None,
+                    confidence_breakdown={},
+                    timings_ms={},
+                )
+
+        result = _run_corpus_task(
+            _StubService(),
+            BenchmarkCorpusTask(
+                id=task["id"],
+                query=task["query"],
+                target=task["target"],
+                expected_symbols=task["expected_symbols"],
+                expected_relationships=task["expected_relationships"],
+                expected_occurrence_snippets=task["expected_occurrence_snippets"],
+                expected_import_preludes=task["expected_import_preludes"],
+                forbidden_source_patterns=task["forbidden_source_patterns"],
+            ),
+            profile="small",
+        )
+        assert result.hit_rate == 1.0
+        assert result.relationship_hit_rate == 1.0
+        assert result.occurrence_snippet_hit_rate == 1.0
+        assert result.import_prelude_hit_rate == 1.0
+        assert result.forbidden_source_pattern_hit_rate == 1.0
+        assert result.missing_expected_relationships == []
+        assert result.missing_expected_occurrence_snippets == []
+        assert result.missing_expected_import_preludes == []
+        assert result.violating_forbidden_source_patterns == []
+
+    @pytest.mark.parametrize(
+        ("raw_task", "message"),
+        [
+            (
+                {
+                    "id": "bad-relationship",
+                    "query": "Explain create_user",
+                    "expected_relationships": [{"source": "a", "relation": "calls"}],
+                },
+                "source, relation, and target",
+            ),
+        ],
+    )
+    def test_corpus_validation_rejects_bad_relationship_expectations(self, tmp_path, raw_task, message):
+        repo = _make_corpus_repo(tmp_path)
+        corpus = tmp_path / "bad-corpus.json"
+        corpus.write_text(
+            json.dumps({"schema_version": "csegraph-context-benchmark-v1", "tasks": [raw_task]}),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match=message):
+            BenchmarkService(_scratch_path(repo, "bad.db")).run_corpus(repo, corpus)
 
     @pytest.mark.parametrize(
         ("payload", "message"),
@@ -379,7 +544,7 @@ class TestBenchmarkCorpusQuality:
                     "schema_version": "csegraph-context-benchmark-v1",
                     "tasks": [{"id": "missing-expectations", "query": "Explain create_user"}],
                 },
-                "expected_nodes, expected_files, or expected_symbols",
+                "expected_nodes, expected_files, expected_symbols",
             ),
         ],
     )

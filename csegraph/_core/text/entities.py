@@ -18,6 +18,8 @@ def extract_query_entities(query_text: str, known_names: Iterable[str]) -> Set[s
         if len(name) > q_len:
             continue
         lowered = name.lower()
+        if lowered.startswith("_") and lowered not in tokens:
+            continue
         if lowered in query_lower:
             entities.add(name)
     return entities

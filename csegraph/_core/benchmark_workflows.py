@@ -220,7 +220,11 @@ def _pick_graph_target(context_payload: dict[str, Any]) -> str | None:
     target = context_payload.get("target")
     if isinstance(target, str) and target.strip():
         return target.strip()
-    nodes = context_payload.get("nodes")
+    if isinstance(target, dict):
+        target_id = target.get("id")
+        if isinstance(target_id, str) and target_id.strip():
+            return target_id.strip()
+    nodes = context_payload.get("symbols") or context_payload.get("nodes")
     if isinstance(nodes, list) and nodes:
         first = nodes[0]
         if isinstance(first, dict):

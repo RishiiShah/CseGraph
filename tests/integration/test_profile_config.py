@@ -12,15 +12,14 @@ class TestDefaultsMatchConstants:
         assert cfg.dep_threshold == 0.80
         assert cfg.entity_threshold == 0.80
         assert cfg.semantic_threshold == 0.50
-        assert cfg.semantic_threshold_relaxed == 0.0
+        assert cfg.semantic_threshold_relaxed == 0.03
         assert cfg.confidence_threshold == 0.70
         assert cfg.context_budget == 60
 
-    def test_small_and_large_inherit_cse_defaults(self):
-        for name in ("small", "large"):
-            cfg = get_profile(name)
-            assert cfg.dep_threshold == 0.80
-            assert cfg.confidence_threshold == 0.70
+    def test_profile_relaxed_semantic_defaults_are_active(self):
+        assert get_profile("small").semantic_threshold_relaxed == 0.05
+        assert get_profile("medium").semantic_threshold_relaxed == 0.03
+        assert get_profile("large").semantic_threshold_relaxed == 0.02
 
 
 class TestLoadProfile:
@@ -104,6 +103,12 @@ class TestLoadProfile:
         cfg = load_profile(repo_root=str(tmp_path))
         assert cfg.dep_threshold == 0.65
 
+    def test_relaxed_semantic_threshold_can_be_disabled(self, tmp_path):
+        config_file = tmp_path / "csegraph.json"
+        config_file.write_text(json.dumps({"semantic_threshold_relaxed": 0.0}), encoding="utf-8")
+        cfg = load_profile(config_path=str(config_file))
+        assert cfg.semantic_threshold_relaxed == 0.0
+
 
 class TestAllPassOverrides:
     def test_default_thresholds_reject_low_scores(self):
@@ -133,6 +138,15 @@ class TestAllPassOverrides:
         )
         assert all_pass(metrics)
         assert not all_pass(metrics, semantic_threshold_relaxed=0.50)
+
+    def test_default_relaxed_semantic_threshold_rejects_zero_overlap(self):
+        metrics = SufficiencyMetrics(
+            dependency_completeness=0.90,
+            entity_coverage=0.90,
+            semantic_overlap=0.0,
+            model_confidence=0.75,
+        )
+        assert not all_pass(metrics)
 
     def test_raw_code_nodes_uses_confidence_override(self):
         metrics = SufficiencyMetrics(

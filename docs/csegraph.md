@@ -135,8 +135,9 @@ document symbols for files already present in the SQLite index, so run
 `csegraph_context` supports both `max_tokens`, a soft budgeting hint used during
 retrieval to decide how much source material to include, and `max_bytes`, a hard
 ceiling enforced on the serialized JSON response. When `max_bytes` is exceeded,
-the server drops `source_text`, then `explanation`, then trims `nodes` and
-`edges`.
+the server drops symbol `source_text`, then `explanation`, then
+`import_preludes`, `relationships[].occurrences[].snippet`, `relationships`, and finally
+`symbols` from the tail. File nodes never materialize whole-file source text.
 
 ### Response Annotations
 
@@ -147,7 +148,7 @@ further calls:
 |---|---|---|
 | `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
 | `response_bytes` | every response | Exact serialized JSON size in bytes. |
-| `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Drop order: `source_text`, `explanation`, trim `nodes` from the tail, trim `edges` from the tail. |
+| `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Context drop order: symbol `source_text`, `explanation`, `import_preludes`, `relationships[].occurrences[].snippet`, `relationships`, `symbols`. |
 | `confidence_breakdown` | `csegraph_graph`, `csegraph_path`, `csegraph_context` | Edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
 | `hubs_skipped` | `csegraph_graph`, `csegraph_path` | Number of high-degree utility nodes BFS refused to expand through. |
 | `relations_filter` | `csegraph_graph`, `csegraph_path` | Echo of the `relations` arg applied to traversal, for transparency. |
@@ -219,6 +220,9 @@ env/bin/python tools/csegraph_dev.py embeddings status .
 
 See [Token Reduction Benchmark](token-reduction-benchmark.md) for measured
 context-size reductions from benchmark runs on this repository.
+The benchmark corpus accepts file/symbol hits plus v3 evidence checks such as
+`expected_relationships`, `expected_occurrence_snippets`,
+`expected_import_preludes`, and `forbidden_source_patterns`.
 
 There is no `csegraph-dev` console script.
 
@@ -239,7 +243,7 @@ Supported config keys in `csegraph.json` or `csegraph.toml` include:
 - `context_budget`: Maximum budget for the context package in tokens.
 - `raw_code_budget`: Token budget limit for raw code source nodes.
 - `max_bytes`: Hard ceiling on the serialized JSON response size.
-- `dep_threshold`, `entity_threshold`, `semantic_threshold`, `semantic_threshold_relaxed`, `confidence_threshold`: Various retrieval filtering thresholds.
+- `dep_threshold`, `entity_threshold`, `semantic_threshold`, `semantic_threshold_relaxed`, `confidence_threshold`: Retrieval filtering thresholds. `semantic_threshold_relaxed` is the active semantic-overlap floor once dependency and entity coverage pass; set it to `0.0` to disable that relaxed semantic gate.
 
 All keys must use underscore notation matching these Python/JSON property names. Unknown keys raise `ValueError`.
 
@@ -250,9 +254,9 @@ globs, rooted patterns, directory patterns, basename matching, and `!`
 negation.
 
 Discovery order: `git ls-files` (staged and committed, submodules on by default),
-then `svn list -R` for SVN working copies, then a directory walk. Untracked git
-files are not indexed until `git add`. Use `.csegraphignore` to exclude index entries
-from agent context.
+then `svn list -R` as a backup for SVN working copies, then a directory walk.
+Untracked git and SVN files are not indexed until their VCS tracks them. Use
+`.csegraphignore` to exclude index entries from agent context.
 
 | Variable | Effect |
 |----------|--------|
@@ -330,17 +334,28 @@ register_parser(MyParser())
 
 Context responses include:
 
-- `schema_version = "csegraph-context-v2"`; v1 is no longer produced.
-- `detail_level` and `returned_detail_level`; `auto` may return minimal or standard.
-- `minimal`: compact routing card with top nodes, no source text, and next actions.
-- `standard`: working context with selected source text under token budget.
-- `full`: all nodes with explanations for each selection reason.
-- ranked `nodes` with paths, line ranges, reason tags, and estimated tokens.
-- optional `source_text` in standard/full responses.
+- `schema_version = "csegraph-context-v3"`.
+- `request.detail_level` and `request.returned_detail_level`; `auto` may return minimal or standard.
+- `target` with the resolved id, kind, path, line range, and ambiguity candidates.
+- ranked `symbols` with paths, line ranges, reason tags, summaries, and estimated tokens.
+- `relationships` for selected calls, callers, imports, inheritance, decorators, and tests.
+  Relationships may include bounded `occurrences` with path, line range,
+  enclosing symbol, name, kind, optional metadata, and optional callsite/import
+  snippet.
+  Default `confidence=1.0`, `confidence_tier=EXTRACTED`, and redundant endpoint
+  paths are omitted from serialized context relationships.
+- `import_preludes` containing import-only snippets for files that contain selected symbols.
+- `minimal`: compact symbol-neighborhood card, no source text, and next actions.
+- `standard`: selected symbol source slices plus relationships and import preludes.
+- `full`: broader selected symbol slices with explanations for each selection reason.
+- optional symbol `source_text` in standard/full responses; whole-file source is never returned.
+- `source_omitted_reason` on symbols without source, for example
+  `minimal_detail`, `source_policy_never`, `auto_source_budget`, or
+  `token_budget`.
 - optional `explanation` in full responses or when `--explain` is requested.
 - `next_actions` with deterministic suggestions.
 - sufficiency metrics and thresholds.
 
-All detail levels return the same `nodes` array structure. They differ in which
-fields are populated and whether the response is a routing card or working
-context.
+All detail levels return the same v3 top-level structure. They differ in which
+symbol fields are populated and whether the response is a routing card or
+working context.

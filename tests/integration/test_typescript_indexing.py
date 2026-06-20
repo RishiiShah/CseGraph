@@ -44,14 +44,32 @@ def test_context_retrieval_for_typescript(tmp_path):
         "createUser",
         "--repo",
         str(repo),
+        "--detail-level",
+        "standard",
         "--json",
     )
 
+    assert result["schema_version"] == "csegraph-context-v3"
     assert result["sufficiency"]["sufficient"] is True
-    node_ids = [n["id"] for n in result["nodes"]]
+    assert "nodes" not in result
+    node_ids = [n["id"] for n in result["symbols"]]
     assert any("createUser" in nid for nid in node_ids)
-    for node in result["nodes"]:
+    for node in result["symbols"]:
         assert node["language"] == "typescript"
+    assert any(
+        prelude["path"] == "service.ts" and "import { formatName } from './utils';" in prelude["text"]
+        for prelude in result["import_preludes"]
+    )
+    relationships = {
+        (relationship["source"], relationship["relation"], relationship["target"])
+        for relationship in result["relationships"]
+    }
+    assert (
+        "symbol::service.ts::method::UserService.createUser",
+        "calls",
+        "symbol::utils.ts::function::formatName",
+    ) in relationships
+    assert ("file::service.ts", "imports", "file::utils.ts") in relationships
 
 
 def test_inspect_typescript_class(tmp_path):

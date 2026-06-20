@@ -131,7 +131,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["auto", "always", "never"],
                     "default": "auto",
-                    "description": "Control source_text materialization.",
+                    "description": "Control symbol source_text materialization. `never` keeps relationship occurrence path/line metadata and import-only preludes, but strips relationship occurrence snippets. File nodes never return whole-file source.",
                 },
                 "max_tokens": {
                     "type": "integer",
@@ -146,12 +146,12 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["auto", "minimal", "standard", "full"],
                     "default": "auto",
-                    "description": "Context detail level: auto returns minimal if sufficient else standard, minimal is compact routing card with top 5 nodes, standard includes selected source, full includes all explanations.",
+                    "description": "Context detail level: auto returns minimal if sufficient else standard; minimal returns compact symbols and relationships, standard adds selected symbol slices, relationship occurrences, and import preludes, full adds explanations.",
                 },
                 "max_bytes": {
                     "type": "integer",
                     "minimum": MIN_BYTE_CAP,
-                    "description": "Hard ceiling on the serialized JSON response size. When exceeded, source_text is dropped first, then explanations, then nodes from the tail. truncated_fields reports what was dropped.",
+                    "description": "Hard ceiling on serialized JSON size. Drop order: symbol source_text, explanations, import_preludes, relationships[].occurrences[].snippet, relationships, symbols from the tail.",
                 },
                 "db": {
                     "type": "string",

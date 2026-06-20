@@ -1,24 +1,19 @@
 {
-  "schema_version": "csegraph-context-v2",
+  "schema_version": "csegraph-context-v3",
   "canonical_fields": [
     "command",
-    "db_path",
     "repo_root",
-    "profile",
-    "query",
+    "request",
     "target",
-    "target_resolution",
-    "target_candidates",
-    "detail_level",
-    "returned_detail_level",
-    "total_estimated_tokens",
+    "symbols",
+    "relationships",
+    "import_preludes",
     "sufficiency",
+    "budgets",
     "confidence_breakdown",
-    "raw_code_nodes",
     "next_actions",
     "warnings",
-    "run_id",
-    "nodes"
+    "run_id"
   ],
   "canonical_node_fields": [
     "id",
@@ -36,6 +31,8 @@
   "sufficiency_fields": [
     "sufficient",
     "metrics",
-    "thresholds"
+    "thresholds",
+    "failure_reasons",
+    "recovery"
   ]
 }

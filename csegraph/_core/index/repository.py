@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from csegraph._core.core.errors import UnsupportedSchemaError
 from csegraph._core.core.ids import file_node_id
-from csegraph._core.index.migrations import migrate_schema
 from csegraph._core.index.schema import (
     METADATA_UPSERT,
     SCHEMA_DDL,
@@ -38,19 +37,44 @@ class ProjectIndex:
     def close(self) -> None:
         self.conn.close()
 
-    def initialize_schema(self) -> None:
+    def initialize_schema(self, *, reset_on_unsupported: bool = False) -> None:
         existing_version = self._existing_schema_version()
         if existing_version is None and self._has_csegraph_objects():
-            raise UnsupportedSchemaError()
+            if not reset_on_unsupported:
+                raise UnsupportedSchemaError()
+            self._drop_csegraph_objects()
+            existing_version = None
         if existing_version is not None and existing_version != SCHEMA_VERSION:
-            migrate_schema(self.conn, existing_version)
-            self.conn.commit()
-            return
+            if not reset_on_unsupported:
+                raise UnsupportedSchemaError()
+            self._drop_csegraph_objects()
+            existing_version = None
 
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
         cur.execute(METADATA_UPSERT, (SCHEMA_VERSION,))
         cur.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
+        self.conn.commit()
+
+    def _drop_csegraph_objects(self) -> None:
+        for name in (
+            "lexical_index",
+            "retrieval_context",
+            "retrieval_runs",
+            "embedding_cache",
+            "summaries",
+            "symbol_references",
+            "imports",
+            "relationships",
+            "edges",
+            "symbols",
+            "files",
+            "nodes",
+            "metadata",
+            "schema_meta",
+            "projects",
+        ):
+            self.conn.execute(f"DROP TABLE IF EXISTS {name}")
         self.conn.commit()
 
     def _existing_schema_version(self) -> Optional[str]:
@@ -139,7 +163,12 @@ class ProjectIndex:
         self.conn.execute("DELETE FROM lexical_index")
         self.conn.execute("DELETE FROM summaries")
         self.conn.execute("DELETE FROM embedding_cache")
+        self.conn.execute("DELETE FROM symbol_references")
+        self.conn.execute("DELETE FROM imports")
+        self.conn.execute("DELETE FROM relationships")
         self.conn.execute("DELETE FROM edges")
+        self.conn.execute("DELETE FROM symbols")
+        self.conn.execute("DELETE FROM files")
         self.conn.execute("DELETE FROM nodes")
         self.conn.commit()
 
@@ -170,11 +199,26 @@ class ProjectIndex:
             f"DELETE FROM edges WHERE source IN ({placeholders})",
             node_ids,
         )
+        self.conn.execute(
+            f"DELETE FROM relationships WHERE source IN ({placeholders})",
+            node_ids,
+        )
         if remove_incoming:
             self.conn.execute(
                 f"DELETE FROM edges WHERE target IN ({placeholders})",
                 node_ids,
             )
+            self.conn.execute(
+                f"DELETE FROM relationships WHERE target IN ({placeholders})",
+                node_ids,
+            )
+        self.conn.execute(
+            f"DELETE FROM symbol_references WHERE source_file_id = ? OR enclosing_symbol_id IN ({placeholders})",
+            [file_id, *node_ids],
+        )
+        self.conn.execute("DELETE FROM imports WHERE file_id = ?", (file_id,))
+        self.conn.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
+        self.conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
         self.conn.execute(
             f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
             node_ids,
@@ -198,6 +242,13 @@ class ProjectIndex:
         self.conn.execute(
             """
             DELETE FROM edges
+             WHERE source NOT IN (SELECT id FROM nodes)
+                OR target NOT IN (SELECT id FROM nodes)
+            """
+        )
+        self.conn.execute(
+            """
+            DELETE FROM relationships
              WHERE source NOT IN (SELECT id FROM nodes)
                 OR target NOT IN (SELECT id FROM nodes)
             """

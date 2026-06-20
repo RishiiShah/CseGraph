@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from csegraph._core.core.models import PostprocessResult, StatusResult, to_dict
 from csegraph._core.index.repository import ProjectIndex, json_dumps
+from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.index.services import IndexService
 from csegraph._core.postprocess import PostprocessService
 from csegraph._core.repo_state import _run_git, git_head_state
@@ -47,7 +48,7 @@ def test_status_and_postprocess_results_serialize() -> None:
         command="status",
         db_path="index.db",
         repo_root="/repo",
-        schema_version="csegraph-sqlite-v5",
+        schema_version=SCHEMA_VERSION,
         active_profile="small",
         total_nodes=1,
         total_edges=2,
@@ -80,7 +81,7 @@ def test_project_index_metadata_preserves_created_at_and_records_git_state(tmp_p
     index = ProjectIndex(db)
     try:
         index.initialize_schema()
-        assert index.metadata(raise_if_empty=False)["schema_version"] == "csegraph-sqlite-v5"
+        assert index.metadata(raise_if_empty=False)["schema_version"] == SCHEMA_VERSION
 
         index.set_metadata(str(repo), "small")
         first = index.metadata()
@@ -130,7 +131,7 @@ def test_status_epoch_and_warning_helpers(tmp_path: Path) -> None:
 
     warnings = _build_warnings(
         {
-            "schema_version": "csegraph-sqlite-v5",
+            "schema_version": SCHEMA_VERSION,
             "built_branch": branch,
             "built_commit": "000000000000",
         },

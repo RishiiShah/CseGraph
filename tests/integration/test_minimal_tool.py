@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.index.services import IndexService
+from csegraph._core.retrieval import minimal as minimal_module
 from csegraph._core.retrieval.minimal import MinimalService
 from csegraph._core.server.app import _TOOLS, _handle_tool
 
@@ -72,6 +74,13 @@ class TestMinimalServiceShape:
         result = MinimalService(db).first()
         degrees = [e.degree for e in result.key_entities]
         assert degrees == sorted(degrees, reverse=True)
+
+    def test_key_entities_preserve_kind_from_cached_symbol_rows(self, tmp_path):
+        _, db = _indexed(tmp_path)
+        result = MinimalService(db).first()
+        assert result.key_entities
+        assert all(entity.kind for entity in result.key_entities)
+        assert {entity.kind for entity in result.key_entities} <= {"function", "class", "method", "test"}
 
     def test_general_key_entities_do_not_default_to_tests(self, tmp_path):
         repo = tmp_path / "repo"
@@ -156,6 +165,27 @@ def _inject_hub(db: str, hub_id: str, caller_count: int) -> None:
 
 
 class TestHubFilteredKeyEntities:
+    def test_reuses_snapshot_hub_cache_for_same_snapshot_version(self, tmp_path):
+        _, db = _indexed(tmp_path)
+        minimal_module._hub_cache.clear()
+        index = minimal_module.ProjectIndex(db)
+        index.initialize_schema()
+        try:
+            from csegraph._core.retrieval.cache import CACHE
+
+            snapshot = CACHE.get_snapshot(index)
+
+            with patch(
+                "csegraph._core.retrieval.minimal._snapshot_hub_info",
+                wraps=minimal_module._snapshot_hub_info,
+            ) as wrapped:
+                minimal_module._cached_snapshot_hub_info(snapshot)
+                minimal_module._cached_snapshot_hub_info(snapshot)
+        finally:
+            index.close()
+
+        assert wrapped.call_count == 1
+
     def test_tiny_repo_with_no_hubs_unaffected(self, tmp_path):
         # Below the floor of 50 → no hubs → key_entities still surface tiny-repo symbols.
         _, db = _indexed(tmp_path)

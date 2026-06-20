@@ -10,13 +10,14 @@ from typing import Any
 from csegraph._core.benchmark import BenchmarkService
 from csegraph._core.core.serializer import to_dict
 
-DEFAULT_MIN_OVERALL_HIT_RATE = 0.85
-DEFAULT_MIN_TASK_PASS_RATE = 0.60
-DEFAULT_MAX_FAILED_TASKS = 2
-DEFAULT_MAX_AVG_CONTEXT_TOKENS = 1300
-DEFAULT_MAX_AVG_RESPONSE_BYTES = 17000
-DEFAULT_MAX_RETURNED_NODE_COUNT = 18
+DEFAULT_MIN_OVERALL_HIT_RATE = 1.0
+DEFAULT_MIN_TASK_PASS_RATE = 1.0
+DEFAULT_MAX_FAILED_TASKS = 0
+DEFAULT_MAX_AVG_CONTEXT_TOKENS = 1500
+DEFAULT_MAX_AVG_RESPONSE_BYTES = 28000
+DEFAULT_MAX_RETURNED_NODE_COUNT = 16
 DEFAULT_MIN_TASK_HIT_RATE = 0.70
+DEFAULT_MIN_SUFFICIENT_TASK_RATE = 1.0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,6 +63,13 @@ def _threshold_violations(payload: dict[str, Any], args: argparse.Namespace) -> 
         violations.append(
             f"avg_response_bytes {summary['avg_response_bytes']} > {args.max_avg_response_bytes}"
         )
+    sufficient_rate = (
+        summary["sufficient_task_count"] / summary["task_count"] if summary["task_count"] else 1.0
+    )
+    if sufficient_rate < args.min_sufficient_task_rate:
+        violations.append(
+            f"sufficient_task_rate {round(sufficient_rate, 4)} < {args.min_sufficient_task_rate}"
+        )
 
     for task in payload["tasks"]:
         if task["error"] is not None:
@@ -102,6 +110,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MIN_TASK_PASS_RATE,
     )
     parser.add_argument("--min-task-hit-rate", type=float, default=DEFAULT_MIN_TASK_HIT_RATE)
+    parser.add_argument(
+        "--min-sufficient-task-rate",
+        type=float,
+        default=DEFAULT_MIN_SUFFICIENT_TASK_RATE,
+    )
     parser.add_argument("--max-failed-tasks", type=int, default=DEFAULT_MAX_FAILED_TASKS)
     parser.add_argument(
         "--max-avg-context-tokens",

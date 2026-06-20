@@ -112,6 +112,11 @@ class BenchmarkService:
                 elapsed_ms=elapsed,
                 stats={
                     "nodes": len(context_result.nodes),
+                    "relationship_count": len(getattr(context_result, "relationships", [])),
+                    "import_prelude_count": len(getattr(context_result, "import_preludes", [])),
+                    "occurrence_snippet_count": _occurrence_snippet_count(
+                        getattr(context_result, "relationships", [])
+                    ),
                     "schema_version": context_payload["schema_version"],
                     "detail_level": context_result.detail_level,
                     "returned_detail_level": context_result.returned_detail_level,
@@ -374,26 +379,64 @@ def _load_corpus(path: Path) -> list[BenchmarkCorpusTask]:
             if not isinstance(target, str):
                 raise ValueError(f"Benchmark corpus task {task_id!r} target must be a string.")
             target = target.strip() or None
+        include_source = _optional_choice(
+            raw_task,
+            "include_source",
+            task_id,
+            choices={"auto", "always", "never"},
+            default="never",
+        )
+        detail_level = _optional_choice(
+            raw_task,
+            "detail_level",
+            task_id,
+            choices={"auto", "minimal", "standard", "full"},
+            default="auto",
+        )
+        max_tokens = _optional_positive_int(raw_task, "max_tokens", task_id)
 
         expected_nodes = _string_list(raw_task, "expected_nodes", task_id)
         expected_files = [
             _normalize_rel_path(p) for p in _string_list(raw_task, "expected_files", task_id)
         ]
         expected_symbols = _string_list(raw_task, "expected_symbols", task_id)
+        expected_relationships = _relationship_list(raw_task, "expected_relationships", task_id)
+        expected_occurrence_snippets = _string_list(
+            raw_task, "expected_occurrence_snippets", task_id
+        )
+        expected_import_preludes = _string_list(raw_task, "expected_import_preludes", task_id)
+        forbidden_source_patterns = _string_list(raw_task, "forbidden_source_patterns", task_id)
 
-        if not (expected_nodes or expected_files or expected_symbols):
+        if not (
+            expected_nodes
+            or expected_files
+            or expected_symbols
+            or expected_relationships
+            or expected_occurrence_snippets
+            or expected_import_preludes
+            or forbidden_source_patterns
+        ):
             raise ValueError(
                 f"Benchmark corpus task {task_id!r} must define at least one of "
-                "expected_nodes, expected_files, or expected_symbols."
+                "expected_nodes, expected_files, expected_symbols, expected_relationships, "
+                "expected_occurrence_snippets, expected_import_preludes, or "
+                "forbidden_source_patterns."
             )
         tasks.append(
             BenchmarkCorpusTask(
                 id=task_id,
                 query=query,
                 target=target,
+                include_source=include_source,
+                detail_level=detail_level,
+                max_tokens=max_tokens,
                 expected_nodes=expected_nodes,
                 expected_files=expected_files,
                 expected_symbols=expected_symbols,
+                expected_relationships=expected_relationships,
+                expected_occurrence_snippets=expected_occurrence_snippets,
+                expected_import_preludes=expected_import_preludes,
+                forbidden_source_patterns=forbidden_source_patterns,
             )
         )
     return tasks
@@ -422,6 +465,77 @@ def _string_list(raw_task: dict, field: str, task_id: str) -> list[str]:
     return result
 
 
+def _optional_choice(
+    raw_task: dict,
+    field: str,
+    task_id: str,
+    *,
+    choices: set[str],
+    default: str,
+) -> str:
+    value = raw_task.get(field, default)
+    if not isinstance(value, str) or value not in choices:
+        allowed = ", ".join(sorted(choices))
+        raise ValueError(
+            f"Benchmark corpus task {task_id!r} field {field} must be one of: {allowed}."
+        )
+    return value
+
+
+def _optional_positive_int(raw_task: dict, field: str, task_id: str) -> int | None:
+    value = raw_task.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"Benchmark corpus task {task_id!r} field {field} must be a positive integer."
+        )
+    return value
+
+
+def _relationship_list(raw_task: dict, field: str, task_id: str) -> list[dict[str, str]]:
+    value = raw_task.get(field, [])
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"Benchmark corpus task {task_id!r} field {field} must be a list.")
+    result: list[dict[str, str]] = []
+    for item in value:
+        if isinstance(item, str):
+            parts = item.strip().split()
+            if len(parts) != 3 or not all(parts):
+                raise ValueError(
+                    f"Benchmark corpus task {task_id!r} field {field} string items must use "
+                    "'<source> <relation> <target>'."
+                )
+            source, relation, target = parts
+        elif isinstance(item, dict):
+            source_raw = item.get("source")
+            relation_raw = item.get("relation")
+            target_raw = item.get("target")
+            if not (
+                isinstance(source_raw, str)
+                and source_raw.strip()
+                and isinstance(relation_raw, str)
+                and relation_raw.strip()
+                and isinstance(target_raw, str)
+                and target_raw.strip()
+            ):
+                raise ValueError(
+                    f"Benchmark corpus task {task_id!r} field {field} items must define "
+                    "non-empty source, relation, and target strings."
+                )
+            source = source_raw.strip()
+            relation = relation_raw.strip()
+            target = target_raw.strip()
+        else:
+            raise ValueError(
+                f"Benchmark corpus task {task_id!r} field {field} must contain objects or strings."
+            )
+        result.append({"source": source, "relation": relation, "target": target})
+    return result
+
+
 def _run_corpus_task(
     service,
     task: BenchmarkCorpusTask,
@@ -433,11 +547,19 @@ def _run_corpus_task(
             task=task.query,
             target=task.target,
             profile=profile,
-            include_source="never",
+            include_source=task.include_source,
+            detail_level=task.detail_level,
+            max_tokens=task.max_tokens,
         )
     except Exception as exc:
         expected_total = (
-            len(task.expected_nodes) + len(task.expected_files) + len(task.expected_symbols)
+            len(task.expected_nodes)
+            + len(task.expected_files)
+            + len(task.expected_symbols)
+            + len(task.expected_relationships)
+            + len(task.expected_occurrence_snippets)
+            + len(task.expected_import_preludes)
+            + len(task.forbidden_source_patterns)
         )
         return BenchmarkCorpusTaskResult(
             task_id=task.id,
@@ -454,14 +576,28 @@ def _run_corpus_task(
             node_hit_rate=0.0 if task.expected_nodes else 1.0,
             file_hit_rate=0.0 if task.expected_files else 1.0,
             symbol_hit_rate=0.0 if task.expected_symbols else 1.0,
+            relationship_hit_rate=0.0 if task.expected_relationships else 1.0,
+            occurrence_snippet_hit_rate=0.0 if task.expected_occurrence_snippets else 1.0,
+            import_prelude_hit_rate=0.0 if task.expected_import_preludes else 1.0,
+            forbidden_source_pattern_hit_rate=0.0 if task.forbidden_source_patterns else 1.0,
             expected_node_total=len(task.expected_nodes),
             expected_file_total=len(task.expected_files),
             expected_symbol_total=len(task.expected_symbols),
+            expected_relationship_total=len(task.expected_relationships),
+            expected_occurrence_snippet_total=len(task.expected_occurrence_snippets),
+            expected_import_prelude_total=len(task.expected_import_preludes),
+            forbidden_source_pattern_total=len(task.forbidden_source_patterns),
             expected_hit_count=0,
             expected_total=expected_total,
             missing_expected_nodes=list(task.expected_nodes),
             missing_expected_files=list(task.expected_files),
             missing_expected_symbols=list(task.expected_symbols),
+            missing_expected_relationships=[
+                _relationship_label(relationship) for relationship in task.expected_relationships
+            ],
+            missing_expected_occurrence_snippets=list(task.expected_occurrence_snippets),
+            missing_expected_import_preludes=list(task.expected_import_preludes),
+            violating_forbidden_source_patterns=list(task.forbidden_source_patterns),
             error=str(exc),
         )
 
@@ -470,20 +606,94 @@ def _run_corpus_task(
     returned_ids = {node.id for node in context.nodes}
     returned_files = {_normalize_rel_path(node.path) for node in context.nodes}
     returned_symbols = _returned_symbol_names(context.nodes)
+    returned_relationships = {
+        _relationship_signature(
+            {
+                "source": relationship.source,
+                "relation": relationship.relation,
+                "target": relationship.target,
+            }
+        )
+        for relationship in context.relationships
+    }
+    relationship_strings = _collect_context_strings(context.relationships)
+    import_prelude_texts = [prelude.text for prelude in context.import_preludes if prelude.text]
+    visible_source_strings = _collect_visible_source_strings(context)
+    tool_call_count = 1
 
     missing_nodes = [node_id for node_id in task.expected_nodes if node_id not in returned_ids]
     missing_files = [
         path for path in task.expected_files if _normalize_rel_path(path) not in returned_files
     ]
     missing_symbols = [symbol for symbol in task.expected_symbols if symbol not in returned_symbols]
+    missing_relationships = [
+        _relationship_label(relationship)
+        for relationship in task.expected_relationships
+        if _relationship_signature(relationship) not in returned_relationships
+    ]
+    missing_occurrence_snippets = [
+        snippet
+        for snippet in task.expected_occurrence_snippets
+        if not _contains_substring(relationship_strings, snippet)
+    ]
+    if missing_occurrence_snippets:
+        try:
+            occurrence_context = service.build_context(
+                task=task.query,
+                target=task.target,
+                profile=profile,
+                include_source="auto",
+                detail_level="standard",
+            )
+            tool_call_count += 1
+            relationship_strings.extend(
+                _collect_context_strings(occurrence_context.relationships)
+            )
+            missing_occurrence_snippets = [
+                snippet
+                for snippet in task.expected_occurrence_snippets
+                if not _contains_substring(relationship_strings, snippet)
+            ]
+        except Exception:
+            pass
+    missing_import_preludes = [
+        snippet
+        for snippet in task.expected_import_preludes
+        if not _contains_substring(import_prelude_texts, snippet)
+    ]
+    violating_forbidden_source_patterns = [
+        pattern
+        for pattern in task.forbidden_source_patterns
+        if _contains_substring(visible_source_strings, pattern)
+    ]
 
     node_hits = len(task.expected_nodes) - len(missing_nodes)
     file_hits = len(task.expected_files) - len(missing_files)
     symbol_hits = len(task.expected_symbols) - len(missing_symbols)
-    expected_total = (
-        len(task.expected_nodes) + len(task.expected_files) + len(task.expected_symbols)
+    relationship_hits = len(task.expected_relationships) - len(missing_relationships)
+    occurrence_hits = len(task.expected_occurrence_snippets) - len(missing_occurrence_snippets)
+    import_prelude_hits = len(task.expected_import_preludes) - len(missing_import_preludes)
+    forbidden_pattern_hits = (
+        len(task.forbidden_source_patterns) - len(violating_forbidden_source_patterns)
     )
-    expected_hit_count = node_hits + file_hits + symbol_hits
+    expected_total = (
+        len(task.expected_nodes)
+        + len(task.expected_files)
+        + len(task.expected_symbols)
+        + len(task.expected_relationships)
+        + len(task.expected_occurrence_snippets)
+        + len(task.expected_import_preludes)
+        + len(task.forbidden_source_patterns)
+    )
+    expected_hit_count = (
+        node_hits
+        + file_hits
+        + symbol_hits
+        + relationship_hits
+        + occurrence_hits
+        + import_prelude_hits
+        + forbidden_pattern_hits
+    )
 
     return BenchmarkCorpusTaskResult(
         task_id=task.id,
@@ -495,19 +705,35 @@ def _run_corpus_task(
         returned_node_count=len(context.nodes),
         context_tokens=context.total_estimated_tokens,
         response_bytes=response_bytes,
-        tool_call_count=1,
+        tool_call_count=tool_call_count,
         hit_rate=_rate(expected_hit_count, expected_total),
         node_hit_rate=_rate(node_hits, len(task.expected_nodes)),
         file_hit_rate=_rate(file_hits, len(task.expected_files)),
         symbol_hit_rate=_rate(symbol_hits, len(task.expected_symbols)),
+        relationship_hit_rate=_rate(relationship_hits, len(task.expected_relationships)),
+        occurrence_snippet_hit_rate=_rate(
+            occurrence_hits, len(task.expected_occurrence_snippets)
+        ),
+        import_prelude_hit_rate=_rate(import_prelude_hits, len(task.expected_import_preludes)),
+        forbidden_source_pattern_hit_rate=_rate(
+            forbidden_pattern_hits, len(task.forbidden_source_patterns)
+        ),
         expected_node_total=len(task.expected_nodes),
         expected_file_total=len(task.expected_files),
         expected_symbol_total=len(task.expected_symbols),
+        expected_relationship_total=len(task.expected_relationships),
+        expected_occurrence_snippet_total=len(task.expected_occurrence_snippets),
+        expected_import_prelude_total=len(task.expected_import_preludes),
+        forbidden_source_pattern_total=len(task.forbidden_source_patterns),
         expected_hit_count=expected_hit_count,
         expected_total=expected_total,
         missing_expected_nodes=missing_nodes,
         missing_expected_files=missing_files,
         missing_expected_symbols=missing_symbols,
+        missing_expected_relationships=missing_relationships,
+        missing_expected_occurrence_snippets=missing_occurrence_snippets,
+        missing_expected_import_preludes=missing_import_preludes,
+        violating_forbidden_source_patterns=violating_forbidden_source_patterns,
         error=None,
     )
 
@@ -524,6 +750,7 @@ def _returned_symbol_names(nodes) -> set[str]:
 def _summarize_corpus(tasks: list[BenchmarkCorpusTaskResult]) -> BenchmarkCorpusSummary:
     task_count = len(tasks)
     passed = sum(1 for task in tasks if task.error is None and task.hit_rate == 1.0)
+    sufficient = sum(1 for task in tasks if task.sufficient)
     total_expected = sum(task.expected_total for task in tasks)
     total_hits = sum(task.expected_hit_count for task in tasks)
     total_tokens = sum(task.context_tokens for task in tasks)
@@ -535,6 +762,7 @@ def _summarize_corpus(tasks: list[BenchmarkCorpusTaskResult]) -> BenchmarkCorpus
         failed_task_count=task_count - passed,
         overall_hit_rate=_rate(total_hits, total_expected),
         task_pass_rate=_rate(passed, task_count),
+        sufficient_task_count=sufficient,
         total_context_tokens=total_tokens,
         avg_context_tokens=round(total_tokens / task_count, 2) if task_count else 0.0,
         total_response_bytes=total_bytes,
@@ -551,6 +779,75 @@ def _rate(hits: int, total: int) -> float:
 
 def _normalize_rel_path(path: str) -> str:
     return Path(path).as_posix().lstrip("./")
+
+
+def _relationship_signature(relationship: dict[str, str]) -> tuple[str, str, str]:
+    return (
+        str(relationship.get("source") or "").strip(),
+        str(relationship.get("relation") or "").strip(),
+        str(relationship.get("target") or "").strip(),
+    )
+
+
+def _relationship_label(relationship: dict[str, str]) -> str:
+    source, relation, target = _relationship_signature(relationship)
+    return f"{source} {relation} {target}"
+
+
+def _collect_context_strings(relationships: Iterable[Any]) -> list[str]:
+    strings: list[str] = []
+    for relationship in relationships:
+        strings.extend(_collect_strings(getattr(relationship, "metadata", {})))
+        for occurrence in getattr(relationship, "occurrences", []):
+            strings.extend(_collect_strings(getattr(occurrence, "metadata", {})))
+            snippet = getattr(occurrence, "snippet", None)
+            if snippet:
+                strings.append(snippet)
+    return strings
+
+
+def _occurrence_snippet_count(relationships: Iterable[Any]) -> int:
+    count = 0
+    for relationship in relationships:
+        for occurrence in getattr(relationship, "occurrences", []):
+            if getattr(occurrence, "snippet", None):
+                count += 1
+    return count
+
+
+def _collect_visible_source_strings(context: Any) -> list[str]:
+    strings: list[str] = []
+    for node in getattr(context, "nodes", []):
+        source_text = getattr(node, "source_text", None)
+        if source_text:
+            strings.append(source_text)
+    for prelude in getattr(context, "import_preludes", []):
+        if getattr(prelude, "text", None):
+            strings.append(prelude.text)
+    strings.extend(_collect_context_strings(getattr(context, "relationships", [])))
+    return strings
+
+
+def _collect_strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    if isinstance(value, dict):
+        dict_strings: list[str] = []
+        for item in value.values():
+            dict_strings.extend(_collect_strings(item))
+        return dict_strings
+    if isinstance(value, list):
+        list_strings: list[str] = []
+        for item in value:
+            list_strings.extend(_collect_strings(item))
+        return list_strings
+    return []
+
+
+def _contains_substring(haystacks: Iterable[str], needle: str) -> bool:
+    stripped = needle.strip()
+    return bool(stripped) and any(stripped in haystack for haystack in haystacks)
 
 
 def _elapsed_ms(start: float) -> float:

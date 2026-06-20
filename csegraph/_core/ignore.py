@@ -70,7 +70,7 @@ def load_ignore_filter(
     tracked_paths: Set[str] = set()
     tracked_dirs: Set[str] = set()
 
-    if git_root is not None and _is_relative_to(root, git_root):
+    if git_root is not None and root.is_relative_to(git_root):
         vcs = "git"
         vcs_root = git_root
         tracked_paths = _git_tracked_paths(
@@ -80,7 +80,7 @@ def load_ignore_filter(
         )
     else:
         svn_root = find_svn_root(root)
-        if svn_root is not None and _is_relative_to(root, svn_root):
+        if svn_root is not None and root.is_relative_to(svn_root):
             tracked_paths = svn_versioned_paths(svn_root, root)
             if tracked_paths:
                 vcs = "svn"
@@ -377,7 +377,7 @@ def _tracked_parent_dirs(tracked_paths: Set[str]) -> Set[str]:
 
 
 def _ancestor_dirs(ceiling: Path, root: Path) -> List[Path]:
-    if not _is_relative_to(root, ceiling):
+    if not root.is_relative_to(ceiling):
         return [root]
     dirs: List[Path] = []
     current = root
@@ -388,15 +388,6 @@ def _ancestor_dirs(ceiling: Path, root: Path) -> List[Path]:
         current = current.parent
     dirs.reverse()
     return dirs
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
 
 def _normalize_rel(path: str) -> str:
     normalized = str(PurePosixPath(path.replace("\\", "/"))).strip("/")

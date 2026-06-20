@@ -64,7 +64,7 @@ class TestByteCapHelper:
             ]
         }
         _apply_byte_cap(result, 300)
-        # Should drop source_text and explanation; may also trim nodes.
+        # Should drop source_text and explanation; may also trim context entries.
         assert "source_text" in result["truncated_fields"]
         assert "explanation" in result["truncated_fields"]
         assert result["byte_cap_applied"] is True
@@ -76,6 +76,31 @@ class TestByteCapHelper:
         idx_source = result["truncated_fields"].index("source_text")
         idx_expl = result["truncated_fields"].index("explanation")
         assert idx_source < idx_expl
+
+    def test_drops_relationship_occurrence_snippets_before_relationships(self):
+        result = {
+            "symbols": [{"id": "n"}],
+            "relationships": [
+                {
+                    "source": "a",
+                    "relation": "calls",
+                    "target": "b",
+                    "occurrences": [
+                        {
+                            "path": "a.py",
+                            "line_range": [4, 4],
+                            "kind": "calls",
+                            "name": "b",
+                            "snippet": "x" * 1000,
+                        }
+                    ],
+                }
+            ],
+        }
+        _apply_byte_cap(result, 500)
+        assert "relationship_snippets" in result["truncated_fields"]
+        assert result["relationships"]
+        assert "snippet" not in result["relationships"][0]["occurrences"][0]
 
     def test_response_bytes_matches_actual_size(self):
         result = {"nodes": [{"id": f"n{i}", "source_text": "x" * 100} for i in range(3)]}
@@ -136,11 +161,11 @@ class TestByteCapOnMcpResponse:
         )
         assert result["byte_cap_applied"] is True
         assert "source_text" in result["truncated_fields"]
-        # No node retained a source_text after the cap kicked in.
-        for node in result.get("nodes", []):
-            assert node.get("source_text") in (None, "")
-        if "nodes" not in result:
-            assert result["omitted_counts"]["nodes"] >= 1
+        # No symbol retained a source_text after the cap kicked in.
+        for symbol in result.get("symbols", []):
+            assert symbol.get("source_text") in (None, "")
+        if "symbols" not in result:
+            assert result["omitted_counts"]["symbols"] >= 1
 
     def test_minimum_mcp_cap_is_hard_for_large_tools(self, tmp_path):
         repo, db = _indexed(tmp_path)

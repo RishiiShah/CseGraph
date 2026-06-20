@@ -43,8 +43,9 @@ def test_canonical_nodes_have_language_field(tmp_path):
         assert node.language == "python"
 
     payload = to_dict(context)
-    assert payload["nodes"]
-    for node in payload["nodes"]:
+    assert payload["symbols"]
+    assert "nodes" not in payload
+    for node in payload["symbols"]:
         assert "language" in node
         assert node["language"] == "python"
 

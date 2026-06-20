@@ -13,9 +13,14 @@ from pathlib import Path
 from typing import Optional
 
 from csegraph._core.index.schema import SCHEMA_VERSION
-from csegraph._core.languages.types import ParsedFile, ParsedSymbol
+from csegraph._core.languages.types import (
+    ParsedFile,
+    ParsedImport,
+    ParsedReference,
+    ParsedSymbol,
+)
 
-CACHE_VERSION = f"{SCHEMA_VERSION}:parser-v2"
+CACHE_VERSION = f"{SCHEMA_VERSION}:parser-v3"
 
 _CACHE_DDL = """
 CREATE TABLE IF NOT EXISTS parse_cache (
@@ -92,7 +97,17 @@ def _serialize(parsed: ParsedFile) -> str:
 
 def _deserialize(blob: str) -> ParsedFile:
     d = json.loads(blob)
-    symbols = [ParsedSymbol(**s) for s in d.pop("symbols", [])]
+    symbols = []
+    for symbol_data in d.pop("symbols", []):
+        references = [
+            ParsedReference(**record)
+            for record in symbol_data.pop("references", [])
+        ]
+        symbol = ParsedSymbol(**symbol_data)
+        symbol.references = references
+        symbols.append(symbol)
+    import_records = [ParsedImport(**record) for record in d.pop("import_records", [])]
     pf = ParsedFile(**d)
+    pf.import_records = import_records
     pf.symbols = symbols
     return pf

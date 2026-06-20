@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 from csegraph._core.languages.registry import registry
 from csegraph._core.text.entities import extract_query_entities
@@ -11,7 +11,7 @@ from csegraph._core.text.tokens import tokenize_node_content
 DEP_THRESHOLD = 0.80
 ENTITY_THRESHOLD = 0.80
 SEMANTIC_THRESHOLD = 0.50
-SEMANTIC_THRESHOLD_RELAXED = 0.0
+SEMANTIC_THRESHOLD_RELAXED = 0.03
 CONFIDENCE_THRESHOLD = 0.70
 
 
@@ -30,6 +30,7 @@ def compute_metrics(
     symbols: Dict[str, Dict[str, Any]],
     summaries: Dict[str, str],
     outgoing: Dict[str, List[Dict[str, Any]]],
+    dependency_budget: Optional[int] = None,
 ) -> SufficiencyMetrics:
     context_set = set(context_ids)
     direct_calls = {
@@ -37,12 +38,23 @@ def compute_metrics(
         for edge in outgoing.get(target_id, [])
         if edge["relation"] == "calls" and edge["target_id"] in symbols
     }
-    dep = 1.0 if not direct_calls else len(direct_calls & context_set) / len(direct_calls)
+    if not direct_calls:
+        dep = 1.0
+    else:
+        dependency_goal = len(direct_calls)
+        if dependency_budget is not None:
+            dependency_goal = min(dependency_goal, max(1, dependency_budget))
+        dep = min(1.0, len(direct_calls & context_set) / dependency_goal)
 
     names = [row["name"] for row in symbols.values()]
     entities = extract_query_entities(task, names)
-    context_names = {symbols[node_id]["name"] for node_id in context_set if node_id in symbols}
-    ent = 1.0 if not entities else len(entities & context_names) / len(entities)
+    context_names = {str(symbols[node_id]["name"]) for node_id in context_set if node_id in symbols}
+    covered_entities = {
+        entity
+        for entity in entities
+        if any(_entity_is_covered(entity, context_name) for context_name in context_names)
+    }
+    ent = 1.0 if not entities else len(covered_entities) / len(entities)
 
     task_tokens = set(query_tokenizer.tokenize(task))
     context_tokens: Set[str] = set()
@@ -53,7 +65,7 @@ def compute_metrics(
     if not task_tokens or not context_tokens:
         sem = 0.0
     else:
-        sem = len(task_tokens & context_tokens) / len(task_tokens | context_tokens)
+        sem = len(task_tokens & context_tokens) / len(task_tokens)
 
     conf = min(1.0, max(0.0, 0.45 * dep + 0.35 * ent + 0.20 * sem))
     return SufficiencyMetrics(
@@ -62,6 +74,12 @@ def compute_metrics(
         semantic_overlap=round(sem, 4),
         model_confidence=round(conf, 4),
     )
+
+
+def _entity_is_covered(entity: str, context_name: str) -> bool:
+    entity_lower = entity.lower()
+    context_lower = context_name.lower()
+    return entity_lower == context_lower or f"{entity_lower}." in context_lower
 
 
 def all_pass(

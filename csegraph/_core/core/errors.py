@@ -31,7 +31,7 @@ class CsegraphError(Exception):
 class UnsupportedSchemaError(CsegraphError):
     def __init__(self) -> None:
         super().__init__(
-            "Unsupported csegraph index schema",
+            "Unsupported csegraph index schema. Rerun csegraph index for this repository.",
             error_code="unsupported_schema",
-            hint="Rebuild the index with the current csegraph version.",
+            hint="Run `csegraph index <repo>` to rebuild this beta index with the current schema.",
         )
