@@ -48,6 +48,21 @@ should not be committed.
 For VS Code extension install and setup, see
 [csegraph-vscode/README.md](csegraph-vscode/README.md).
 
+## Benchmarks & Performance
+
+CseGraph drastically reduces the tokens an LLM must process by routing agents through an indexed structural graph rather than relying on naive recursive file scraping.
+
+In our cross-repo benchmarking suite (`tools/cross_repo_benchmark.py`), we evaluated CseGraph against 10 major open-source repositories, generating 100 unique architectural queries per repository. 
+
+| Repository | Naive Context Tokens | CseGraph (MCP) Tokens | Token Reduction |
+|------------|---------------------:|----------------------:|----------------:|
+| **Transformers** | 1.66 Billion | 1.67 Million | **994.7x** |
+| **Django** | 413 Million | 2.01 Million | **205.7x** |
+| **Scikit-Learn** | 352 Million | 1.78 Million | **197.2x** |
+| **Pandas** | 525 Million | 6.94 Million | **75.7x** |
+
+For the full methodology, latency metrics (including cache invalidation speed), and the complete 10-repository breakdown, see the [Agent Context Benchmarks](docs/benchmarks.md).
+
 ## Package Layout
 
 | Package | Location | Purpose |
