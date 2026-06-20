@@ -38,6 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=9.0.3", "setuptools>=68"]
+benchmark = ["tiktoken>=0.13,<1"]
 dev = [
     "coverage[toml]>=7.6",
     "mypy>=1.13",

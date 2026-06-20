@@ -203,8 +203,6 @@ Supported export formats:
 Development analytics stay repo-local:
 
 ```bash
-env/bin/python tools/csegraph_dev.py benchmark . --target symbol
-env/bin/python tools/csegraph_dev.py benchmark . --corpus benchmarks/context_quality/csegraph_self.json --json
 env/bin/python tools/csegraph_dev.py detect-changes . --base-ref HEAD~1 --json
 env/bin/python tools/csegraph_dev.py test-gaps . --json
 env/bin/python tools/csegraph_dev.py architecture . --json
@@ -217,6 +215,18 @@ env/bin/python tools/csegraph_dev.py review-questions . --json
 env/bin/python tools/csegraph_dev.py report . --json
 env/bin/python tools/csegraph_dev.py embeddings status .
 ```
+
+Native MCP benchmarks use sandbox workloads and the stdio transport:
+
+```bash
+env/bin/python tools/cross_repo_benchmark.py
+env/bin/python tools/check_benchmark_regression.py --repo .
+env/bin/python tools/run_full_mcp_benchmark.py
+```
+
+`tools/csegraph_dev.py benchmark` is still available for maintainer-only
+SDK/internal service diagnostics, but those results should be labeled as
+internal SDK benchmarks rather than native MCP agent benchmarks.
 
 See [Token Reduction Benchmark](token-reduction-benchmark.md) for measured
 context-size reductions from benchmark runs on this repository.

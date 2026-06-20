@@ -48,6 +48,7 @@ data/
 # CseGraph runtime artifacts
 .csegraph/
 .scratch/
+benchmark_results/
 sandbox/
 ref/
 

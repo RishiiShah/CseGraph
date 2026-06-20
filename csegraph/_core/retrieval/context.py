@@ -1080,6 +1080,29 @@ def _neighborhood_groups(
     ]
     for node_id in direct_callees:
         evidence[node_id].append("bounded-callee")
+
+    imported = _import_symbol_candidates(target_id, symbols, outgoing)
+    imported = [
+        node_id
+        for node_id in imported
+        if _is_relevant_neighbor(node_id, task_tokens, scores, evidence, symbols, summaries)
+    ]
+    direct_imported_callees = [
+        node_id for node_id in imported if node_id in set(direct_callees)
+    ]
+    for node_id in direct_imported_callees:
+        evidence[node_id].append("bounded-imported-callee")
+    groups.append(
+        _rank_nodes(
+            direct_imported_callees,
+            task_tokens,
+            scores,
+            evidence,
+            symbols,
+            summaries,
+        )[: caps["imported"]]
+    )
+
     groups.append(
         _rank_nodes(direct_callees, task_tokens, scores, evidence, symbols, summaries)[
             : caps["callees"]
@@ -1120,12 +1143,6 @@ def _neighborhood_groups(
             ]
         )
 
-    imported = _import_symbol_candidates(target_id, symbols, outgoing)
-    imported = [
-        node_id
-        for node_id in imported
-        if _is_relevant_neighbor(node_id, task_tokens, scores, evidence, symbols, summaries)
-    ]
     for node_id in imported:
         evidence[node_id].append("bounded-import")
     groups.append(
@@ -1266,7 +1283,9 @@ def _split_import_names(raw: str) -> set[str]:
     names: set[str] = set()
     for part in cleaned.split(","):
         token = part.strip()
-        if not token or token == "*":
+        if not token:
+            continue
+        if token == "*":
             return set()
         token = token.split(" as ", 1)[0].strip()
         token = token.split(":", 1)[0].strip()

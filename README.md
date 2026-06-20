@@ -52,16 +52,24 @@ For VS Code extension install and setup, see
 
 CseGraph drastically reduces the tokens an LLM must process by routing agents through an indexed structural graph rather than relying on naive recursive file scraping.
 
-In our cross-repo benchmarking suite (`tools/cross_repo_benchmark.py`), we evaluated CseGraph against 10 major open-source repositories, generating 100 unique architectural queries per repository. 
+The native MCP cross-repo benchmarking suite (`tools/cross_repo_benchmark.py`)
+evaluates CseGraph against 10 major open-source repositories, generating 100
+unique architectural queries per repository through the same stdio JSON-RPC path
+used by coding agents. The table below is a historical `chars/4` snapshot kept
+for continuity; rerun the benchmark for current native-MCP numbers.
 
-| Repository | Naive Context Tokens | CseGraph (MCP) Tokens | Token Reduction |
-|------------|---------------------:|----------------------:|----------------:|
+| Repository | Naive Context Tokens (chars/4) | CseGraph MCP Tokens (chars/4) | Token Reduction |
+|------------|------------------------------:|-----------------------------:|----------------:|
 | **Transformers** | 1.66 Billion | 1.67 Million | **994.7x** |
 | **Django** | 413 Million | 2.01 Million | **205.7x** |
 | **Scikit-Learn** | 352 Million | 1.78 Million | **197.2x** |
 | **Pandas** | 525 Million | 6.94 Million | **75.7x** |
 
-For the full methodology, latency metrics (including cache invalidation speed), and the complete 10-repository breakdown, see the [Agent Context Benchmarks](docs/benchmarks.md).
+Benchmark reports also include exact UTF-8 bytes and optional OpenAI proxy
+counts via `tiktoken` with `o200k_base`; Claude/Gemini exact token counts
+require provider-native token-count APIs. For the full methodology, latency
+metrics, cache invalidation speed, and complete 10-repository breakdown, see
+the [Agent Context Benchmarks](docs/benchmarks.md).
 
 ## Package Layout
 
@@ -82,6 +90,13 @@ For local development and test runs, install the test extra:
 
 ```bash
 env/bin/python -m pip install -e ".[test,all]"
+```
+
+For benchmark reports with OpenAI proxy token counts, include the benchmark
+extra:
+
+```bash
+env/bin/python -m pip install -e ".[benchmark,test,all]"
 ```
 
 `requirements.txt` contains the product-only editable install.
