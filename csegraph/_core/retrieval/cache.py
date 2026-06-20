@@ -72,7 +72,7 @@ class SnapshotManager:
         node_rows_light = {row["id"]: dict(row) for row in nodes_rows}
         
         files = {k: v for k, v in node_rows_light.items() if v["kind"] == "file"}
-        symbols_light = load_symbols(index, exclude_heavy=True)
+        symbols_light = {k: v for k, v in node_rows_light.items() if v.get("kind") in ("class", "function", "method", "test")}
 
         summaries = load_summaries(index)
         outgoing, incoming = load_edge_maps(index)

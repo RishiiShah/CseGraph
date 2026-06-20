@@ -112,8 +112,8 @@ class TestHubCache:
                 "csegraph._core.graph.queries._compute_hub_threshold",
                 wraps=queries_module._compute_hub_threshold,
             ) as threshold:
-                queries_module._cached_hub_info(db, index, [])
-                queries_module._cached_hub_info(db, index, [])
+                queries_module._cached_hub_info(db, index, 0, [])
+                queries_module._cached_hub_info(db, index, 0, [])
                 assert threshold.call_count == 1
         finally:
             index.close()
@@ -128,9 +128,9 @@ class TestHubCache:
                 "csegraph._core.graph.queries._compute_hub_threshold",
                 wraps=queries_module._compute_hub_threshold,
             ) as threshold:
-                queries_module._cached_hub_info(db, index, [])
+                queries_module._cached_hub_info(db, index, 0, [])
                 clear_hub_cache()
-                queries_module._cached_hub_info(db, index, [])
+                queries_module._cached_hub_info(db, index, 0, [])
                 assert threshold.call_count == 2
         finally:
             index.close()

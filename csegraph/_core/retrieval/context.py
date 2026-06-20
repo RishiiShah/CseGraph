@@ -138,7 +138,7 @@ class ContextService:
                 else [
                     nid
                     for nid, score in sorted(
-                        scores.items(), key=lambda item: (item[1], item[0]), reverse=True
+                        scores.items(), key=lambda item: (-item[1], 0 if item[0].startswith("symbol::") else 1, item[0])
                     )
                     if score > 0
                 ]
@@ -949,8 +949,7 @@ def _select_context_ids(
     # Deterministic sort for context_ids (descending node_id as tie-breaker)
     sorted_nodes = sorted(
         scores.keys(),
-        key=lambda n: (scores.get(n, 0.0), n),
-        reverse=True
+        key=lambda n: (-scores.get(n, 0.0), 0 if n.startswith("symbol::") else 1, n)
     )
     context_ids = [n for n in sorted_nodes if scores.get(n, 0.0) > baseline_score]
     
@@ -1155,10 +1154,10 @@ def _rank_nodes(
     return sorted(
         unique,
         key=lambda node_id: (
-            _relation_rank_score(node_id, task_tokens, scores, evidence, symbols, summaries),
+            -_relation_rank_score(node_id, task_tokens, scores, evidence, symbols, summaries),
+            0 if node_id.startswith("symbol::") else 1,
             node_id,
-        ),
-        reverse=True
+        )
     )
 
 
@@ -1526,17 +1525,9 @@ def _recover_sufficiency_context_ids(
                     evidence[node_id].append("lexical-token-overlap")
                     recovered.append(node_id)
 
-    ranked_recovered = _rank_nodes(
-        recovered,
-        task_tokens,
-        scores,
-        evidence,
-        symbols,
-        summaries,
-    )
     merged: List[str] = []
     seen: set[str] = set()
-    for node_id in itertools.chain((target_id,), ranked_recovered, context_ids):
+    for node_id in itertools.chain((target_id,), recovered, context_ids):
         if not node_id or node_id in seen:
             continue
         if node_id not in symbols:
