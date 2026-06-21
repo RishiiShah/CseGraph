@@ -135,7 +135,7 @@
     "@types/node": "^20.19.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.2",
-    "typescript": "^5.9.0"
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "tmp": "^0.2.6"
