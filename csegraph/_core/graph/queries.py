@@ -23,7 +23,7 @@ _HUB_PERCENTILE = 0.99
 
 # Single-threaded: MCP stdio server runs one asyncio event loop, no concurrent
 # tool calls. If the server ever moves to a threaded transport, add a lock.
-_hub_cache: Dict[Tuple[str, FrozenSet[str]], Tuple[int, FrozenSet[str]]] = {}
+_hub_cache: Dict[Tuple[str, int, FrozenSet[str]], Tuple[int, FrozenSet[str]]] = {}
 _HUB_CACHE_MAX = 32
 
 
@@ -130,6 +130,7 @@ class GraphQueryService:
             repo_root = metadata["root_dir"]
 
             from csegraph._core.retrieval.cache import CACHE
+
             snapshot = CACHE.get_snapshot(index)
 
             resolved = _resolve_graph_node(index, node_id, repo_root)
@@ -140,13 +141,13 @@ class GraphQueryService:
 
             visited: Set[str] = set()
             queue = [(resolved, 0)]
-            
+
             while queue:
                 curr, d = queue.pop(0)
                 if curr in visited:
                     continue
                 visited.add(curr)
-                
+
                 # Do not expand from hubs (except the resolved target itself)
                 if curr in hubs and curr != resolved:
                     continue
@@ -187,7 +188,12 @@ class GraphQueryService:
                             continue
                         if tier_filter and edge["confidence_tier"] not in tier_filter:
                             continue
-                        key = (edge["source"], edge["target"], edge["relation"], edge.get("metadata") or "")
+                        key = (
+                            edge["source"],
+                            edge["target"],
+                            edge["relation"],
+                            edge.get("metadata") or "",
+                        )
                         selected_edges[key] = edge
 
             total_nodes = len(visited)
@@ -287,6 +293,7 @@ class GraphQueryService:
             repo_root = metadata["root_dir"]
 
             from csegraph._core.retrieval.cache import CACHE
+
             snapshot = CACHE.get_snapshot(index)
 
             src = _resolve_graph_node(index, source, repo_root)
@@ -299,19 +306,23 @@ class GraphQueryService:
 
             parent_map: Dict[str, Tuple[str, str, str]] = {}
             visited: Set[str] = set()
-            queue = [(src, 0, None, None, None)]
-            
+            queue: List[Tuple[str, int, Optional[str], Optional[str], Optional[str]]] = [
+                (src, 0, None, None, None)
+            ]
+
             while queue:
                 curr, d, p_node, p_rel, p_tier = queue.pop(0)
                 if curr in visited:
                     continue
                 visited.add(curr)
                 if curr not in parent_map and p_node is not None:
+                    assert p_rel is not None
+                    assert p_tier is not None
                     parent_map[curr] = (p_node, p_rel, p_tier)
-                
+
                 if curr == dst:
                     break
-                
+
                 # Do not expand from hubs (except src or dst)
                 if curr in hubs and curr != src and curr != dst:
                     continue
@@ -324,8 +335,16 @@ class GraphQueryService:
                             continue
                         nxt = edge["target"]
                         if nxt not in visited:
-                            queue.append((nxt, d + 1, curr, edge["relation"], edge.get("confidence_tier", "EXTRACTED")))
-                            
+                            queue.append(
+                                (
+                                    nxt,
+                                    d + 1,
+                                    curr,
+                                    edge["relation"],
+                                    edge.get("confidence_tier", "EXTRACTED"),
+                                )
+                            )
+
                     for edge in snapshot.incoming.get(curr, []):
                         if relations_filter and edge["relation"] not in relations_filter:
                             continue
@@ -333,7 +352,15 @@ class GraphQueryService:
                             continue
                         nxt = edge["source"]
                         if nxt not in visited:
-                            queue.append((nxt, d + 1, curr, edge["relation"], edge.get("confidence_tier", "EXTRACTED")))
+                            queue.append(
+                                (
+                                    nxt,
+                                    d + 1,
+                                    curr,
+                                    edge["relation"],
+                                    edge.get("confidence_tier", "EXTRACTED"),
+                                )
+                            )
 
             if dst not in parent_map and dst != src:
                 summary = f"No path: '{source}' ↛ '{target}'."

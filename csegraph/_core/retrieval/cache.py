@@ -6,14 +6,16 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from csegraph._core.index.loaders import load_edge_maps, load_summaries, load_symbols
+from csegraph._core.index.loaders import load_edge_maps, load_summaries
 from csegraph._core.index.repository import ProjectIndex
 
 logger = logging.getLogger("csegraph.cache")
 
+
 @dataclass
 class GraphSnapshot:
     """Immutable snapshot of the repository topology."""
+
     db_path: str
     data_version: int
     files: Dict[str, Dict[str, Any]]
@@ -36,19 +38,22 @@ class GraphSnapshot:
     def get_summaries(self) -> Dict[str, str]:
         return self.summaries.copy()
 
-    def get_edge_maps(self) -> tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:
+    def get_edge_maps(
+        self,
+    ) -> tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:
         return copy.deepcopy(self.outgoing), copy.deepcopy(self.incoming)
 
 
 class SnapshotManager:
     """Bounded process-local cache for GraphSnapshots."""
+
     def __init__(self, max_size: int = 5):
         self._max_size = max_size
         self._snapshots: Dict[str, GraphSnapshot] = {}
 
     def get_snapshot(self, index: ProjectIndex) -> GraphSnapshot:
         db_path = index.db_path
-        
+
         fingerprint = 0
         for p in (db_path, f"{db_path}-wal", f"{db_path}-shm"):
             try:
@@ -64,15 +69,19 @@ class SnapshotManager:
 
         # Cache miss or invalidation
         logger.debug(f"Loading GraphSnapshot for {db_path} (data_version: {current_data_version})")
-        
+
         # Load lightweight properties of ALL nodes (for files and basic lookups)
         nodes_rows = index.conn.execute(
             "SELECT id, parent_id, type, type AS kind, name, path, path AS file_path, language, start_line, end_line, source_hash FROM nodes"
         ).fetchall()
         node_rows_light = {row["id"]: dict(row) for row in nodes_rows}
-        
+
         files = {k: v for k, v in node_rows_light.items() if v["kind"] == "file"}
-        symbols_light = {k: v for k, v in node_rows_light.items() if v.get("kind") in ("class", "function", "method", "test")}
+        symbols_light = {
+            k: v
+            for k, v in node_rows_light.items()
+            if v.get("kind") in ("class", "function", "method", "test")
+        }
 
         summaries = load_summaries(index)
         outgoing, incoming = load_edge_maps(index)
@@ -101,6 +110,7 @@ class SnapshotManager:
             self._snapshots.pop(db_path, None)
         else:
             self._snapshots.clear()
+
 
 # Global process-local cache instance
 CACHE = SnapshotManager()

@@ -270,7 +270,9 @@ async def run_one_workflow(
                 "content_bytes": metrics.content_bytes,
                 "content_chars4_tokens": metrics.content_chars4_tokens,
                 "content_openai_o200k_tokens": metrics.content_openai_o200k_tokens,
-                "schema_version": payload.get("schema_version") if isinstance(payload, dict) else None,
+                "schema_version": payload.get("schema_version")
+                if isinstance(payload, dict)
+                else None,
                 "sufficient": payload.get("sufficiency", {}).get("sufficient")
                 if isinstance(payload, dict) and isinstance(payload.get("sufficiency"), dict)
                 else None,

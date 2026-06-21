@@ -859,7 +859,9 @@ async def run_repo(
             f"- **Total MCP Envelope OpenAI Proxy Tokens**: "
             f"{format_optional_int(mcp_envelope_openai_o200k_tokens)}\n"
         )
-        report.write(f"- **OpenAI Proxy Token Efficiency**: {format_optional_ratio(openai_o200k_ratio)}\n")
+        report.write(
+            f"- **OpenAI Proxy Token Efficiency**: {format_optional_ratio(openai_o200k_ratio)}\n"
+        )
         if phase_b.skipped_reason:
             report.write(f"- **Phase B Mutation**: skipped ({phase_b.skipped_reason})\n")
         else:
@@ -994,9 +996,7 @@ async def main_async() -> None:
             "- Token counts are computed outside the CseGraph server process after MCP "
             "responses return; token-counting time is reported separately.\n"
         )
-        report.write(
-            "- Exact UTF-8 byte counts are the canonical, provider-neutral size metric.\n"
-        )
+        report.write("- Exact UTF-8 byte counts are the canonical, provider-neutral size metric.\n")
         report.write(
             "- `chars/4` counts are CseGraph's simple transparent heuristic and are "
             "reported separately from tokenizer-specific counts.\n"
@@ -1071,7 +1071,8 @@ async def main_async() -> None:
         )
 
     payload = {
-        "metadata": metadata | {
+        "metadata": metadata
+        | {
             "mcp_startup_ms": mcp_startup_ms,
             "mcp_tools": tool_names,
         },

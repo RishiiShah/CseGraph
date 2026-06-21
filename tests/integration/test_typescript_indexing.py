@@ -57,7 +57,8 @@ def test_context_retrieval_for_typescript(tmp_path):
     for node in result["symbols"]:
         assert node["language"] == "typescript"
     assert any(
-        prelude["path"] == "service.ts" and "import { formatName } from './utils';" in prelude["text"]
+        prelude["path"] == "service.ts"
+        and "import { formatName } from './utils';" in prelude["text"]
         for prelude in result["import_preludes"]
     )
     relationships = {

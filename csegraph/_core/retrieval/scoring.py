@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Deque, Dict, List, Set, Tuple
 
 from csegraph._core.languages.registry import registry
 from csegraph._core.text.query_tokenizer import query_tokenizer
@@ -234,7 +234,7 @@ def apply_graph_expansion_from_maps(
 ) -> None:
     """Run the graph-expansion BFS from cached edge maps."""
     seen: set[str] = set()
-    queue = deque([(anchor, 0, None, None)])
+    queue: Deque[Tuple[str, int, str | None, str | None]] = deque([(anchor, 0, None, None)])
     while queue:
         current, depth, source, relation = queue.popleft()
         if depth > 0:
@@ -242,6 +242,7 @@ def apply_graph_expansion_from_maps(
                 continue
             seen.add(current)
             if current in symbols:
+                assert relation is not None
                 boost = RELATION_WEIGHTS.get(relation, 0.2) / depth
                 scores[current] += boost
                 evidence[current].append(f"graph-{relation}")
@@ -251,12 +252,8 @@ def apply_graph_expansion_from_maps(
             continue
 
         next_depth = depth + 1
-        adjacent = [
-            (edge, edge["target"])
-            for edge in outgoing.get(current, [])
-        ] + [
-            (edge, edge["source"])
-            for edge in incoming.get(current, [])
+        adjacent = [(edge, edge["target"]) for edge in outgoing.get(current, [])] + [
+            (edge, edge["source"]) for edge in incoming.get(current, [])
         ]
         for edge, neighbor in sorted(adjacent, key=lambda item: item[0].get("id") or 0):
             queue.append((neighbor, next_depth, current, edge["relation"]))

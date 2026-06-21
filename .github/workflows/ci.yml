@@ -66,6 +66,7 @@ jobs:
               path.as_posix()
               for path in Path(".").rglob("pyproject.toml")
               if "csegraph-vscode" not in path.as_posix()
+              and not path.as_posix().startswith("sandbox/")
           )
           assert pyprojects == ["pyproject.toml"], pyprojects
           assert Path("csegraph/__init__.py").exists()
@@ -110,7 +111,7 @@ jobs:
           assert project_dists == ["csegraph"], project_dists
           import csegraph
           from csegraph import ContextService
-          assert csegraph.__version__ == "1.7.1"
+          assert csegraph.__version__ == "1.8.0"
           assert ContextService is not None
           PY
 

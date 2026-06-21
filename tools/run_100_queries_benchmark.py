@@ -153,7 +153,9 @@ async def main_async() -> None:
             f"{format_bytes(snapshot.bytes)}, {snapshot.lines:,} lines\n"
         )
         report.write(f"- **Naive Full-Repo Bytes Per Query**: {snapshot.bytes:,}\n")
-        report.write(f"- **Naive Full-Repo chars/4 Tokens Per Query**: {snapshot.chars4_tokens:,}\n")
+        report.write(
+            f"- **Naive Full-Repo chars/4 Tokens Per Query**: {snapshot.chars4_tokens:,}\n"
+        )
         report.write(
             f"- **Naive Full-Repo OpenAI Proxy Tokens Per Query**: "
             f"{format_optional_int(snapshot.openai_o200k_tokens)}\n"
@@ -263,7 +265,9 @@ async def main_async() -> None:
             f"- **Total MCP Envelope OpenAI Proxy Tokens**: "
             f"{format_optional_int(mcp_envelope_openai_o200k_tokens)}\n"
         )
-        report.write(f"- **OpenAI Proxy Token Efficiency**: {format_optional_ratio(openai_o200k_ratio)}\n")
+        report.write(
+            f"- **OpenAI Proxy Token Efficiency**: {format_optional_ratio(openai_o200k_ratio)}\n"
+        )
         if errors:
             report.write(f"- **Errors**: {len(errors):,}\n")
             for error in errors[:10]:

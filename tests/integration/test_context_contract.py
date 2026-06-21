@@ -67,8 +67,7 @@ def _write_auth_repo(root: Path) -> None:
     )
     (root / "noise.py").write_text(
         "\n\n".join(
-            f"def irrelevant_helper_{index}() -> int:\n    return {index}"
-            for index in range(12)
+            f"def irrelevant_helper_{index}() -> int:\n    return {index}" for index in range(12)
         )
         + "\n",
         encoding="utf-8",
@@ -196,9 +195,7 @@ def test_context_file_nodes_do_not_materialize_whole_file_source(tmp_path):
     repo = tmp_path / "repo"
     db_path = tmp_path / "index.db"
     repo.mkdir(parents=True, exist_ok=True)
-    app_source = "\n\n".join(
-        f"def f{index}():\n    return {index}" for index in range(12)
-    )
+    app_source = "\n\n".join(f"def f{index}():\n    return {index}" for index in range(12))
     (repo / "app.py").write_text(f"{app_source}\n", encoding="utf-8")
     IndexService(db_path).index(repo, profile="small")
 
@@ -260,7 +257,11 @@ def test_context_returns_symbol_neighborhood_for_auth_flow(tmp_path):
         for relationship in payload["relationships"]
     }
     authenticate = "symbol::auth.py::function::authenticate_user"
-    assert (authenticate, "calls", "symbol::passwords.py::function::verify_password") in relationships
+    assert (
+        authenticate,
+        "calls",
+        "symbol::passwords.py::function::verify_password",
+    ) in relationships
     assert (authenticate, "calls", "symbol::sessions.py::function::issue_token") in relationships
     assert ("symbol::routes.py::function::login", "calls", authenticate) in relationships
     assert ("symbol::middleware.py::function::require_auth", "calls", authenticate) in relationships
@@ -318,9 +319,7 @@ def test_occurrence_cap_prioritizes_target_calls_over_imports(tmp_path, monkeypa
     payload = to_dict(context)
 
     relationships_with_occurrences = [
-        relationship
-        for relationship in payload["relationships"]
-        if relationship.get("occurrences")
+        relationship for relationship in payload["relationships"] if relationship.get("occurrences")
     ]
     occurrences = [
         (relationship, occurrence)
@@ -357,9 +356,9 @@ def test_include_source_never_still_returns_relationships_and_import_preludes(tm
     payload = to_dict(context)
 
     assert all("source_text" not in symbol for symbol in payload["symbols"])
-    assert {
-        symbol.get("source_omitted_reason") for symbol in payload["symbols"]
-    } == {"source_policy_never"}
+    assert {symbol.get("source_omitted_reason") for symbol in payload["symbols"]} == {
+        "source_policy_never"
+    }
     assert any(relationship["relation"] == "calls" for relationship in payload["relationships"])
     assert any(relationship.get("occurrences") for relationship in payload["relationships"])
     assert all(
@@ -378,8 +377,7 @@ def test_import_preludes_filter_irrelevant_imports(tmp_path):
     db_path = tmp_path / "index.db"
     _write_auth_repo(repo)
     (repo / "audit.py").write_text(
-        "def write_audit(event: str) -> None:\n"
-        "    return None\n",
+        "def write_audit(event: str) -> None:\n    return None\n",
         encoding="utf-8",
     )
     (repo / "auth.py").write_text(
@@ -406,7 +404,9 @@ def test_import_preludes_filter_irrelevant_imports(tmp_path):
         )
     )
 
-    auth_prelude = next(prelude for prelude in payload["import_preludes"] if prelude["path"] == "auth.py")
+    auth_prelude = next(
+        prelude for prelude in payload["import_preludes"] if prelude["path"] == "auth.py"
+    )
     assert auth_prelude["text"] == (
         "from passwords import verify_password\nfrom sessions import issue_token"
     )

@@ -120,6 +120,7 @@ class IndexService:
             index.close()
             cache.close()
             from csegraph._core.retrieval.cache import CACHE
+
             CACHE.clear(self.db_path)
 
 
@@ -342,6 +343,7 @@ class RefreshService:
             index.close()
             cache.close()
             from csegraph._core.retrieval.cache import CACHE
+
             CACHE.clear(self.db_path)
 
 

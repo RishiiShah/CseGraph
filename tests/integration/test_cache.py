@@ -24,13 +24,13 @@ def test_cache_hits_after_first_call(tmp_path):
     manager = SnapshotManager()
     index = ProjectIndex(db_path)
     index.initialize_schema()
-    
+
     # First call: miss, loads snapshot
     snap1 = manager.get_snapshot(index)
-    
+
     # Second call: hit, returns same snapshot object
     snap2 = manager.get_snapshot(index)
-    
+
     assert snap1 is snap2
     assert manager._snapshots[str(db_path)] is snap1
     index.close()
@@ -38,14 +38,14 @@ def test_cache_hits_after_first_call(tmp_path):
 
 def test_cache_evicts_lru(tmp_path):
     manager = SnapshotManager(max_size=2)
-    
+
     for i in range(3):
         db_path = tmp_path / f"db_{i}.db"
         index = ProjectIndex(db_path)
         index.initialize_schema()
         manager.get_snapshot(index)
         index.close()
-        
+
     assert len(manager._snapshots) == 2
     # The first one should have been evicted
     assert str(tmp_path / "db_0.db") not in manager._snapshots
@@ -60,19 +60,22 @@ def test_cache_invalidation_by_data_version(tmp_path):
     manager = SnapshotManager()
     index = ProjectIndex(db_path)
     index.initialize_schema()
-    
+
     snap1 = manager.get_snapshot(index)
-    
+
     # Any write to the DB updates the file mtime. Sleep to ensure mtime resolution boundary is crossed.
     import time
+
     time.sleep(0.1)
     conn2 = sqlite3.connect(db_path)
-    conn2.execute("INSERT INTO nodes (id, type, name, path, language, source_hash, updated_at) VALUES ('test_node', 'file', 'test.py', 'test.py', '', 'hash', 0)")
+    conn2.execute(
+        "INSERT INTO nodes (id, type, name, path, language, source_hash, updated_at) VALUES ('test_node', 'file', 'test.py', 'test.py', '', 'hash', 0)"
+    )
     conn2.commit()
     conn2.close()
-    
+
     snap2 = manager.get_snapshot(index)
-    
+
     assert snap1 is not snap2
     assert snap1.data_version != snap2.data_version
     index.close()
@@ -82,29 +85,29 @@ def test_cache_hooks_in_app(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
     db_path = repo / ".csegraph" / "index.db"
-    
+
     # Run index via app
     args = {"repo": str(repo), "profile": "small", "postprocess_level": "none"}
     minimal_module._hub_cache[("dummy", 1)] = (50, frozenset({"hub"}))
     res = _dispatch_tool("csegraph_index", args)
     assert "files_indexed" in res
-    
+
     # Cache should be cleared by the index hook
     assert str(db_path) not in CACHE._snapshots
     assert not minimal_module._hub_cache
-    
+
     # Now let's cache something
     index = ProjectIndex(db_path)
     index.initialize_schema()
     CACHE.get_snapshot(index)
     assert str(db_path) in CACHE._snapshots
     index.close()
-    
+
     # Run refresh via app
     args_refresh = {"repo": str(repo), "profile": "small", "postprocess_level": "none"}
     minimal_module._hub_cache[("dummy", 2)] = (50, frozenset({"hub"}))
     _dispatch_tool("csegraph_refresh", args_refresh)
-    
+
     # Cache should be cleared by the refresh hook
     assert str(db_path) not in CACHE._snapshots
     assert not minimal_module._hub_cache
@@ -179,9 +182,8 @@ def test_cached_graph_expansion_matches_sql_cte(tmp_path):
         )
 
         assert dict(cached_scores) == dict(sql_scores)
-        assert {
-            node_id: sorted(items)
-            for node_id, items in cached_evidence.items()
-        } == {node_id: sorted(items) for node_id, items in sql_evidence.items()}
+        assert {node_id: sorted(items) for node_id, items in cached_evidence.items()} == {
+            node_id: sorted(items) for node_id, items in sql_evidence.items()
+        }
     finally:
         index.close()

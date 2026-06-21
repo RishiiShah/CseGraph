@@ -60,6 +60,7 @@ class MinimalService:
             repo_root = metadata.get("root_dir", "")
 
             from csegraph._core.retrieval.cache import CACHE
+
             snapshot = CACHE.get_snapshot(index)
 
             totals = _graph_totals(snapshot)
@@ -128,7 +129,7 @@ def _graph_totals(snapshot: Any) -> Dict[str, int]:
 
 
 def _top_languages(snapshot: Any, limit: int = 3) -> List[str]:
-    counts = {}
+    counts: Dict[str, int] = {}
     for node in snapshot.node_rows_light.values():
         lang = node.get("language")
         if lang:

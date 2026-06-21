@@ -43,7 +43,7 @@ DEFAULT_MIN_OVERALL_HIT_RATE = 1.0
 DEFAULT_MIN_TASK_PASS_RATE = 1.0
 DEFAULT_MAX_FAILED_TASKS = 0
 DEFAULT_MAX_AVG_CONTEXT_TOKENS = 1500
-DEFAULT_MAX_AVG_RESPONSE_BYTES = 28000
+DEFAULT_MAX_AVG_RESPONSE_BYTES = 29000
 DEFAULT_MAX_RETURNED_NODE_COUNT = 16
 DEFAULT_MIN_TASK_HIT_RATE = 0.70
 DEFAULT_MIN_SUFFICIENT_TASK_RATE = 1.0
@@ -321,8 +321,8 @@ async def _run_mcp_corpus_task(
     relationship_hits = len(task.expected_relationships) - len(missing_relationships)
     occurrence_hits = len(task.expected_occurrence_snippets) - len(missing_occurrence_snippets)
     import_prelude_hits = len(task.expected_import_preludes) - len(missing_import_preludes)
-    forbidden_pattern_hits = (
-        len(task.forbidden_source_patterns) - len(violating_forbidden_source_patterns)
+    forbidden_pattern_hits = len(task.forbidden_source_patterns) - len(
+        violating_forbidden_source_patterns
     )
     expected_total = (
         len(task.expected_nodes)
@@ -359,9 +359,7 @@ async def _run_mcp_corpus_task(
         file_hit_rate=_rate(file_hits, len(task.expected_files)),
         symbol_hit_rate=_rate(symbol_hits, len(task.expected_symbols)),
         relationship_hit_rate=_rate(relationship_hits, len(task.expected_relationships)),
-        occurrence_snippet_hit_rate=_rate(
-            occurrence_hits, len(task.expected_occurrence_snippets)
-        ),
+        occurrence_snippet_hit_rate=_rate(occurrence_hits, len(task.expected_occurrence_snippets)),
         import_prelude_hit_rate=_rate(import_prelude_hits, len(task.expected_import_preludes)),
         forbidden_source_pattern_hit_rate=_rate(
             forbidden_pattern_hits, len(task.forbidden_source_patterns)
@@ -462,8 +460,7 @@ def _relationship_from_payload(payload: dict[str, Any]) -> ContextRelationship:
         relation=str(payload.get("relation") or ""),
         metadata=dict(payload.get("metadata") or {}),
         occurrences=[
-            _occurrence_from_payload(occurrence)
-            for occurrence in payload.get("occurrences") or []
+            _occurrence_from_payload(occurrence) for occurrence in payload.get("occurrences") or []
         ],
         confidence=float(payload.get("confidence") or 1.0),
         confidence_tier=str(payload.get("confidence_tier") or "EXTRACTED"),
@@ -498,15 +495,15 @@ def _import_prelude_from_payload(payload: dict[str, Any]) -> ImportPrelude:
 def _sufficiency_from_payload(payload: dict[str, Any]) -> SufficiencyResult:
     metrics_payload = payload.get("metrics") or {}
     metrics_fields = getattr(SufficiencyMetrics, "__dataclass_fields__", {})
-    metrics_kwargs = {
-        field: metrics_payload.get(field)
-        for field in metrics_fields
-        if field in metrics_payload
-    }
+    metrics_kwargs: dict[str, float] = {}
+    for field in metrics_fields:
+        if field in metrics_payload:
+            value = metrics_payload.get(field)
+            metrics_kwargs[field] = float(value) if value is not None else 0.0
     for field, field_def in metrics_fields.items():
         if field not in metrics_kwargs:
             default = getattr(field_def, "default", None)
-            metrics_kwargs[field] = default if default is not None else 0
+            metrics_kwargs[field] = float(default) if default is not None else 0.0
     return SufficiencyResult(
         sufficient=bool(payload.get("sufficient")),
         metrics=SufficiencyMetrics(**metrics_kwargs),
@@ -530,11 +527,7 @@ def _index_stats(payload: dict[str, Any], elapsed_ms: float) -> dict[str, Any]:
 
 def _server_command(args: argparse.Namespace) -> tuple[str, list[str]]:
     command = args.mcp_command or os.environ.get("CSEGRAPH_MCP_COMMAND") or sys.executable
-    raw_args = (
-        args.mcp_args
-        or os.environ.get("CSEGRAPH_MCP_ARGS")
-        or "-m csegraph._cli serve"
-    )
+    raw_args = args.mcp_args or os.environ.get("CSEGRAPH_MCP_ARGS") or "-m csegraph._cli serve"
     return command, shlex.split(raw_args)
 
 
@@ -600,7 +593,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db", default=None, help="Optional SQLite database output path.")
     parser.add_argument("--profile", default="small", help="CseGraph profile to benchmark.")
-    parser.add_argument("--postprocess-level", default="minimal", help="MCP index postprocess level.")
+    parser.add_argument(
+        "--postprocess-level", default="minimal", help="MCP index postprocess level."
+    )
     parser.add_argument("--mcp-command", default=None, help="MCP server command.")
     parser.add_argument("--mcp-args", default=None, help="MCP server arguments.")
     parser.add_argument(

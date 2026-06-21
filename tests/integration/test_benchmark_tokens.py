@@ -508,7 +508,9 @@ class TestBenchmarkCorpusQuality:
             ),
         ],
     )
-    def test_corpus_validation_rejects_bad_relationship_expectations(self, tmp_path, raw_task, message):
+    def test_corpus_validation_rejects_bad_relationship_expectations(
+        self, tmp_path, raw_task, message
+    ):
         repo = _make_corpus_repo(tmp_path)
         corpus = tmp_path / "bad-corpus.json"
         corpus.write_text(

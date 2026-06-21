@@ -89,7 +89,7 @@ class ContextService:
             )
 
             from csegraph._core.retrieval.cache import CACHE
-            
+
             t0 = time.perf_counter()
             snapshot = CACHE.get_snapshot(index)
             symbols = snapshot.get_symbols_light()
@@ -143,7 +143,12 @@ class ContextService:
                 else [
                     nid
                     for nid, score in sorted(
-                        scores.items(), key=lambda item: (-item[1], 0 if item[0].startswith("symbol::") else 1, item[0])
+                        scores.items(),
+                        key=lambda item: (
+                            -item[1],
+                            0 if item[0].startswith("symbol::") else 1,
+                            item[0],
+                        ),
                     )
                     if score > 0
                 ]
@@ -231,7 +236,7 @@ class ContextService:
                 incoming=incoming,
                 outgoing=outgoing,
                 symbols=symbols,
-                raw_nodes=raw_nodes,
+                raw_nodes=sorted(raw_nodes),
                 source_neighbor_budget=_source_neighbor_budget(config),
                 task=task,
                 config=config,
@@ -261,7 +266,7 @@ class ContextService:
                     incoming=incoming,
                     outgoing=outgoing,
                     symbols=symbols,
-                    raw_nodes=raw_nodes,
+                    raw_nodes=sorted(raw_nodes),
                     source_neighbor_budget=_source_neighbor_budget(config),
                     task=task,
                     config=config,
@@ -332,7 +337,9 @@ class ContextService:
                     for rank, node in enumerate(nodes, start=1)
                 ],
             )
-            failure_reasons = _sufficiency_failure_reasons(metrics, config) if not sufficient else []
+            failure_reasons = (
+                _sufficiency_failure_reasons(metrics, config) if not sufficient else []
+            )
 
             return ContextResult(
                 command="context",
@@ -564,7 +571,9 @@ def _build_context_relationships(
             target = str(edge.get("target_id") or edge.get("target"))
             if edge.get("relation") == "imports" and target in file_ids:
                 add(edge, source_path, file_ids.get(target))
-    relationships.sort(key=lambda relationship: _relationship_priority(relationship, target_id, rank_by_id))
+    relationships.sort(
+        key=lambda relationship: _relationship_priority(relationship, target_id, rank_by_id)
+    )
     occurrence_limit = OCCURRENCE_LIMIT_BY_PROFILE.get(profile_name, 24)
     _attach_symbol_reference_occurrences(
         index,
@@ -664,7 +673,13 @@ def _attach_symbol_reference_occurrences(
             start_line = row["start_line"]
             end_line = row["end_line"]
             snippet = str(row["source"] or "")
-            if include_snippet and not snippet and path and start_line is not None and end_line is not None:
+            if (
+                include_snippet
+                and not snippet
+                and path
+                and start_line is not None
+                and end_line is not None
+            ):
                 snippet = (
                     read_source_lines(
                         repo_root,
@@ -680,8 +695,7 @@ def _attach_symbol_reference_occurrences(
                 RelationshipOccurrence(
                     path=path,
                     line_range=_line_range(start_line, end_line),
-                    enclosing_symbol_id=str(row["enclosing_symbol_id"] or "")
-                    or None,
+                    enclosing_symbol_id=str(row["enclosing_symbol_id"] or "") or None,
                     name=str(row["name"] or ""),
                     kind=str(row["kind"] or relationship.relation),
                     snippet=_truncate_occurrence_snippet(snippet)
@@ -953,11 +967,10 @@ def _select_context_ids(
 
     # Deterministic sort for context_ids (descending node_id as tie-breaker)
     sorted_nodes = sorted(
-        scores.keys(),
-        key=lambda n: (-scores.get(n, 0.0), 0 if n.startswith("symbol::") else 1, n)
+        scores.keys(), key=lambda n: (-scores.get(n, 0.0), 0 if n.startswith("symbol::") else 1, n)
     )
     context_ids = [n for n in sorted_nodes if scores.get(n, 0.0) > baseline_score]
-    
+
     task_tokens = _task_tokens(task)
     groups = _neighborhood_groups(
         target_id,
@@ -1092,9 +1105,7 @@ def _neighborhood_groups(
         for node_id in imported
         if _is_relevant_neighbor(node_id, task_tokens, scores, evidence, symbols, summaries)
     ]
-    direct_imported_callees = [
-        node_id for node_id in imported if node_id in set(direct_callees)
-    ]
+    direct_imported_callees = [node_id for node_id in imported if node_id in set(direct_callees)]
     for node_id in direct_imported_callees:
         evidence[node_id].append("bounded-imported-callee")
     groups.append(
@@ -1151,9 +1162,7 @@ def _neighborhood_groups(
     for node_id in imported:
         evidence[node_id].append("bounded-import")
     groups.append(
-        _rank_nodes(imported, task_tokens, scores, evidence, symbols, summaries)[
-            : caps["imported"]
-        ]
+        _rank_nodes(imported, task_tokens, scores, evidence, symbols, summaries)[: caps["imported"]]
     )
     return groups
 
@@ -1179,7 +1188,7 @@ def _rank_nodes(
             -_relation_rank_score(node_id, task_tokens, scores, evidence, symbols, summaries),
             0 if node_id.startswith("symbol::") else 1,
             node_id,
-        )
+        ),
     )
 
 
@@ -1435,11 +1444,7 @@ def _source_candidate_ids(
         for edge in outgoing.get(target_id, [])
         if edge["relation"] == "calls" and edge["target_id"] in context_set
     }
-    direct_source_order = [
-        node_id
-        for node_id in context_ids
-        if node_id in direct_calls
-    ]
+    direct_source_order = [node_id for node_id in context_ids if node_id in direct_calls]
     direct_sources = set(direct_source_order[: max(0, source_neighbor_budget)])
     small_helpers = {
         node_id for node_id in context_set if is_small_helper_row(symbols.get(node_id, {}))
@@ -1536,7 +1541,11 @@ def _recover_sufficiency_context_ids(
 
     if metrics.entity_coverage < config.entity_threshold:
         if node_rows_light is not None:
-            names = [str(row.get("name") or "") for row in node_rows_light.values() if row.get("type") != "file"]
+            names = [
+                str(row.get("name") or "")
+                for row in node_rows_light.values()
+                if row.get("type") != "file"
+            ]
         else:
             names = [str(row.get("name") or "") for row in symbols.values()]
         entities = extract_query_entities(task, names)
@@ -1585,9 +1594,7 @@ def _sufficiency_failure_reasons(metrics: SufficiencyMetrics, config: Any) -> Li
         and metrics.entity_coverage >= config.entity_threshold
     )
     semantic_threshold = (
-        config.semantic_threshold_relaxed
-        if structural_ok
-        else config.semantic_threshold
+        config.semantic_threshold_relaxed if structural_ok else config.semantic_threshold
     )
     checks = (
         (

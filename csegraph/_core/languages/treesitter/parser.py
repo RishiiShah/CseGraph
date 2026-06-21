@@ -80,7 +80,9 @@ def _exact_source_of(node: Node, lines: List[str]) -> str:
     return "\n".join(selected)
 
 
-def _bounded_source_of(node: Node, lines: List[str], *, max_lines: int = 3, max_chars: int = 240) -> str:
+def _bounded_source_of(
+    node: Node, lines: List[str], *, max_lines: int = 3, max_chars: int = 240
+) -> str:
     start = node.start_point[0]
     end = min(node.end_point[0], start + max_lines - 1)
     source = "\n".join(lines[start : end + 1])

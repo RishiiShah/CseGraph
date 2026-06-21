@@ -646,9 +646,7 @@ def _run_corpus_task(
                 detail_level="standard",
             )
             tool_call_count += 1
-            relationship_strings.extend(
-                _collect_context_strings(occurrence_context.relationships)
-            )
+            relationship_strings.extend(_collect_context_strings(occurrence_context.relationships))
             missing_occurrence_snippets = [
                 snippet
                 for snippet in task.expected_occurrence_snippets
@@ -673,8 +671,8 @@ def _run_corpus_task(
     relationship_hits = len(task.expected_relationships) - len(missing_relationships)
     occurrence_hits = len(task.expected_occurrence_snippets) - len(missing_occurrence_snippets)
     import_prelude_hits = len(task.expected_import_preludes) - len(missing_import_preludes)
-    forbidden_pattern_hits = (
-        len(task.forbidden_source_patterns) - len(violating_forbidden_source_patterns)
+    forbidden_pattern_hits = len(task.forbidden_source_patterns) - len(
+        violating_forbidden_source_patterns
     )
     expected_total = (
         len(task.expected_nodes)
@@ -711,9 +709,7 @@ def _run_corpus_task(
         file_hit_rate=_rate(file_hits, len(task.expected_files)),
         symbol_hit_rate=_rate(symbol_hits, len(task.expected_symbols)),
         relationship_hit_rate=_rate(relationship_hits, len(task.expected_relationships)),
-        occurrence_snippet_hit_rate=_rate(
-            occurrence_hits, len(task.expected_occurrence_snippets)
-        ),
+        occurrence_snippet_hit_rate=_rate(occurrence_hits, len(task.expected_occurrence_snippets)),
         import_prelude_hit_rate=_rate(import_prelude_hits, len(task.expected_import_preludes)),
         forbidden_source_pattern_hit_rate=_rate(
             forbidden_pattern_hits, len(task.forbidden_source_patterns)

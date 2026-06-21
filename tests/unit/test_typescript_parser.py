@@ -117,8 +117,7 @@ def test_extract_typescript_import_alias_metadata_and_decorator_references(tmp_p
     assert imports_by_name["react"].metadata["aliases"]["useS"] == "useState"
     assert imports_by_name["./api"].metadata["namespace"] == "api"
     assert ("decorates", "sealed", 3, 3, "@sealed") in [
-        (ref.kind, ref.name, ref.start_line, ref.end_line, ref.source)
-        for ref in dog.references
+        (ref.kind, ref.name, ref.start_line, ref.end_line, ref.source) for ref in dog.references
     ]
     assert ("calls", "createUser", 5, 5, "createUser(api.x)") in [
         (ref.kind, ref.name, ref.start_line, ref.end_line, ref.source)

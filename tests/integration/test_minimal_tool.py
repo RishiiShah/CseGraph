@@ -80,7 +80,12 @@ class TestMinimalServiceShape:
         result = MinimalService(db).first()
         assert result.key_entities
         assert all(entity.kind for entity in result.key_entities)
-        assert {entity.kind for entity in result.key_entities} <= {"function", "class", "method", "test"}
+        assert {entity.kind for entity in result.key_entities} <= {
+            "function",
+            "class",
+            "method",
+            "test",
+        }
 
     def test_general_key_entities_do_not_default_to_tests(self, tmp_path):
         repo = tmp_path / "repo"

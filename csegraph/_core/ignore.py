@@ -389,6 +389,7 @@ def _ancestor_dirs(ceiling: Path, root: Path) -> List[Path]:
     dirs.reverse()
     return dirs
 
+
 def _normalize_rel(path: str) -> str:
     normalized = str(PurePosixPath(path.replace("\\", "/"))).strip("/")
     if normalized == ".":

@@ -99,10 +99,7 @@ def _deserialize(blob: str) -> ParsedFile:
     d = json.loads(blob)
     symbols = []
     for symbol_data in d.pop("symbols", []):
-        references = [
-            ParsedReference(**record)
-            for record in symbol_data.pop("references", [])
-        ]
+        references = [ParsedReference(**record) for record in symbol_data.pop("references", [])]
         symbol = ParsedSymbol(**symbol_data)
         symbol.references = references
         symbols.append(symbol)
