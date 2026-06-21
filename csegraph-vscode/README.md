@@ -97,7 +97,7 @@ When enabled (default), saving a supported file (`.py`, `.ts`, `.tsx`, `.js`, `.
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `csegraph.command` | string | `csegraph` | Path to the CLI executable |
-| `csegraph.profile` | enum | `medium` | Indexing profile (`small`, `medium`, `large`) |
+| `csegraph.profile` | enum | `auto` | Indexing profile (`auto`, `small`, `medium`, `large`) |
 | `csegraph.logCommandOutput` | boolean | `true` | Write raw CLI stdout/stderr to the CseGraph output panel |
 | `csegraph.autoRefresh` | boolean | `true` | Refresh index on file save |
 | `csegraph.refreshDebounce` | number | `2000` | Debounce interval in ms |

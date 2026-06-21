@@ -342,7 +342,7 @@ class McpInstallService:
         tasks_action = "updated" if tasks_path.exists() else "created"
         if not dry_run:
             tasks_data = _read_json_object(tasks_path)
-            tasks_data.setdefault("version", "1.7.1")
+            tasks_data.setdefault("version", "1.8.0")
             tasks_list = tasks_data.setdefault("tasks", [])
             existing_labels = {t.get("label") for t in tasks_list if isinstance(t, dict)}
             for task in _VSCODE_TASKS:

@@ -7,7 +7,7 @@ eval, resolver, embedding, report, and low-level diagnostic services remain
 private implementation modules for repo-local maintainer tooling.
 """
 
-__version__ = "1.7.1"
+__version__ = "1.8.0"
 
 from csegraph._core.async_services import (
     AsyncContextService,

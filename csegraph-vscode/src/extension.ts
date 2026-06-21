@@ -312,7 +312,7 @@ function getWorkspaceRoot(): string | undefined {
 
 function getProfileArgs(args: string[] = []): string[] {
   const config = vscode.workspace.getConfiguration("csegraph");
-  const profile = config.get<string>("profile", "medium");
+  const profile = config.get<string>("profile", "auto");
   return [...args, "--profile", profile];
 }
 

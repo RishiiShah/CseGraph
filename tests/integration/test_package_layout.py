@@ -134,7 +134,7 @@ def test_one_distribution_package_layout_and_versions():
     root_project = pyproject["project"]
 
     assert root_project["name"] == "csegraph"
-    assert root_project["version"] == "1.7.1"
+    assert root_project["version"] == "1.8.0"
     assert root_project["readme"] == "README.md"
     assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES

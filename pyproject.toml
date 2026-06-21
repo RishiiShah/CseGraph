@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csegraph"
-version = "1.7.1"
+version = "1.8.0"
 description = "Repository context engine for coding agents with CLI, MCP server, and Python facade."
 readme = "README.md"
 authors = [

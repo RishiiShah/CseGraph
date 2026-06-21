@@ -1,4 +1,4 @@
-"""csegraph v1.7.1 SDK.
+"""csegraph v1.8.0 SDK.
 
 Thin public facade over the context-engine API. Private engine, CLI,
 diagnostic, and maintainer services live under internal namespaces and are not
@@ -56,7 +56,7 @@ from csegraph._core import (
     to_dict,
 )
 
-__version__ = "1.7.1"
+__version__ = "1.8.0"
 
 __all__ = [
     "__version__",
