@@ -20,8 +20,16 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 
 ## Install
 
+Current release: `1.8.0`.
+
 ```bash
 pip install csegraph
+```
+
+To pin this release exactly:
+
+```bash
+pip install csegraph==1.8.0
 ```
 
 The base package includes Python, JavaScript, and TypeScript grammars. Install

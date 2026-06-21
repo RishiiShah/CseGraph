@@ -2,6 +2,8 @@
 
 Lightweight VS Code extension for [CseGraph](https://github.com/RishiiShah/CseGraph) — a code graph context engine for coding agents. All graph logic stays in the CLI; the extension is a thin UI layer.
 
+Current extension release: `1.8.0`, aligned with the CseGraph CLI package.
+
 ## Prerequisites
 
 - **CseGraph CLI installed**

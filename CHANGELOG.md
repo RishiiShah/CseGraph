@@ -6,8 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 1.8.0 - 2026-06-21
+
 ### Added
 
+- Added dynamic `auto` profile selection for MCP, CLI context retrieval, and
+  editor defaults so small, medium, and large repositories get safer defaults.
 - Added package-health badges to the README.
 - Added a `py.typed` marker and `Typing :: Typed` classifier for PEP 561 type
   checker support.
