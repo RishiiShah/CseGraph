@@ -5,21 +5,17 @@ Runnable examples use the repository virtualenv. Installed users can replace
 
 ## Setup
 
-Current package release: `1.8.0`.
-
-For the published package:
-
-```bash
-python -m pip install csegraph==1.8.0
-```
-
-For local development:
-
 ```bash
 env/bin/python -m pip install -e .
 env/bin/csegraph install --platform auto
 env/bin/csegraph install --platform codex --dry-run --json
 env/bin/csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
+```
+
+Current package release: `1.8.0`. To install the published package exactly:
+
+```bash
+python -m pip install csegraph==1.8.0
 ```
 
 The editable install includes Python, JavaScript, and TypeScript grammars. Use
