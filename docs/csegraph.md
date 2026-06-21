@@ -83,7 +83,7 @@ Context flags:
 - `--target NODE_OR_SYMBOL_OR_PATH`
 - `--max-tokens N`
 - `--format json|markdown`
-- `--profile small|medium|large`
+- `--profile auto|small|medium|large`
 
 Graph/path flags:
 
@@ -115,6 +115,9 @@ MCP exposes six tools only:
 
 Agents should use minimal/context first and inspect/path only when the returned
 next action calls for it.
+
+For MCP tools, `profile` accepts `auto`, `small`, `medium`, or `large`; omitted
+profile arguments default to `auto`.
 
 `csegraph serve --tools` accepts `core` or a comma-separated subset of the six
 core tool names. The MCP surface does not expose CLI operations such as
@@ -240,14 +243,15 @@ There is no `csegraph-dev` console script.
 
 Profiles trade breadth against token budget:
 
+- `auto`: resolves to `small`, `medium`, or `large` from repository size.
 - `small`: narrow retrieval, fastest context.
-- `medium`: default.
+- `medium`: middle retrieval breadth.
 - `large`: wider graph expansion and more source.
 
 Config files: `csegraph.json`, `csegraph.toml`, or `--config`.
 
 Supported config keys in `csegraph.json` or `csegraph.toml` include:
-- `profile`: Base profile name to load (`small`, `medium`, or `large`).
+- `profile`: Base profile name to load (`auto`, `small`, `medium`, or `large`).
 - `top_k`: Number of lexical query candidates to retrieve.
 - `graph_radius`: Radius of the neighborhood expansion.
 - `context_budget`: Maximum budget for the context package in tokens.

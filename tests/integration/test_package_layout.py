@@ -25,6 +25,8 @@ CORE_LANGUAGE_DEPENDENCIES = [
     "tree-sitter-javascript>=0.23",
 ]
 
+BENCHMARK_DEPENDENCIES = ["tiktoken>=0.13,<1"]
+
 
 OPTIONAL_LANGUAGE_DEPENDENCIES = {
     "go": ["tree-sitter-go>=0.23"],
@@ -142,12 +144,14 @@ def test_one_distribution_package_layout_and_versions():
         "dev",
         "docs",
         "embeddings",
+        "benchmark",
         "all",
         *OPTIONAL_LANGUAGE_DEPENDENCIES,
     }
     for extra, dependencies in OPTIONAL_LANGUAGE_DEPENDENCIES.items():
         assert optional_deps[extra] == dependencies
     assert optional_deps["all"] == ALL_OPTIONAL_LANGUAGE_DEPENDENCIES
+    assert optional_deps["benchmark"] == BENCHMARK_DEPENDENCIES
     assert optional_deps["docs"] == ["mkdocs>=1.6", "mkdocs-material>=9.5"]
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
@@ -399,6 +403,7 @@ def test_source_first_package_guard():
         for path in repo_root.rglob("pyproject.toml")
         if "csegraph-vscode" not in path.relative_to(repo_root).as_posix()
         and ".scratch/" not in path.relative_to(repo_root).as_posix()
+        and not path.relative_to(repo_root).as_posix().startswith("sandbox/")
     )
     assert publishable_pyprojects == ["pyproject.toml"]
 

@@ -557,6 +557,7 @@ async def run_context_query(
     repo_path: Path,
     db_path: Path,
     *,
+    profile: str,
     detail_level: str,
 ) -> ToolCallMetrics:
     return await client.call_tool(
@@ -565,6 +566,7 @@ async def run_context_query(
             "task": query,
             "repo": str(repo_path),
             "db": str(db_path),
+            "profile": profile,
             "detail_level": detail_level,
         },
     )
@@ -623,6 +625,7 @@ async def run_phase_b(
             "what does __csegraph_dummy_test_method do?",
             repo_path,
             db_path,
+            profile=profile,
             detail_level=detail_level,
         )
         return PhaseBResult(
@@ -774,6 +777,7 @@ async def run_repo(
                 query,
                 repo_path,
                 db_path,
+                profile=profile,
                 detail_level=detail_level,
             )
         except Exception as exc:
@@ -946,7 +950,7 @@ async def main_async() -> None:
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.parent.mkdir(parents=True, exist_ok=True)
-    profile = os.environ.get("CSEGRAPH_BENCH_PROFILE", "small")
+    profile = os.environ.get("CSEGRAPH_BENCH_PROFILE", "auto")
     postprocess_level = os.environ.get("CSEGRAPH_BENCH_POSTPROCESS_LEVEL", "minimal")
     detail_level = os.environ.get("CSEGRAPH_BENCH_DETAIL_LEVEL", "standard")
     query_limit = env_int("CSEGRAPH_BENCH_QUERY_LIMIT", 100)

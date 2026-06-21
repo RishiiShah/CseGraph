@@ -71,7 +71,7 @@ async def main_async() -> None:
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    profile = os.environ.get("CSEGRAPH_BENCH_PROFILE", "small")
+    profile = os.environ.get("CSEGRAPH_BENCH_PROFILE", "auto")
     postprocess_level = os.environ.get("CSEGRAPH_BENCH_POSTPROCESS_LEVEL", "minimal")
     detail_level = os.environ.get("CSEGRAPH_BENCH_DETAIL_LEVEL", "standard")
     command, args = server_command_from_env()
@@ -203,6 +203,7 @@ async def main_async() -> None:
                         query,
                         workload_repo,
                         db_path,
+                        profile=profile,
                         detail_level=detail_level,
                     )
                 except Exception as exc:

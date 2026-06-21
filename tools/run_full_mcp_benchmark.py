@@ -33,7 +33,7 @@ SANDBOX = REPO / "sandbox"
 
 PROFILES = tuple(
     item.strip()
-    for item in os.environ.get("CSEGRAPH_FULL_BENCH_PROFILES", "small,medium,large").split(",")
+    for item in os.environ.get("CSEGRAPH_FULL_BENCH_PROFILES", "auto").split(",")
     if item.strip()
 )
 SANDBOX_REPOS = ",".join(

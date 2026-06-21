@@ -15,6 +15,7 @@ nav:
   - Overview: index.md
   - Command And SDK Reference: csegraph.md
   - Architecture: architecture.md
+  - Agent Context Benchmarks: benchmarks.md
   - Token Reduction Benchmark: token-reduction-benchmark.md
 
 markdown_extensions:
