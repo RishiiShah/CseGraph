@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from mcp.types import Tool
 
+from csegraph._core.config.profiles import PROFILE_CHOICES
+
 MIN_BYTE_CAP = 256
 
 TOOLS: list[Tool] = [
@@ -22,9 +24,9 @@ TOOLS: list[Tool] = [
                 },
                 "profile": {
                     "type": "string",
-                    "enum": ["small", "medium", "large"],
-                    "default": "medium",
-                    "description": "Retrieval profile controlling index depth.",
+                    "enum": list(PROFILE_CHOICES),
+                    "default": "auto",
+                    "description": "Retrieval profile selector. `auto` resolves to small, medium, or large from repository size.",
                 },
                 "db": {
                     "type": "string",
@@ -55,9 +57,9 @@ TOOLS: list[Tool] = [
                 },
                 "profile": {
                     "type": "string",
-                    "enum": ["small", "medium", "large"],
-                    "default": "medium",
-                    "description": "Retrieval profile for refresh.",
+                    "enum": list(PROFILE_CHOICES),
+                    "default": "auto",
+                    "description": "Retrieval profile selector for refresh. `auto` resolves to small, medium, or large.",
                 },
                 "db": {
                     "type": "string",
@@ -124,8 +126,9 @@ TOOLS: list[Tool] = [
                 },
                 "profile": {
                     "type": "string",
-                    "enum": ["small", "medium", "large"],
-                    "description": "Retrieval profile. Default: medium.",
+                    "enum": list(PROFILE_CHOICES),
+                    "default": "auto",
+                    "description": "Retrieval profile selector. `auto` resolves from the indexed repository size.",
                 },
                 "include_source": {
                     "type": "string",

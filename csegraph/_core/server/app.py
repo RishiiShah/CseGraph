@@ -422,7 +422,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         from csegraph._core.retrieval.minimal import clear_hub_cache as clear_minimal_hub_cache
 
         repo = arguments["repo"]
-        profile = arguments.get("profile", "medium")
+        profile = arguments.get("profile", "auto")
         db = _db_path(repo, arguments.get("db"))
         index_result = IndexService(db).index(repo, profile=profile)
         pp_level = arguments.get("postprocess_level", "full")
@@ -446,7 +446,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         from csegraph._core.retrieval.minimal import clear_hub_cache as clear_minimal_hub_cache
 
         repo = arguments["repo"]
-        profile = arguments.get("profile", "medium")
+        profile = arguments.get("profile", "auto")
         db = _db_path(repo, arguments.get("db"))
         refresh_result = RefreshService(db).refresh(profile=profile)
         pp_level = arguments.get("postprocess_level", "full")
@@ -485,7 +485,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             ContextService(db).build_context(
                 task=arguments["task"],
                 target=arguments.get("target"),
-                profile=arguments.get("profile"),
+                profile=arguments.get("profile", "auto"),
                 include_source=arguments.get("include_source", "auto"),
                 max_tokens=arguments.get("max_tokens"),
                 explain=arguments.get("explain", False),

@@ -81,7 +81,12 @@ class ContextService:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = metadata["root_dir"]
-            config = load_profile(profile, config_path=config_path, repo_root=repo_root)
+            config = load_profile(
+                profile,
+                config_path=config_path,
+                repo_root=repo_root,
+                source_file_count=_indexed_file_count(index),
+            )
 
             from csegraph._core.retrieval.cache import CACHE
             
@@ -1837,6 +1842,11 @@ def _strip_source(node: ContextNode) -> ContextNode:
 
 def _elapsed_ms(start: float) -> float:
     return round((time.perf_counter() - start) * 1000, 3)
+
+
+def _indexed_file_count(index: ProjectIndex) -> int:
+    row = index.conn.execute("SELECT COUNT(*) AS count FROM nodes WHERE type = 'file'").fetchone()
+    return int(row["count"] if row is not None else 0)
 
 
 def _apply_token_budget(

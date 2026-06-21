@@ -14,7 +14,9 @@ PROMPTS: list[Prompt] = [
         description="Build or rebuild the csegraph index for a repository.",
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="profile", description="small, medium, or large.", required=False),
+            PromptArgument(
+                name="profile", description="auto, small, medium, or large.", required=False
+            ),
         ],
     ),
     Prompt(
@@ -23,7 +25,9 @@ PROMPTS: list[Prompt] = [
         description="Refresh changed and deleted files in an existing csegraph index.",
         arguments=[
             PromptArgument(name="repo", description="Absolute repository path.", required=True),
-            PromptArgument(name="profile", description="small, medium, or large.", required=False),
+            PromptArgument(
+                name="profile", description="auto, small, medium, or large.", required=False
+            ),
         ],
     ),
     Prompt(
@@ -185,7 +189,7 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
             "Build or rebuild the csegraph repository index.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_index` with the repo path and profile (default medium).",
+                "Call `csegraph_index` with the repo path and profile (default auto).",
                 "Report: files indexed, symbols, edges, cache hits/misses, parse errors.",
                 "If parse errors > 0, list them so the user can fix syntax before relying on the graph.",
             ],
@@ -196,7 +200,7 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
             "Incrementally refresh the csegraph index for changed and deleted files.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_refresh` with the repo path and profile (default medium).",
+                "Call `csegraph_refresh` with the repo path and profile (default auto).",
                 "Report: changed files re-indexed, deleted files removed, unchanged files kept.",
                 "If parse errors appear on changed files, flag them.",
             ],

@@ -39,7 +39,7 @@ from csegraph._cli.renderer import (
     render_test_gaps_summary,
     render_vulnerabilities_summary,
 )
-from csegraph._core.config.profiles import PROFILES
+from csegraph._core.config.profiles import PROFILE_CHOICES
 from csegraph._core.core.models import to_dict
 from csegraph._core.core.paths import assert_safe_db_path
 from csegraph._core.postprocess import attach_postprocess_metadata
@@ -171,7 +171,7 @@ def _add_json(p: argparse.ArgumentParser, *, suppress: bool = False) -> None:
 
 
 def _add_profile(p: argparse.ArgumentParser, *, default: str | None = "medium") -> None:
-    p.add_argument("--profile", choices=sorted(PROFILES), default=default)
+    p.add_argument("--profile", choices=PROFILE_CHOICES, default=default)
 
 
 def _add_logging_options(parser: argparse.ArgumentParser) -> None:

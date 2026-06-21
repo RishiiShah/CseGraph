@@ -65,6 +65,14 @@ def _create_test_venv(path: Path) -> None:
         target.symlink_to(entry)
 
 
+def test_cli_profile_choices_accept_auto():
+    parser = cli_main._build_parser()
+
+    args = parser.parse_args(["index", "/tmp/repo", "--profile", "auto"])
+
+    assert args.profile == "auto"
+
+
 def test_cli_json_contracts(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)

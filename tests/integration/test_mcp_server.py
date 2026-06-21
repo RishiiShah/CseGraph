@@ -86,6 +86,14 @@ class TestToolListing:
         assert detail_level["enum"] == ["auto", "minimal", "standard", "full"]
         assert detail_level["default"] == "auto"
 
+    def test_profile_tools_accept_auto(self):
+        by_name = {tool.name: tool for tool in _TOOLS}
+        for name in ("csegraph_index", "csegraph_refresh", "csegraph_context"):
+            profile = by_name[name].inputSchema["properties"]["profile"]
+            assert profile["enum"] == ["auto", "small", "medium", "large"]
+            assert profile["default"] == "auto"
+        assert "profile" not in by_name["csegraph_minimal"].inputSchema["properties"]
+
 
 class TestPromptListing:
     def test_prompt_names(self):
@@ -176,6 +184,32 @@ class TestHandleTool:
         assert ctx["request"]["task"] == "How does greet work?"
         assert ctx["request"]["detail_level"] == "auto"
         assert ctx["request"]["returned_detail_level"] in {"minimal", "standard"}
+
+    def test_default_mcp_profile_auto_resolves_to_concrete_profile(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = _scratch_db(repo)
+
+        indexed = _handle_tool(
+            "csegraph_index",
+            {
+                "repo": str(repo),
+                "db": db,
+            },
+        )
+
+        assert indexed["profile"] == "small"
+
+        ctx = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "How does greet work?",
+                "repo": str(repo),
+                "target": "greet",
+                "db": db,
+            },
+        )
+
+        assert ctx["request"]["profile"] == "small"
 
     def test_context_returns_sufficient_v3_neighborhood_without_warning(self, tmp_path):
         repo = _make_repo(tmp_path)

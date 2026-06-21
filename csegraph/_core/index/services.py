@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
-from csegraph._core.config.profiles import get_profile
+from csegraph._core.config.profiles import get_profile, resolve_profile_name
 from csegraph._core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph._core.core.models import IndexResult, RefreshResult
 from csegraph._core.discovery import is_discoverable_rel_path, iter_discoverable_rel_paths
@@ -50,7 +50,6 @@ class IndexService:
         include_roots: Optional[Sequence[str | Path]] = None,
     ) -> IndexResult:
         timings_ms: Dict[str, float] = {}
-        config = get_profile(profile)
         repo_root_path = Path(repo).resolve()
         repo_root = str(repo_root_path)
         include_prefixes = _normalize_include_roots(repo_root_path, include_roots)
@@ -72,6 +71,13 @@ class IndexService:
             cache,
         )
         timings_ms["discover_parse"] = _elapsed_ms(start)
+        config = get_profile(
+            resolve_profile_name(
+                profile,
+                repo_root=repo_root_path,
+                source_file_count=len(parsed_files),
+            )
+        )
 
         index = ProjectIndex(self.db_path)
         try:
@@ -130,7 +136,6 @@ class RefreshService:
         exclude_patterns: Optional[Sequence[str]] = None,
         include_roots: Optional[Sequence[str | Path]] = None,
     ) -> RefreshResult:
-        config = get_profile(profile)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
         cache = ExtractionCache(cache_path)
         index = ProjectIndex(self.db_path)
@@ -143,6 +148,13 @@ class RefreshService:
                 _normalize_include_roots(repo_root, include_roots)
                 if include_roots is not None
                 else _include_roots_from_metadata(metadata)
+            )
+            config = get_profile(
+                resolve_profile_name(
+                    profile,
+                    repo_root=repo_root,
+                    source_file_count=_indexed_file_count(index),
+                )
             )
             index.set_metadata(str(repo_root), config.name, include_roots=include_prefixes)
 
@@ -1260,6 +1272,11 @@ def _is_included_rel_path(rel_path: str, include_roots: Sequence[str]) -> bool:
         return True
     normalized = rel_path.replace("\\", "/").strip("/")
     return any(normalized == root or normalized.startswith(f"{root}/") for root in include_roots)
+
+
+def _indexed_file_count(index: ProjectIndex) -> int:
+    row = index.conn.execute("SELECT COUNT(*) AS count FROM nodes WHERE type = 'file'").fetchone()
+    return int(row["count"] if row is not None else 0)
 
 
 def _missing_optional_language_warnings(
