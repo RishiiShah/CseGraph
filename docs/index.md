@@ -4,6 +4,8 @@ CseGraph is a repository context engine for coding agents. It indexes source
 code into a SQLite-backed graph, then returns the smallest task-specific slice
 of files, symbols, dependencies, and explanations an agent needs.
 
+Current release: `1.8.0`.
+
 ## Start Here
 
 - [Command and SDK reference](csegraph.md) covers CLI commands, MCP tools, and

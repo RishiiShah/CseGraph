@@ -5,6 +5,16 @@ Runnable examples use the repository virtualenv. Installed users can replace
 
 ## Setup
 
+Current package release: `1.8.0`.
+
+For the published package:
+
+```bash
+python -m pip install csegraph==1.8.0
+```
+
+For local development:
+
 ```bash
 env/bin/python -m pip install -e .
 env/bin/csegraph install --platform auto

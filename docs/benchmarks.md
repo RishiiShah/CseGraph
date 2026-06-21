@@ -1,6 +1,6 @@
 # Agent Context Benchmarks
 
-## Native MCP Cross-Repo Results
+## Native MCP Cross-Repo Results (CseGraph 1.8.0)
 
 | Profile | Naive chars/4 tokens | MCP chars/4 tokens | chars/4 reduction | Naive OpenAI proxy tokens | MCP OpenAI proxy tokens | OpenAI proxy reduction | Avg MCP latency | Avg Phase B |
 |---------|---------------------:|-------------------:|------------------:|--------------------------:|------------------------:|-----------------------:|----------------:|------------:|
