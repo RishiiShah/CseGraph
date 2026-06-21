@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from csegraph._core.graph.queries import GraphQueryService
 from csegraph._core.index.services import IndexService, RefreshService
 from csegraph._core.postprocess import POSTPROCESS_LEVELS, PostprocessService
 from csegraph._core.retrieval.context import ContextService
-from csegraph._core.graph.queries import GraphQueryService
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -72,8 +72,7 @@ class TestTimingInstrumentation:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         (repo / "helpers.py").write_text(
-            "def fmt(name: str) -> str:\n"
-            '    return f"Hi, {name}"\n',
+            'def fmt(name: str) -> str:\n    return f"Hi, {name}"\n',
             encoding="utf-8",
         )
         result = RefreshService(db).refresh(profile="small")
@@ -85,7 +84,8 @@ class TestTimingInstrumentation:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         result = ContextService(db).build_context(
-            task="greet a user", profile="small",
+            task="greet a user",
+            profile="small",
         )
         assert isinstance(result.timings_ms, dict)
         assert "load_data" in result.timings_ms
@@ -127,7 +127,9 @@ class TestShortestPathCTE:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         result = GraphQueryService(db).shortest_path(
-            "Greeter.greet", "fmt", relations=["calls"],
+            "Greeter.greet",
+            "fmt",
+            relations=["calls"],
         )
         assert result.found is True
         assert result.relations_filter == ["calls"]
@@ -136,7 +138,9 @@ class TestShortestPathCTE:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         result = GraphQueryService(db).shortest_path(
-            "Greeter.greet", "fmt", detail_level="standard",
+            "Greeter.greet",
+            "fmt",
+            detail_level="standard",
         )
         assert result.found is True
         assert result.detail_level == "standard"
@@ -234,8 +238,7 @@ class TestDependentExpansion:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         (repo / "helpers.py").write_text(
-            "def fmt(name: str) -> str:\n"
-            '    return f"Hi, {name}!"\n',
+            'def fmt(name: str) -> str:\n    return f"Hi, {name}!"\n',
             encoding="utf-8",
         )
         result = RefreshService(db).refresh(profile="small", dependents_limit=0)
@@ -245,8 +248,7 @@ class TestDependentExpansion:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         (repo / "helpers.py").write_text(
-            "def fmt(name: str) -> str:\n"
-            '    return f"Yo, {name}"\n',
+            'def fmt(name: str) -> str:\n    return f"Yo, {name}"\n',
             encoding="utf-8",
         )
         result = RefreshService(db).refresh(profile="small", dependents_limit=1)
@@ -292,10 +294,14 @@ class TestBenchmarkFixtures:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         no_src = ContextService(db).build_context(
-            task="greet a user", profile="small", include_source="never",
+            task="greet a user",
+            profile="small",
+            include_source="never",
         )
         with_src = ContextService(db).build_context(
-            task="greet a user", profile="small", include_source="always",
+            task="greet a user",
+            profile="small",
+            include_source="always",
         )
         assert with_src.total_estimated_tokens >= no_src.total_estimated_tokens
 
@@ -334,7 +340,8 @@ class TestBenchmarkFixtures:
         repo = _make_repo(tmp_path)
         db = _index(tmp_path, repo)
         result = ContextService(db).build_context(
-            task="fmt helper function", profile="small",
+            task="fmt helper function",
+            profile="small",
         )
         node_names = [n.name for n in result.nodes]
         assert any("fmt" in name for name in node_names)

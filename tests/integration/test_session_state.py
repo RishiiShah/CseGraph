@@ -16,8 +16,7 @@ def _indexed_repo(tmp_path: Path) -> tuple[Path, str]:
         encoding="utf-8",
     )
     (repo / "helpers.py").write_text(
-        "def format_name(name: str) -> str:\n"
-        "    return name.strip().title()\n",
+        "def format_name(name: str) -> str:\n    return name.strip().title()\n",
         encoding="utf-8",
     )
     db = str(repo / ".scratch" / "csegraph" / "test.db")
@@ -68,9 +67,15 @@ class TestSessionFilterOnMinimal:
     def test_subsequent_call_filters_already_called_suggestions(self, tmp_path: Path):
         repo, db = _indexed_repo(tmp_path)
 
-        _handle_tool("csegraph_minimal", {"repo": str(repo), "db": db, "task": "debug failing test"})
-        _handle_tool("csegraph_context", {"repo": str(repo), "db": db, "task": "debug failing test"})
-        result = _handle_tool("csegraph_minimal", {"repo": str(repo), "db": db, "task": "debug failing test"})
+        _handle_tool(
+            "csegraph_minimal", {"repo": str(repo), "db": db, "task": "debug failing test"}
+        )
+        _handle_tool(
+            "csegraph_context", {"repo": str(repo), "db": db, "task": "debug failing test"}
+        )
+        result = _handle_tool(
+            "csegraph_minimal", {"repo": str(repo), "db": db, "task": "debug failing test"}
+        )
 
         suggestions = result["next_tool_suggestions"]
         assert all(suggestion.get("tool") != "csegraph_context" for suggestion in suggestions)
@@ -80,7 +85,10 @@ class TestSessionFilterOnContext:
     def test_next_actions_filtered_when_tool_already_called(self, tmp_path: Path):
         repo, db = _indexed_repo(tmp_path)
 
-        _handle_tool("csegraph_graph", {"repo": str(repo), "db": db, "node": "greet", "detail_level": "minimal"})
+        _handle_tool(
+            "csegraph_graph",
+            {"repo": str(repo), "db": db, "node": "greet", "detail_level": "minimal"},
+        )
         result = _handle_tool(
             "csegraph_context",
             {
@@ -92,12 +100,25 @@ class TestSessionFilterOnContext:
             },
         )
 
-        assert all(action.get("tool") != "csegraph_graph" for action in result["next_actions"] if isinstance(action, dict))
+        assert all(
+            action.get("tool") != "csegraph_graph"
+            for action in result["next_actions"]
+            if isinstance(action, dict)
+        )
 
     def test_actions_without_tool_field_are_preserved(self, tmp_path: Path):
         repo, db = _indexed_repo(tmp_path)
 
-        _handle_tool("csegraph_context", {"repo": str(repo), "db": db, "task": "debug greet", "target": "greet", "detail_level": "minimal"})
+        _handle_tool(
+            "csegraph_context",
+            {
+                "repo": str(repo),
+                "db": db,
+                "task": "debug greet",
+                "target": "greet",
+                "detail_level": "minimal",
+            },
+        )
         result = _handle_tool(
             "csegraph_context",
             {

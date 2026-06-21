@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from csegraph._core.core.models import to_dict
+from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.index.services import IndexService
 from csegraph._core.postprocess import PostprocessService, _read_source_slice
 from csegraph._core.status import StatusService
@@ -52,11 +53,18 @@ def _make_git_repo(tmp_path: Path, files: dict[str, str]) -> tuple[str, str]:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
 
-    env = {**os.environ, "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@test.com",
-           "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@test.com"}
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
     subprocess.run(["git", "init"], cwd=str(repo), capture_output=True, check=True, env=env)
     subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True, env=env)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True, check=True, env=env)
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True, check=True, env=env
+    )
 
     db = str(_scratch_path(repo, "index.db"))
     IndexService(db).index(str(repo), profile="small")
@@ -79,7 +87,7 @@ class TestStatusService:
         assert result.total_edges > 0
         assert result.total_files == 3
         assert "python" in result.languages
-        assert result.schema_version == "csegraph-sqlite-v5"
+        assert result.schema_version == SCHEMA_VERSION
         assert result.active_profile == "small"
         assert result.updated_at is not None
         assert result.index_health is not None
@@ -185,11 +193,19 @@ class TestStatusGitMetadata:
 
     def test_branch_mismatch_warning(self, tmp_path):
         repo, db = _make_git_repo(tmp_path, {"a.py": "def f(): pass\n"})
-        env = {**os.environ, "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@test.com",
-               "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@test.com"}
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        }
         subprocess.run(
             ["git", "checkout", "-b", "other-branch"],
-            cwd=repo, capture_output=True, check=True, env=env,
+            cwd=repo,
+            capture_output=True,
+            check=True,
+            env=env,
         )
         result = StatusService(db).status()
         branch_warnings = [w for w in result.warnings if "branch" in w.lower()]

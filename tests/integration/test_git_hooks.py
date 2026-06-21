@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
-import shutil
 from pathlib import Path
 
 import pytest
@@ -12,9 +12,9 @@ import pytest
 from csegraph._core.hooks import (
     HOOK_MARKER,
     HOOK_NAMES,
+    find_git_dir,
     install_hooks,
     uninstall_hooks,
-    find_git_dir,
 )
 
 
@@ -25,7 +25,9 @@ def _init_git_repo(tmp_path: Path) -> Path:
     repo.mkdir()
     subprocess.run(
         [sys.executable, "-c", "import subprocess; subprocess.run(['git', 'init'], check=True)"],
-        cwd=str(repo), check=True, capture_output=True,
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
     )
     if not (repo / ".git").exists():
         subprocess.run(["git", "init"], cwd=str(repo), check=True, capture_output=True)

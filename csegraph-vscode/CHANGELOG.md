@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.0
+
+- Added the `auto` profile option and made it the extension default.
+- Aligned extension version with the Python package release.
+
 ## 1.7.2
 
 - Added the Marketplace icon metadata and packaged icon asset.

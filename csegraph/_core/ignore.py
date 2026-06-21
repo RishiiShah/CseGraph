@@ -5,12 +5,13 @@ for SVN working copies, else a bounded directory walk. ``.csegraphignore``
 excludes paths from the VCS candidate set. ``.gitignore`` still applies on
 directory walks and for ignore-rule unit tests. Entrypoint: ``load_ignore_filter(root)``.
 """
+
 from __future__ import annotations
 
+import fnmatch
 import os
 import subprocess
 from dataclasses import dataclass
-import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import List, Optional, Sequence, Set
 
@@ -69,7 +70,7 @@ def load_ignore_filter(
     tracked_paths: Set[str] = set()
     tracked_dirs: Set[str] = set()
 
-    if git_root is not None and _is_relative_to(root, git_root):
+    if git_root is not None and root.is_relative_to(git_root):
         vcs = "git"
         vcs_root = git_root
         tracked_paths = _git_tracked_paths(
@@ -79,7 +80,7 @@ def load_ignore_filter(
         )
     else:
         svn_root = find_svn_root(root)
-        if svn_root is not None and _is_relative_to(root, svn_root):
+        if svn_root is not None and root.is_relative_to(svn_root):
             tracked_paths = svn_versioned_paths(svn_root, root)
             if tracked_paths:
                 vcs = "svn"
@@ -109,7 +110,9 @@ def load_ignore_filter(
     )
 
 
-def _parse_line(line: str, *, source: str = "csegraphignore", anchor: Optional[Path] = None) -> Optional[IgnoreRule]:
+def _parse_line(
+    line: str, *, source: str = "csegraphignore", anchor: Optional[Path] = None
+) -> Optional[IgnoreRule]:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -220,7 +223,10 @@ class IgnoreFilter:
         if self._has_negation:
             return True
         csegraph_rules = [rule for rule in self._rules if rule.source == "csegraphignore"]
-        if csegraph_rules and self._is_ignored_by_rules(rel_dir, is_dir=True, rules=csegraph_rules).ignored:
+        if (
+            csegraph_rules
+            and self._is_ignored_by_rules(rel_dir, is_dir=True, rules=csegraph_rules).ignored
+        ):
             return False
         if rel_dir in self._tracked_dirs:
             return True
@@ -228,10 +234,7 @@ class IgnoreFilter:
 
     def _effective_rules(self, rel_path: str, *, is_dir: bool) -> Sequence[IgnoreRule]:
         if self._vcs and not is_dir and rel_path in self._tracked_paths:
-            return [
-                rule for rule in self._rules
-                if rule.source in ("csegraphignore", "runtime")
-            ]
+            return [rule for rule in self._rules if rule.source in ("csegraphignore", "runtime")]
         return self._rules
 
     def _is_ignored_by_rules(
@@ -266,7 +269,9 @@ class IgnoreFilter:
                 ignored = not rule.negated
                 last_source = rule.source
                 last_negated = rule.negated
-        return IgnoreDecision(matched=matched, ignored=ignored, source=last_source, negated=last_negated)
+        return IgnoreDecision(
+            matched=matched, ignored=ignored, source=last_source, negated=last_negated
+        )
 
     def _matches_rule(self, rel_path: str, rule: IgnoreRule) -> bool:
         target_abs = self._root.joinpath(*PurePosixPath(rel_path).parts)
@@ -358,7 +363,7 @@ def _to_scan_relative(git_rel: str, scan_prefix: str) -> Optional[str]:
         return ""
     prefix = f"{scan_prefix}/"
     if git_rel.startswith(prefix):
-        return git_rel[len(prefix):]
+        return git_rel[len(prefix) :]
     return None
 
 
@@ -372,7 +377,7 @@ def _tracked_parent_dirs(tracked_paths: Set[str]) -> Set[str]:
 
 
 def _ancestor_dirs(ceiling: Path, root: Path) -> List[Path]:
-    if not _is_relative_to(root, ceiling):
+    if not root.is_relative_to(ceiling):
         return [root]
     dirs: List[Path] = []
     current = root
@@ -383,14 +388,6 @@ def _ancestor_dirs(ceiling: Path, root: Path) -> List[Path]:
         current = current.parent
     dirs.reverse()
     return dirs
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
 
 
 def _normalize_rel(path: str) -> str:

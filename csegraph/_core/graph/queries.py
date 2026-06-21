@@ -17,14 +17,13 @@ from csegraph._core.core.models import (
 )
 from csegraph._core.index.repository import ProjectIndex, json_loads
 
-
 _MINIMAL_GRAPH_KEY_NODES = 5
 _HUB_FLOOR = 50
 _HUB_PERCENTILE = 0.99
 
 # Single-threaded: MCP stdio server runs one asyncio event loop, no concurrent
 # tool calls. If the server ever moves to a threaded transport, add a lock.
-_hub_cache: Dict[Tuple[str, FrozenSet[str]], Tuple[int, FrozenSet[str]]] = {}
+_hub_cache: Dict[Tuple[str, int, FrozenSet[str]], Tuple[int, FrozenSet[str]]] = {}
 _HUB_CACHE_MAX = 32
 
 
@@ -88,9 +87,9 @@ VALID_CONFIDENCE_TIERS = frozenset({"EXTRACTED", "INFERRED", "AMBIGUOUS"})
 
 
 def _cached_hub_info(
-    db_path: str, index: Any, relations: Optional[List[str]] = None
+    db_path: str, index: Any, data_version: int, relations: Optional[List[str]] = None
 ) -> Tuple[int, Set[str]]:
-    key = (db_path, frozenset(relations or ()))
+    key = (db_path, data_version, frozenset(relations or ()))
     cached = _hub_cache.get(key)
     if cached is not None:
         return cached[0], set(cached[1])
@@ -121,97 +120,81 @@ class GraphQueryService:
         if tier_filter:
             unknown = set(tier_filter) - VALID_CONFIDENCE_TIERS
             if unknown:
-                raise ValueError(f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}")
+                raise ValueError(
+                    f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}"
+                )
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = metadata["root_dir"]
 
+            from csegraph._core.retrieval.cache import CACHE
+
+            snapshot = CACHE.get_snapshot(index)
+
             resolved = _resolve_graph_node(index, node_id, repo_root)
 
-            _, hubs = _cached_hub_info(self.db_path, index, relations_filter)
+            _, hubs = _cached_hub_info(self.db_path, index, snapshot.data_version, relations_filter)
+            hubs = set(hubs)
             hubs.discard(resolved)
 
-            bfs_rel_clause = (
-                f"AND e.relation IN ({','.join('?' for _ in relations_filter)})"
-                if relations_filter
-                else ""
-            )
-            bfs_tier_clause = (
-                f"AND e.confidence_tier IN ({','.join('?' for _ in tier_filter)})"
-                if tier_filter
-                else ""
-            )
-
             visited: Set[str] = set()
-            hub_clause = ""
-            hub_params: Tuple[Any, ...] = ()
-            if hubs:
-                hub_placeholders = ",".join("?" for _ in hubs)
-                hub_clause = f"AND bfs.node_id NOT IN ({hub_placeholders})"
-                hub_params = tuple(hubs)
+            queue = [(resolved, 0)]
 
-            bfs_cte = f"""
-            WITH RECURSIVE bfs(node_id, depth) AS (
-                SELECT ?, 0
-              UNION
-                SELECT
-                    CASE WHEN e.source = bfs.node_id THEN e.target
-                         ELSE e.source END,
-                    bfs.depth + 1
-                FROM bfs
-                JOIN edges e
-                  ON (e.source = bfs.node_id OR e.target = bfs.node_id)
-                WHERE bfs.depth < ?
-                  {hub_clause}
-                  {bfs_rel_clause}
-                  {bfs_tier_clause}
-            )
-            SELECT DISTINCT node_id FROM bfs
-            """
-            bfs_params: Tuple[Any, ...] = (
-                resolved, depth, *hub_params, *relations_filter, *tier_filter
-            )
-            for row in index.conn.execute(bfs_cte, bfs_params):
-                visited.add(row["node_id"])
+            while queue:
+                curr, d = queue.pop(0)
+                if curr in visited:
+                    continue
+                visited.add(curr)
+
+                # Do not expand from hubs (except the resolved target itself)
+                if curr in hubs and curr != resolved:
+                    continue
+
+                if d < depth:
+                    for edge in snapshot.outgoing.get(curr, []):
+                        if relations_filter and edge["relation"] not in relations_filter:
+                            continue
+                        if tier_filter and edge["confidence_tier"] not in tier_filter:
+                            continue
+                        nxt = edge["target"]
+                        if nxt not in visited:
+                            queue.append((nxt, d + 1))
+                    for edge in snapshot.incoming.get(curr, []):
+                        if relations_filter and edge["relation"] not in relations_filter:
+                            continue
+                        if tier_filter and edge["confidence_tier"] not in tier_filter:
+                            continue
+                        nxt = edge["source"]
+                        if nxt not in visited:
+                            queue.append((nxt, d + 1))
 
             hubs_skipped = len(hubs & visited)
-
-            placeholders = ",".join("?" for _ in visited)
             visited_list = list(visited)
 
             node_rows: Dict[str, Dict[str, Any]] = {}
-            for row in index.conn.execute(
-                f"SELECT * FROM nodes WHERE id IN ({placeholders})",
-                visited_list,
-            ):
-                node_rows[row["id"]] = dict(row)
+            for nid in visited_list:
+                if nid in snapshot.node_rows_light:
+                    node_rows[nid] = snapshot.node_rows_light[nid]
+                elif nid in snapshot.files:
+                    node_rows[nid] = snapshot.files[nid]
 
-            edge_rel_clause = (
-                f"AND relation IN ({','.join('?' for _ in relations_filter)})"
-                if relations_filter
-                else ""
-            )
-            edge_tier_clause = (
-                f"AND confidence_tier IN ({','.join('?' for _ in tier_filter)})"
-                if tier_filter
-                else ""
-            )
             selected_edges: Dict[tuple, Dict[str, Any]] = {}
-            for row in index.conn.execute(
-                f"""
-                SELECT * FROM edges
-                WHERE source IN ({placeholders})
-                  AND target IN ({placeholders})
-                  {edge_rel_clause}
-                  {edge_tier_clause}
-                """,
-                visited_list + visited_list + list(relations_filter) + list(tier_filter),
-            ):
-                edge = dict(row)
-                key = (edge["source"], edge["target"], edge["relation"], edge.get("metadata") or "")
-                selected_edges[key] = edge
+            for nid in visited_list:
+                for edge in snapshot.outgoing.get(nid, []):
+                    if edge["target"] in visited:
+                        if relations_filter and edge["relation"] not in relations_filter:
+                            continue
+                        if tier_filter and edge["confidence_tier"] not in tier_filter:
+                            continue
+                        key = (
+                            edge["source"],
+                            edge["target"],
+                            edge["relation"],
+                            edge.get("metadata") or "",
+                        )
+                        selected_edges[key] = edge
 
             total_nodes = len(visited)
             total_edges = len(selected_edges)
@@ -220,9 +203,7 @@ class GraphQueryService:
             conf_note = _confidence_note(confidence_breakdown)
             summary = (
                 f"{total_nodes} nodes, {total_edges} edges within depth {depth} around "
-                f"'{_short_name(resolved, node_rows)}'."
-                + hubs_note
-                + conf_note
+                f"'{_short_name(resolved, node_rows)}'." + hubs_note + conf_note
             )
 
             if detail_level == "minimal":
@@ -286,7 +267,6 @@ class GraphQueryService:
         finally:
             index.close()
 
-
     def shortest_path(
         self,
         source: str,
@@ -303,70 +283,84 @@ class GraphQueryService:
         if tier_filter:
             unknown = set(tier_filter) - VALID_CONFIDENCE_TIERS
             if unknown:
-                raise ValueError(f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}")
+                raise ValueError(
+                    f"Unknown confidence_tiers: {sorted(unknown)}. Valid: {sorted(VALID_CONFIDENCE_TIERS)}"
+                )
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = metadata["root_dir"]
 
+            from csegraph._core.retrieval.cache import CACHE
+
+            snapshot = CACHE.get_snapshot(index)
+
             src = _resolve_graph_node(index, source, repo_root)
             dst = _resolve_graph_node(index, target, repo_root)
 
-            _, hubs = _cached_hub_info(self.db_path, index, relations_filter)
+            _, hubs = _cached_hub_info(self.db_path, index, snapshot.data_version, relations_filter)
+            hubs = set(hubs)
             hubs.discard(src)
             hubs.discard(dst)
 
-            rel_filter = (
-                f"AND e.relation IN ({','.join('?' for _ in relations_filter)})"
-                if relations_filter
-                else ""
-            )
-            tier_clause = (
-                f"AND e.confidence_tier IN ({','.join('?' for _ in tier_filter)})"
-                if tier_filter
-                else ""
-            )
-            hub_filter = ""
-            hub_params: Tuple[Any, ...] = ()
-            if hubs:
-                hub_placeholders = ",".join("?" for _ in hubs)
-                hub_filter = f"AND bfs.node_id NOT IN ({hub_placeholders})"
-                hub_params = tuple(hubs)
-
-            path_cte = f"""
-            WITH RECURSIVE bfs(node_id, depth, parent, relation, tier) AS (
-                SELECT ?, 0, NULL, NULL, NULL
-              UNION
-                SELECT
-                    CASE WHEN e.source = bfs.node_id THEN e.target
-                         ELSE e.source END,
-                    bfs.depth + 1,
-                    bfs.node_id,
-                    e.relation,
-                    COALESCE(e.confidence_tier, 'EXTRACTED')
-                FROM bfs
-                JOIN edges e
-                  ON (e.source = bfs.node_id OR e.target = bfs.node_id)
-                WHERE bfs.depth < ?
-                  {hub_filter}
-                  {rel_filter}
-                  {tier_clause}
-            )
-            SELECT node_id, depth, parent, relation, tier FROM bfs
-            """
-            cte_params: Tuple[Any, ...] = (
-                src, max_depth, *hub_params, *(relations_filter or []), *tier_filter
-            )
-
-            # Execute CTE and build parent map for path reconstruction.
             parent_map: Dict[str, Tuple[str, str, str]] = {}
-            for row in index.conn.execute(path_cte, cte_params):
-                nid = row["node_id"]
-                if nid not in parent_map and row["parent"] is not None:
-                    parent_map[nid] = (row["parent"], row["relation"], row["tier"])
-                if nid == dst:
+            visited: Set[str] = set()
+            queue: List[Tuple[str, int, Optional[str], Optional[str], Optional[str]]] = [
+                (src, 0, None, None, None)
+            ]
+
+            while queue:
+                curr, d, p_node, p_rel, p_tier = queue.pop(0)
+                if curr in visited:
+                    continue
+                visited.add(curr)
+                if curr not in parent_map and p_node is not None:
+                    assert p_rel is not None
+                    assert p_tier is not None
+                    parent_map[curr] = (p_node, p_rel, p_tier)
+
+                if curr == dst:
                     break
+
+                # Do not expand from hubs (except src or dst)
+                if curr in hubs and curr != src and curr != dst:
+                    continue
+
+                if d < max_depth:
+                    for edge in snapshot.outgoing.get(curr, []):
+                        if relations_filter and edge["relation"] not in relations_filter:
+                            continue
+                        if tier_filter and edge["confidence_tier"] not in tier_filter:
+                            continue
+                        nxt = edge["target"]
+                        if nxt not in visited:
+                            queue.append(
+                                (
+                                    nxt,
+                                    d + 1,
+                                    curr,
+                                    edge["relation"],
+                                    edge.get("confidence_tier", "EXTRACTED"),
+                                )
+                            )
+
+                    for edge in snapshot.incoming.get(curr, []):
+                        if relations_filter and edge["relation"] not in relations_filter:
+                            continue
+                        if tier_filter and edge["confidence_tier"] not in tier_filter:
+                            continue
+                        nxt = edge["source"]
+                        if nxt not in visited:
+                            queue.append(
+                                (
+                                    nxt,
+                                    d + 1,
+                                    curr,
+                                    edge["relation"],
+                                    edge.get("confidence_tier", "EXTRACTED"),
+                                )
+                            )
 
             if dst not in parent_map and dst != src:
                 summary = f"No path: '{source}' ↛ '{target}'."
@@ -389,7 +383,7 @@ class GraphQueryService:
             path_edges: List[PathEdge] = []
             confidence_counts: Dict[str, int] = {}
             visited_trace: Set[str] = set()
-            node = dst
+            node: Optional[str] = dst
             while node is not None:
                 if node in visited_trace:
                     break
@@ -406,13 +400,12 @@ class GraphQueryService:
             path_ids.reverse()
             path_edges.reverse()
 
-            placeholders = ",".join("?" for _ in path_ids)
             node_rows: Dict[str, Dict[str, Any]] = {}
-            for row in index.conn.execute(
-                f"SELECT * FROM nodes WHERE id IN ({placeholders})",
-                path_ids,
-            ):
-                node_rows[row["id"]] = dict(row)
+            for nid in path_ids:
+                if nid in snapshot.node_rows_light:
+                    node_rows[nid] = snapshot.node_rows_light[nid]
+                elif nid in snapshot.files:
+                    node_rows[nid] = snapshot.files[nid]
 
             name_chain = " → ".join(_short_name(nid, node_rows) for nid in path_ids)
             summary = f"{name_chain} ({len(path_edges)} hops)"
@@ -542,16 +535,12 @@ def _resolve_graph_node(
     node: str,
     repo_root: str = "",
 ) -> str:
-    row = index.conn.execute(
-        "SELECT id FROM nodes WHERE id = ?", (node,)
-    ).fetchone()
+    row = index.conn.execute("SELECT id FROM nodes WHERE id = ?", (node,)).fetchone()
     if row:
         return row["id"]
 
     if node == ".":
-        repo_row = index.conn.execute(
-            "SELECT id FROM nodes WHERE type = 'repo' LIMIT 1"
-        ).fetchone()
+        repo_row = index.conn.execute("SELECT id FROM nodes WHERE type = 'repo' LIMIT 1").fetchone()
         if repo_row:
             return repo_row["id"]
 
@@ -564,9 +553,7 @@ def _resolve_graph_node(
 
     repo_basename = Path(repo_root).name if repo_root else ""
     if repo_basename and node == repo_basename:
-        repo_row = index.conn.execute(
-            "SELECT id FROM nodes WHERE type = 'repo' LIMIT 1"
-        ).fetchone()
+        repo_row = index.conn.execute("SELECT id FROM nodes WHERE type = 'repo' LIMIT 1").fetchone()
         if repo_row:
             return repo_row["id"]
 

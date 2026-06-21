@@ -1,7 +1,5 @@
 import subprocess
 
-import pytest
-
 from csegraph._core.ignore import IgnoreFilter, load_ignore_filter
 
 

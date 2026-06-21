@@ -34,7 +34,10 @@ def test_large_index_verdict():
         {"files": 600, "symbols": 9000, "edges": 10000, "approx_loc": 50000}
     )
     assert health.verdict == "large"
-    assert "target" in " ".join(health.hints).lower() or "detail_level" in " ".join(health.hints).lower()
+    assert (
+        "target" in " ".join(health.hints).lower()
+        or "detail_level" in " ".join(health.hints).lower()
+    )
 
 
 def test_stale_index_verdict():

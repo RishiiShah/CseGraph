@@ -9,7 +9,6 @@ from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.languages.base import sha256_text
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 
-
 POSTPROCESS_LEVELS = ("none", "minimal", "full")
 
 
@@ -35,10 +34,8 @@ class PostprocessService:
             try:
                 try:
                     meta = index.metadata(raise_if_empty=True)
-                except ValueError:
-                    raise ValueError(
-                        "No csegraph index found. Run csegraph index first."
-                    )
+                except ValueError as exc:
+                    raise ValueError("No csegraph index found. Run csegraph index first.") from exc
                 return PostprocessResult(
                     command="postprocess",
                     db_path=self.db_path,
@@ -55,10 +52,8 @@ class PostprocessService:
         try:
             try:
                 meta = index.metadata(raise_if_empty=True)
-            except ValueError:
-                raise ValueError(
-                    "No csegraph index found. Run csegraph index first."
-                )
+            except ValueError as exc:
+                raise ValueError("No csegraph index found. Run csegraph index first.") from exc
             repo_root = meta["root_dir"]
 
             timings: Dict[str, float] = {}
@@ -84,6 +79,7 @@ class PostprocessService:
             else:
                 start = time.perf_counter()
                 from csegraph._core.graph.resolvers import ResolverService
+
                 resolver_result = ResolverService(self.db_path).run_all()
                 resolvers_edges_added = resolver_result.total_edges_added
                 timings["resolvers_ms"] = _elapsed_ms(start)
@@ -93,6 +89,7 @@ class PostprocessService:
             else:
                 start = time.perf_counter()
                 from csegraph._core.graph.communities import detect_communities
+
                 result = detect_communities(self.db_path)
                 communities_detected = result.num_communities
                 modularity = result.modularity
@@ -138,20 +135,25 @@ def _rebuild_fts(index: ProjectIndex, repo_root: str) -> int:
         source = ""
         if row["type"] != "file" and row["start_line"] and row["end_line"]:
             source = _read_source_slice(
-                repo_root, row["path"], row["language"],
-                row["start_line"], row["end_line"],
+                repo_root,
+                row["path"],
+                row["language"],
+                row["start_line"],
+                row["end_line"],
                 row["indexed_file_hash"],
             )
 
-        batch.append((
-            row["id"],
-            row["name"],
-            row["path"],
-            row["signature"] or "",
-            row["docstring"] or "",
-            row["summary"],
-            source,
-        ))
+        batch.append(
+            (
+                row["id"],
+                row["name"],
+                row["path"],
+                row["signature"] or "",
+                row["docstring"] or "",
+                row["summary"],
+                source,
+            )
+        )
 
     if batch:
         index.conn.executemany(

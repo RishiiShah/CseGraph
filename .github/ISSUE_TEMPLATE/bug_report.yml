@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a reproducible CseGraph failure or incorrect result.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve CseGraph. Please do not include private code, `.csegraph/` databases, local registry files, logs, or generated artifacts unless they are essential to a minimal reproduction.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      description: Where did you see the problem?
+      options:
+        - CLI
+        - MCP server
+        - Python SDK/facade
+        - VS Code extension
+        - Indexing/parsing
+        - Retrieval/context quality
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest command sequence, repository shape, or file snippet that shows the issue.
+      placeholder: |
+        1. Run `csegraph index .`
+        2. Run `csegraph context "..."`
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or error text
+      description: Paste the relevant command output, traceback, or VS Code extension output.
+      render: shell
+  - type: input
+    id: csegraph-version
+    attributes:
+      label: CseGraph version
+      description: Output of `csegraph --version`, package version, or extension version.
+      placeholder: "csegraph 1.x.x"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Python version, Node/npm version for extension issues, and operating system.
+      placeholder: "Python 3.12 on macOS 15; Node 24/npm 11 for extension issues"
+    validations:
+      required: true
+  - type: dropdown
+    id: index-state
+    attributes:
+      label: Existing index state
+      description: Did the repository already have a `.csegraph/index.db` before the failing command?
+      options:
+        - "No, this was a fresh index"
+        - "Yes, I refreshed an existing index"
+        - "Not sure"
+        - "Not applicable"
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mention language/framework, repository size, retrieval profile, MCP client, or extension settings if relevant.

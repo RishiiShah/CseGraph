@@ -70,9 +70,7 @@ class TestResolverService:
     def test_total_edges_added_is_sum(self, tmp_path):
         db = _index_repo(tmp_path, _PYTHON_FILES)
         result = ResolverService(db).run_all()
-        assert result.total_edges_added == sum(
-            s.edges_added for s in result.resolvers_run
-        )
+        assert result.total_edges_added == sum(s.edges_added for s in result.resolvers_run)
 
 
 class TestTransitiveTestEdges:
@@ -131,12 +129,14 @@ class TestTsAliasResolver:
 
     def test_with_tsconfig_aliases(self, tmp_path):
         files = {
-            "tsconfig.json": json.dumps({
-                "compilerOptions": {
-                    "baseUrl": ".",
-                    "paths": {"@app/*": ["src/*"]},
+            "tsconfig.json": json.dumps(
+                {
+                    "compilerOptions": {
+                        "baseUrl": ".",
+                        "paths": {"@app/*": ["src/*"]},
+                    }
                 }
-            }),
+            ),
             "src/utils.ts": "export function greet() { return 'hi'; }\n",
             "src/main.ts": "import { greet } from '@app/utils';\nconsole.log(greet());\n",
         }

@@ -1,5 +1,11 @@
 # csegraph
 
+[![CI](https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml/badge.svg)](https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/csegraph.svg)](https://pypi.org/project/csegraph/)
+[![Python](https://img.shields.io/pypi/pyversions/csegraph.svg)](https://pypi.org/project/csegraph/)
+[![License](https://img.shields.io/pypi/l/csegraph.svg)](LICENSE)
+[![VS Code installs](https://img.shields.io/visual-studio-marketplace/i/rishiishah.csegraph-vscode?label=VS%20Code%20installs)](https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode)
+
 CseGraph is a **context engine for coding agents**. Its only job is to hand an agent the accurate, minimal slice of code context needed to make a correct retrieval or edit, so the agent spends fewer tokens and skips tool calls it would otherwise make (broad grep, full-file read, repeated lookups).
 
 It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits.
@@ -18,6 +24,14 @@ Use csegraph when you want an agent to see the target code, direct dependencies,
 pip install csegraph
 ```
 
+The base package includes Python, JavaScript, and TypeScript grammars. Install
+extra grammars only when you need them:
+
+```bash
+pip install "csegraph[go,rust]"
+pip install "csegraph[all]"
+```
+
 Then run `csegraph --help` to confirm the CLI is on your PATH.
 
 ## Five Minute Quickstart
@@ -33,6 +47,14 @@ should not be committed.
 
 For VS Code extension install and setup, see
 [csegraph-vscode/README.md](csegraph-vscode/README.md).
+
+## Benchmarks & Performance
+
+The native MCP cross-repo benchmarking suite (`tools/cross_repo_benchmark.py`)
+evaluates CseGraph against 10 major open-source repositories, generating 100
+unique architectural queries per repository through the same stdio JSON-RPC path
+used by coding agents. Current `auto`, `small`, `medium`, and `large` profile
+results are recorded in the [Agent Context Benchmarks](docs/benchmarks.md).
 
 ## Package Layout
 
@@ -52,7 +74,14 @@ env/bin/pip install -e .
 For local development and test runs, install the test extra:
 
 ```bash
-env/bin/python -m pip install -e ".[test]"
+env/bin/python -m pip install -e ".[test,all]"
+```
+
+For benchmark reports with OpenAI proxy token counts, include the benchmark
+extra:
+
+```bash
+env/bin/python -m pip install -e ".[benchmark,test,all]"
 ```
 
 `requirements.txt` contains the product-only editable install.

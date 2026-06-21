@@ -1,9 +1,15 @@
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
 
 import pytest
+
 from csegraph import (
+    AsyncContextService,
+    AsyncGraphQueryService,
+    AsyncIndexService,
+    AsyncRefreshService,
     ContextService,
     GraphQueryService,
     IndexService,
@@ -11,7 +17,10 @@ from csegraph import (
 )
 from csegraph._core.benchmark import BenchmarkService
 from csegraph._core.core.errors import UnsupportedSchemaError
+from csegraph._core.index import services as index_services
 from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.index.schema import SCHEMA_VERSION
+from csegraph._core.languages.registry import LanguageRegistry
 from csegraph._core.retrieval.constants import VALID_REASONS
 
 
@@ -74,22 +83,29 @@ def test_project_index_schema_is_idempotent(tmp_path):
     assert "embedding_cache" in tables
     assert "retrieval_runs" in tables
     assert "retrieval_context" in tables
-    assert "files" not in tables
-    assert "symbols" not in tables
+    assert "files" in tables
+    assert "symbols" in tables
+    assert "relationships" in tables
+    assert "imports" in tables
+    assert "symbol_references" in tables
 
     with sqlite3.connect(db_path) as conn:
-        version = conn.execute(
-            "SELECT value FROM metadata WHERE key='schema_version'"
-        ).fetchone()
+        version = conn.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
         node_columns = {row[1] for row in conn.execute("PRAGMA table_info(nodes)")}
         edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
+        file_columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+        symbol_columns = {row[1] for row in conn.execute("PRAGMA table_info(symbols)")}
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(retrieval_runs)")}
 
-    assert version[0] == "csegraph-sqlite-v5"
-    assert user_version == 5
+    assert version[0] == SCHEMA_VERSION
+    assert user_version == 7
     assert "project_id" not in node_columns
-    assert {"source", "target", "relation", "metadata", "confidence", "confidence_tier"}.issubset(edge_columns)
+    assert {"source", "target", "relation", "metadata", "confidence", "confidence_tier"}.issubset(
+        edge_columns
+    )
+    assert {"id", "path", "language", "sha256", "parse_status"}.issubset(file_columns)
+    assert {"id", "file_id", "kind", "name", "start_line", "end_line"}.issubset(symbol_columns)
     assert "source_node_id" not in edge_columns
     assert "target_node_id" not in edge_columns
     assert {"query", "target", "sufficient"}.issubset(run_columns)
@@ -111,6 +127,67 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     assert index_result.cache_hits == 0
     assert index_result.cache_misses == 2
     assert index_result.profile == "small"
+
+    with sqlite3.connect(db_path) as conn:
+        import_rows = conn.execute(
+            """
+            SELECT import_name, resolved_file_id, start_line, end_line, source
+            FROM imports
+            ORDER BY path, start_line
+            """
+        ).fetchall()
+        relationship_rows = conn.execute(
+            """
+            SELECT source, target, kind, metadata
+            FROM relationships
+            ORDER BY source, target, kind
+            """
+        ).fetchall()
+        reference_rows = conn.execute(
+            """
+            SELECT enclosing_symbol_id, target, kind, name, start_line, end_line, source
+            FROM symbol_references
+            ORDER BY enclosing_symbol_id, target, kind
+            """
+        ).fetchall()
+
+    assert import_rows == [
+        (
+            "utils",
+            "file::utils.py",
+            1,
+            1,
+            "from utils import format_user",
+        )
+    ]
+    relationship_shapes = {
+        (source, kind, target) for source, target, kind, _metadata in relationship_rows
+    }
+    assert (
+        "file::main.py",
+        "imports",
+        "file::utils.py",
+    ) in relationship_shapes
+    assert (
+        "symbol::main.py::function::build_report",
+        "calls",
+        "symbol::utils.py::function::format_user",
+    ) in relationship_shapes
+    import_metadata = [
+        json.loads(metadata)
+        for source, target, kind, metadata in relationship_rows
+        if source == "file::main.py" and target == "file::utils.py" and kind == "imports"
+    ][0]
+    assert import_metadata["source"] == "from utils import format_user"
+    assert (
+        "symbol::main.py::function::build_report",
+        "symbol::utils.py::function::format_user",
+        "calls",
+        "format_user",
+        5,
+        5,
+        "format_user(name)",
+    ) in reference_rows
 
     context = ContextService(db_path).build_context(
         task="Implement build_report using format_user",
@@ -176,6 +253,144 @@ def test_index_context_graph_and_incremental_refresh(tmp_path):
     assert refreshed_context.target == "symbol::utils.py::function::format_title"
 
 
+def test_index_resolves_aliased_import_call_references(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "utils.py").write_text(
+        "\n".join(
+            [
+                "def format_user(name: str) -> str:",
+                "    return name",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (repo / "main.py").write_text(
+        "\n".join(
+            [
+                "from utils import format_user as fmt",
+                "",
+                "def build_report(name: str) -> str:",
+                "    return fmt(name)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    db_path = _scratch_path(repo, "alias.csegraph.db")
+
+    IndexService(db_path).index(repo, profile="small")
+
+    with sqlite3.connect(db_path) as conn:
+        reference_rows = conn.execute(
+            """
+            SELECT target, kind, name, start_line, end_line, source
+            FROM symbol_references
+            ORDER BY target, kind, name
+            """
+        ).fetchall()
+
+    assert (
+        "symbol::utils.py::function::format_user",
+        "calls",
+        "fmt",
+        4,
+        4,
+        "fmt(name)",
+    ) in reference_rows
+
+
+def test_index_warns_when_optional_language_grammar_is_missing(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "main.go").write_text("package main\n\nfunc main() {}\n", encoding="utf-8")
+    db_path = _scratch_path(repo, "missing-grammar.db")
+
+    monkeypatch.setattr(index_services, "registry", LanguageRegistry())
+    monkeypatch.setattr(
+        index_services,
+        "is_language_available",
+        lambda name: name != "go",
+    )
+
+    result = IndexService(db_path).index(repo, profile="small")
+
+    assert result.files_indexed == 0
+    assert result.warnings == [
+        "Skipped 1 go file because its tree-sitter grammar is not installed. "
+        "Install `csegraph[go]` or `csegraph[all]` to index them."
+    ]
+
+
+def test_async_sdk_services(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = _scratch_path(repo, "async.csegraph.db")
+    _write_sample_repo(repo)
+
+    async def run_scenario():
+        index_result = await AsyncIndexService(db_path).index(repo, profile="small")
+        assert index_result.files_indexed == 2
+
+        context = await AsyncContextService(db_path).build_context(
+            task="Implement build_report using format_user",
+            target="symbol::main.py::function::build_report",
+            profile="small",
+        )
+        context_ids = {node.id for node in context.nodes}
+        assert "symbol::main.py::function::build_report" in context_ids
+        assert "symbol::utils.py::function::format_user" in context_ids
+
+        graph_service = AsyncGraphQueryService(db_path)
+        graph = await graph_service.neighborhood(
+            "symbol::main.py::function::build_report",
+            depth=1,
+            detail_level="standard",
+        )
+        assert graph.nodes
+
+        path = await graph_service.shortest_path("build_report", "format_user")
+        assert path.found is True
+
+        refresh = await AsyncRefreshService(db_path).refresh(profile="small")
+        assert refresh.files_indexed == 0
+
+    asyncio.run(run_scenario())
+
+
+def test_index_include_roots_limit_monorepo_subtrees(tmp_path):
+    repo = tmp_path / "repo"
+    api = repo / "apps" / "api"
+    web = repo / "apps" / "web"
+    api.mkdir(parents=True)
+    web.mkdir(parents=True)
+    (api / "service.py").write_text("def api_handler():\n    return 'api'\n", encoding="utf-8")
+    (web / "view.py").write_text("def web_view():\n    return 'web'\n", encoding="utf-8")
+    db_path = _scratch_path(repo, "monorepo.db")
+
+    indexed = IndexService(db_path).index(repo, profile="small", include_roots=["apps/api"])
+
+    assert indexed.files_indexed == 1
+    assert indexed.changed_files == ["apps/api/service.py"]
+
+    with sqlite3.connect(db_path) as conn:
+        paths = {row[0] for row in conn.execute("SELECT path FROM nodes WHERE type = 'file'")}
+        include_roots = conn.execute(
+            "SELECT value FROM metadata WHERE key = 'include_roots'"
+        ).fetchone()[0]
+
+    assert paths == {"apps/api/service.py"}
+    assert json.loads(include_roots) == ["apps/api"]
+
+    (api / "service.py").write_text("def api_handler():\n    return 'api v2'\n", encoding="utf-8")
+    (web / "view.py").write_text("def web_view():\n    return 'web v2'\n", encoding="utf-8")
+
+    refreshed = RefreshService(db_path).refresh(profile="small")
+
+    assert refreshed.changed_files == ["apps/api/service.py"]
+    assert "apps/web/view.py" not in refreshed.changed_files
+
+
 def test_benchmark_service_runs_core_pipeline(tmp_path):
     repo = tmp_path / "repo"
     db_path = _scratch_path(repo, "repo.csegraph.db")
@@ -200,7 +415,14 @@ def test_benchmark_service_runs_core_pipeline(tmp_path):
     assert result.db_path == str(db_path)
     assert result.graph_output_path == str(graph_output_path)
     assert result.total_elapsed_ms >= 0
-    assert [step.name for step in result.steps] == ["index", "refresh", "context", "graph", "report", "token_reduction"]
+    assert [step.name for step in result.steps] == [
+        "index",
+        "refresh",
+        "context",
+        "graph",
+        "report",
+        "token_reduction",
+    ]
     assert result.steps[0].stats["files"] == 2
     assert list(result.steps[0].stats["phases"]) == [
         "discover_parse",
@@ -399,7 +621,7 @@ def test_unsupported_schema_version_raises_structured_error(tmp_path):
         idx.close()
 
     assert exc_info.value.error_code == "unsupported_schema"
-    assert exc_info.value.hint == "Rebuild the index with the current csegraph version."
+    assert "csegraph index" in (exc_info.value.hint or "")
 
 
 def test_malformed_schema_metadata_raises_structured_error(tmp_path):

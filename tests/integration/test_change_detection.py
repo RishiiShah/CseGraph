@@ -1,11 +1,10 @@
 """Tests for change detection service."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.graph.change_detection import (
@@ -41,15 +40,17 @@ def _index_repo(tmp_path: Path, repo: Path) -> str:
 
 class TestDiffParser:
     def test_modified_file(self):
-        diff = "\n".join([
-            "diff --git a/foo.py b/foo.py",
-            "index abc1234..def5678 100644",
-            "--- a/foo.py",
-            "+++ b/foo.py",
-            "@@ -3,2 +3,4 @@ def foo():",
-            "+    new_line_1",
-            "+    new_line_2",
-        ])
+        diff = "\n".join(
+            [
+                "diff --git a/foo.py b/foo.py",
+                "index abc1234..def5678 100644",
+                "--- a/foo.py",
+                "+++ b/foo.py",
+                "@@ -3,2 +3,4 @@ def foo():",
+                "+    new_line_1",
+                "+    new_line_2",
+            ]
+        )
         regions = _parse_diff(diff)
         assert len(regions) == 1
         assert regions[0].path == "foo.py"
@@ -58,62 +59,70 @@ class TestDiffParser:
         assert not regions[0].is_deleted_file
 
     def test_new_file(self):
-        diff = "\n".join([
-            "diff --git a/new.py b/new.py",
-            "new file mode 100644",
-            "index 0000000..abc1234",
-            "--- /dev/null",
-            "+++ b/new.py",
-            "@@ -0,0 +1,5 @@",
-            "+line1",
-        ])
+        diff = "\n".join(
+            [
+                "diff --git a/new.py b/new.py",
+                "new file mode 100644",
+                "index 0000000..abc1234",
+                "--- /dev/null",
+                "+++ b/new.py",
+                "@@ -0,0 +1,5 @@",
+                "+line1",
+            ]
+        )
         regions = _parse_diff(diff)
         assert len(regions) == 1
         assert regions[0].is_new_file
         assert regions[0].changed_lines == [(1, 5)]
 
     def test_deleted_file(self):
-        diff = "\n".join([
-            "diff --git a/old.py b/old.py",
-            "deleted file mode 100644",
-            "index abc1234..0000000",
-            "--- a/old.py",
-            "+++ /dev/null",
-            "@@ -1,3 +0,0 @@",
-            "-line1",
-        ])
+        diff = "\n".join(
+            [
+                "diff --git a/old.py b/old.py",
+                "deleted file mode 100644",
+                "index abc1234..0000000",
+                "--- a/old.py",
+                "+++ /dev/null",
+                "@@ -1,3 +0,0 @@",
+                "-line1",
+            ]
+        )
         regions = _parse_diff(diff)
         assert len(regions) == 1
         assert regions[0].is_deleted_file
         assert regions[0].changed_lines == []
 
     def test_multiple_hunks(self):
-        diff = "\n".join([
-            "diff --git a/foo.py b/foo.py",
-            "--- a/foo.py",
-            "+++ b/foo.py",
-            "@@ -3 +3 @@",
-            "+changed",
-            "@@ -10,2 +10,3 @@",
-            "+added",
-        ])
+        diff = "\n".join(
+            [
+                "diff --git a/foo.py b/foo.py",
+                "--- a/foo.py",
+                "+++ b/foo.py",
+                "@@ -3 +3 @@",
+                "+changed",
+                "@@ -10,2 +10,3 @@",
+                "+added",
+            ]
+        )
         regions = _parse_diff(diff)
         assert len(regions) == 1
         assert regions[0].changed_lines == [(3, 3), (10, 12)]
 
     def test_multiple_files(self):
-        diff = "\n".join([
-            "diff --git a/a.py b/a.py",
-            "--- a/a.py",
-            "+++ b/a.py",
-            "@@ -1 +1 @@",
-            "+x",
-            "diff --git a/b.py b/b.py",
-            "--- a/b.py",
-            "+++ b/b.py",
-            "@@ -5,3 +5,4 @@",
-            "+y",
-        ])
+        diff = "\n".join(
+            [
+                "diff --git a/a.py b/a.py",
+                "--- a/a.py",
+                "+++ b/a.py",
+                "@@ -1 +1 @@",
+                "+x",
+                "diff --git a/b.py b/b.py",
+                "--- a/b.py",
+                "+++ b/b.py",
+                "@@ -5,3 +5,4 @@",
+                "+y",
+            ]
+        )
         regions = _parse_diff(diff)
         assert len(regions) == 2
         assert regions[0].path == "a.py"
@@ -123,13 +132,15 @@ class TestDiffParser:
         assert _parse_diff("") == []
 
     def test_subdirectory_path(self):
-        diff = "\n".join([
-            "diff --git a/src/lib/utils.py b/src/lib/utils.py",
-            "--- a/src/lib/utils.py",
-            "+++ b/src/lib/utils.py",
-            "@@ -1,2 +1,3 @@",
-            "+new",
-        ])
+        diff = "\n".join(
+            [
+                "diff --git a/src/lib/utils.py b/src/lib/utils.py",
+                "--- a/src/lib/utils.py",
+                "+++ b/src/lib/utils.py",
+                "@@ -1,2 +1,3 @@",
+                "+new",
+            ]
+        )
         regions = _parse_diff(diff)
         assert len(regions) == 1
         assert regions[0].path == "src/lib/utils.py"

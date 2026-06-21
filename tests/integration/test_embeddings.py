@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import struct
 from pathlib import Path
 from typing import List
 
@@ -93,6 +92,7 @@ class TestEmbeddingCompute:
         svc.compute()
 
         from csegraph._core.index.repository import ProjectIndex
+
         index = ProjectIndex(db)
         try:
             index.initialize_schema()
@@ -113,6 +113,7 @@ class TestEmbeddingCompute:
         svc2.compute()
 
         from csegraph._core.index.repository import ProjectIndex
+
         index = ProjectIndex(db)
         try:
             index.initialize_schema()
@@ -225,7 +226,7 @@ class TestVectorHelpers:
         vec = [0.1, 0.2, 0.3, 0.4]
         blob = _vector_to_blob(vec)
         recovered = _blob_to_vector(blob)
-        for a, b in zip(vec, recovered):
+        for a, b in zip(vec, recovered, strict=True):
             assert abs(a - b) < 1e-6
 
     def test_cosine_identical(self):

@@ -29,8 +29,8 @@ class LanguageRegistry:
     def for_extension(self, ext: str) -> Parser:
         try:
             return self._ext_to_parser[ext]
-        except KeyError:
-            raise UnsupportedLanguageError(f"No parser registered for extension {ext!r}")
+        except KeyError as exc:
+            raise UnsupportedLanguageError(f"No parser registered for extension {ext!r}") from exc
 
     def iter_files(
         self,
@@ -61,8 +61,10 @@ class LanguageRegistry:
     def tokenizer_for(self, language: str) -> Tokenizer:
         try:
             return self._tokenizers[language]
-        except KeyError:
-            raise UnsupportedLanguageError(f"No tokenizer registered for language {language!r}")
+        except KeyError as exc:
+            raise UnsupportedLanguageError(
+                f"No tokenizer registered for language {language!r}"
+            ) from exc
 
 
 registry = LanguageRegistry()

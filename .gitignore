@@ -48,6 +48,8 @@ data/
 # CseGraph runtime artifacts
 .csegraph/
 .scratch/
+benchmark_results/
+sandbox/
 ref/
 
 # Unpacked wheel trees can shadow imports if left in the repo root

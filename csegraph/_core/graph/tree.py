@@ -1,4 +1,5 @@
 """Self-contained HTML file tree visualization from the SQLite index."""
+
 from __future__ import annotations
 
 import html
@@ -50,25 +51,35 @@ def _build_tree_nodes(all_nodes: Dict[str, Dict[str, Any]]) -> List[Dict[str, An
     for node_id, row in sorted(all_nodes.items()):
         start = row.get("start_line")
         end = row.get("end_line")
-        result.append({
-            "id": node_id,
-            "name": row.get("name", ""),
-            "kind": row.get("type") or row.get("kind", ""),
-            "path": row.get("path") or "",
-            "parent_id": row.get("parent_id"),
-            "language": row.get("language") or "",
-            "signature": row.get("signature") or "",
-            "line_range": [int(start), int(end)] if start is not None and end is not None else None,
-        })
+        result.append(
+            {
+                "id": node_id,
+                "name": row.get("name", ""),
+                "kind": row.get("type") or row.get("kind", ""),
+                "path": row.get("path") or "",
+                "parent_id": row.get("parent_id"),
+                "language": row.get("language") or "",
+                "signature": row.get("signature") or "",
+                "line_range": [int(start), int(end)]
+                if start is not None and end is not None
+                else None,
+            }
+        )
     return result
 
 
 def _render_tree_html(repo_root: str, nodes: List[Dict[str, Any]]) -> str:
-    return _load_template("tree.html").replace(
-        "__CSEGRAPH_REPO_NAME__",
-        html.escape(Path(repo_root).name),
-    ).replace("__CSEGRAPH_DATA_JSON__", json.dumps(nodes, separators=(",", ":")))
+    return (
+        _load_template("tree.html")
+        .replace(
+            "__CSEGRAPH_REPO_NAME__",
+            html.escape(Path(repo_root).name),
+        )
+        .replace("__CSEGRAPH_DATA_JSON__", json.dumps(nodes, separators=(",", ":")))
+    )
 
 
 def _load_template(name: str) -> str:
-    return resources.files("csegraph._core.graph.templates").joinpath(name).read_text(encoding="utf-8")
+    return (
+        resources.files("csegraph._core.graph.templates").joinpath(name).read_text(encoding="utf-8")
+    )

@@ -14,6 +14,23 @@ CseGraph is local-first and does not execute indexed code. The Python
 distribution is one package, `csegraph`; implementation modules are private
 under `csegraph._core` and `csegraph._cli`.
 
+## Product Boundary
+
+CseGraph's core job is to give coding agents the smallest accurate task context
+needed for a retrieval, review, or edit. New features should preserve that job:
+
+- Prefer features that improve indexing, refresh, retrieval quality, context
+  sufficiency, response size, or agent/editor ergonomics around the context loop.
+- Keep the MCP surface limited to the six-tool context loop: index, refresh,
+  minimal, context, graph, and path.
+- Keep broad diagnostics, experiments, review intelligence, benchmark tools,
+  security scans, and embedding experiments behind repo-local maintainer tooling
+  unless they directly route users back to `context` or `inspect`.
+- Do not turn the public product into a general static analyzer, security
+  scanner, observability platform, or project-management dashboard.
+- When adding a public command, classify it as core context, support, or a
+  narrow diagnostic bridge, and update the product-boundary tests deliberately.
+
 ## Main Modules
 
 | Module | Responsibility |
@@ -41,7 +58,8 @@ half-baked code polluting retrieval.
 - `.csegraphignore` excludes paths from the `git ls-files` candidate set.
 - Force-added index entries (`git add -f`) remain candidates even when they match
   `.gitignore`.
-- Without git, SVN working copies use `svn list -R` (versioned paths only).
+- Without git, SVN working copies use `svn list -R` as a backup discovery path
+  (versioned paths only).
 - With neither git nor SVN, discovery falls back to a bounded directory walk honoring
   `.gitignore` and `.csegraphignore`.
 - parser-specific excluded directories are applied after parser selection, so
@@ -70,19 +88,23 @@ Postprocess levels:
 
 ## SQLite Schema
 
-Schema version: `csegraph-sqlite-v5` (`PRAGMA user_version = 5`).
+Schema version: `csegraph-sqlite-v6` (`PRAGMA user_version = 6`).
 
-There is no schema migrator. Opening an index whose `metadata.schema_version`
-differs from the current version, or that has CseGraph tables without a
-recognized version, raises `UnsupportedSchemaError`. Rebuild with
-`csegraph index` (or delete `.csegraph/index.db` first). Older layouts such as
-`schema_meta` / `csegraph-sqlite-v1` are unsupported.
+CseGraph is still beta, so v6 is a breaking reset. Older SQLite indexes are not
+migrated on ordinary access; readers fail fast with `UnsupportedSchemaError` and
+an instruction to rerun `csegraph index <repo>`. The indexing path may reset an
+old beta database before rebuilding it from source.
 
 Core tables:
 
 - `metadata`
 - `nodes`
 - `edges`
+- `files`
+- `symbols`
+- `relationships`
+- `imports`
+- `symbol_references`
 - `summaries`
 - `lexical_index` (FTS5)
 - `embedding_cache`
@@ -102,11 +124,15 @@ do not parse IDs in callers.
 2. Retrieve lexical candidates using FTS5 plus exact-name and path boosts.
 3. Add target boost when a target resolves.
 4. Expand through graph relations with weighted BFS.
-5. Select the target, high-signal direct calls/dependencies, and highest-score
-   remaining nodes within an adaptive profile budget.
+5. Select a symbol neighborhood: target symbols, direct callees, direct
+   callers, same-file relevant symbols, imported-file symbols, then lexical or
+   semantic fill within the profile budget.
 6. Compute sufficiency metrics.
-7. Materialize source depending on detail level and `include_source`.
-8. Enforce token budget.
+7. Package selected `symbols`, relationship directions, and import-only
+   preludes. File nodes stay metadata-only and never emit whole-file source.
+8. Materialize source slices for selected symbols depending on detail level and
+   `include_source`.
+9. Enforce token and byte budgets.
 
 Retrieval outputs keep `path` fields repo-relative and include `repo_root` once
 at the response root. Callers should combine those values when absolute paths
@@ -114,9 +140,9 @@ are required.
 
 Detail levels:
 
-- `minimal`: compact routing card.
-- `standard`: working context with selected source.
-- `full`: source plus explanations for selected nodes.
+- `minimal`: compact symbol-neighborhood routing card.
+- `standard`: selected symbol source, relationships, and import preludes.
+- `full`: selected symbol source plus explanations.
 - `auto`: starts compact and escalates only when sufficiency requires it.
 
 ## Graph Queries

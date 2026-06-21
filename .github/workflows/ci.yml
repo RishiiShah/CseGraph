@@ -66,6 +66,7 @@ jobs:
               path.as_posix()
               for path in Path(".").rglob("pyproject.toml")
               if "csegraph-vscode" not in path.as_posix()
+              and not path.as_posix().startswith("sandbox/")
           )
           assert pyprojects == ["pyproject.toml"], pyprojects
           assert Path("csegraph/__init__.py").exists()
@@ -84,6 +85,7 @@ jobs:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
           - "3.14"
     steps:
       - uses: actions/checkout@v6
@@ -97,7 +99,7 @@ jobs:
         run: python -m pip install --upgrade pip build
 
       - name: Install csegraph editable
-        run: python -m pip install -e ".[test]"
+        run: python -m pip install -e ".[test,all]"
 
       - name: Assert single installed distribution and import surface
         run: |
@@ -109,7 +111,7 @@ jobs:
           assert project_dists == ["csegraph"], project_dists
           import csegraph
           from csegraph import ContextService
-          assert csegraph.__version__ == "1.7.1"
+          assert csegraph.__version__ == "1.8.0"
           assert ContextService is not None
           PY
 
@@ -157,6 +159,68 @@ jobs:
               for name in names
           )
           PY
+
+  quality:
+    name: Python quality checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install quality tooling
+        run: python -m pip install --upgrade pip -e ".[test,dev,all]"
+
+      - name: Run Ruff
+        run: python -m ruff check .
+
+      - name: Check Ruff formatting
+        run: python -m ruff format --check .
+
+      - name: Run mypy
+        run: python -m mypy
+
+      - name: Run coverage
+        run: |
+          python -m coverage run -m pytest tests/ -q
+          python -m coverage report
+
+  benchmarks:
+    name: Benchmark regression thresholds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install benchmark dependencies
+        run: python -m pip install --upgrade pip -e ".[test,all]"
+
+      - name: Run context benchmark regression check
+        run: python tools/check_benchmark_regression.py --repo .
+
+  docs:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install documentation tooling
+        run: python -m pip install --upgrade pip -e ".[docs]"
+
+      - name: Build documentation site
+        run: python -m mkdocs build --strict
 
   vscode:
     name: VS Code extension

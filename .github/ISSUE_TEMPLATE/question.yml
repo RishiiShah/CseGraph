@@ -1,0 +1,37 @@
+name: Question
+description: Ask about usage, setup, or expected CseGraph behavior.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Installation/setup
+        - CLI usage
+        - MCP server setup
+        - Python SDK/facade
+        - VS Code extension
+        - Indexing/retrieval behavior
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to do, and where are you stuck?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Include commands, docs pages, settings, or examples you already checked.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: CseGraph version, Python version, operating system, and extension version if relevant.

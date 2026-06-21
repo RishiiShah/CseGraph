@@ -1,11 +1,10 @@
 """Tests for review question generation service."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.graph.review_questions import ReviewQuestionsService
@@ -151,6 +150,7 @@ class TestReviewQuestions:
 
         db = _index_repo(tmp_path, repo)
         from csegraph._core.postprocess import PostprocessService
+
         PostprocessService(db).postprocess()
 
         result = ReviewQuestionsService(db).generate(base_ref="HEAD~1")

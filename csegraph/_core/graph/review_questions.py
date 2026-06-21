@@ -1,11 +1,12 @@
 """Review question generation from graph structure and change detection."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Set, Tuple
 
-from csegraph._core.graph.change_detection import ChangeDetectionService, ChangedSymbol
+from csegraph._core.graph.change_detection import ChangeDetectionService
 from csegraph._core.index.repository import ProjectIndex
 
 
@@ -51,27 +52,31 @@ class ReviewQuestionsService:
 
         for sym in change_result.high_risk:
             if not sym.has_test_coverage:
-                _add(ReviewQuestion(
-                    question=(
-                        f"'{sym.name}' is high-risk ({sym.caller_count} callers) "
-                        f"and has no test coverage. What test should verify this change?"
-                    ),
-                    category="test_gap",
-                    priority=1,
-                    related_symbols=[sym.name],
-                ))
+                _add(
+                    ReviewQuestion(
+                        question=(
+                            f"'{sym.name}' is high-risk ({sym.caller_count} callers) "
+                            f"and has no test coverage. What test should verify this change?"
+                        ),
+                        category="test_gap",
+                        priority=1,
+                        related_symbols=[sym.name],
+                    )
+                )
 
         for sym in change_result.high_risk + change_result.medium_risk:
             if sym.cross_community_edges > 0:
-                _add(ReviewQuestion(
-                    question=(
-                        f"'{sym.name}' touches {sym.cross_community_edges} "
-                        f"cross-community edge(s). Have dependent communities been notified?"
-                    ),
-                    category="cross_community",
-                    priority=1,
-                    related_symbols=[sym.name],
-                ))
+                _add(
+                    ReviewQuestion(
+                        question=(
+                            f"'{sym.name}' touches {sym.cross_community_edges} "
+                            f"cross-community edge(s). Have dependent communities been notified?"
+                        ),
+                        category="cross_community",
+                        priority=1,
+                        related_symbols=[sym.name],
+                    )
+                )
 
         for sym in change_result.high_risk:
             if sym.caller_count >= 5:
@@ -79,38 +84,44 @@ class ReviewQuestionsService:
                 callers_text = ""
                 if caller_names:
                     callers_text = f" Callers: {', '.join(caller_names)}."
-                _add(ReviewQuestion(
-                    question=(
-                        f"'{sym.name}' has {sym.caller_count} callers. "
-                        f"Have all callers been checked for breakage?{callers_text}"
-                    ),
-                    category="blast_radius",
-                    priority=2,
-                    related_symbols=[sym.name] + caller_names,
-                ))
+                _add(
+                    ReviewQuestion(
+                        question=(
+                            f"'{sym.name}' has {sym.caller_count} callers. "
+                            f"Have all callers been checked for breakage?{callers_text}"
+                        ),
+                        category="blast_radius",
+                        priority=2,
+                        related_symbols=[sym.name] + caller_names,
+                    )
+                )
 
         for sym in change_result.medium_risk:
             if not sym.has_test_coverage:
-                _add(ReviewQuestion(
-                    question=(
-                        f"'{sym.name}' is untested. "
-                        f"Will this change be exercised by any existing integration test?"
-                    ),
-                    category="test_gap",
-                    priority=2,
-                    related_symbols=[sym.name],
-                ))
+                _add(
+                    ReviewQuestion(
+                        question=(
+                            f"'{sym.name}' is untested. "
+                            f"Will this change be exercised by any existing integration test?"
+                        ),
+                        category="test_gap",
+                        priority=2,
+                        related_symbols=[sym.name],
+                    )
+                )
 
         if change_result.communities_affected >= 2:
-            _add(ReviewQuestion(
-                question=(
-                    f"Changes span {change_result.communities_affected} communities. "
-                    f"Does this PR belong in a single unit, or should it be split?"
-                ),
-                category="cross_community",
-                priority=3,
-                related_symbols=[],
-            ))
+            _add(
+                ReviewQuestion(
+                    question=(
+                        f"Changes span {change_result.communities_affected} communities. "
+                        f"Does this PR belong in a single unit, or should it be split?"
+                    ),
+                    category="cross_community",
+                    priority=3,
+                    related_symbols=[],
+                )
+            )
 
         questions.sort(key=lambda q: (q.priority, q.category))
         questions = questions[:_MAX_QUESTIONS]

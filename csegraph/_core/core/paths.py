@@ -1,4 +1,5 @@
 """Shared repo-local path policy helpers."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,9 +15,7 @@ def assert_repo_local_path(path: str | Path, repo_root: str | Path, name: str) -
     resolved_repo = Path(repo_root).resolve()
     candidate = Path(path)
     resolved_path = (
-        candidate.resolve()
-        if candidate.is_absolute()
-        else (resolved_repo / candidate).resolve()
+        candidate.resolve() if candidate.is_absolute() else (resolved_repo / candidate).resolve()
     )
 
     if resolved_path.is_relative_to(resolved_repo):

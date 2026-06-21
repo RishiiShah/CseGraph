@@ -1,11 +1,10 @@
 """Tests for review evaluation harness."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.graph.review_eval import ReviewEvalService
@@ -35,6 +34,7 @@ def _index_repo(tmp_path: Path, repo: Path) -> str:
 
 def _get_node_id(db: str, name: str) -> str:
     from csegraph._core.index.repository import ProjectIndex
+
     idx = ProjectIndex(db)
     try:
         idx.initialize_schema()

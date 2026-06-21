@@ -102,9 +102,7 @@ class TestGraphQueries:
 
     def test_shortest_path_empty_relation_strings_unfiltered(self, tmp_path: Path):
         _, db = _indexed(tmp_path)
-        full = GraphQueryService(db).neighborhood(
-            "foo", depth=2, detail_level="standard"
-        )
+        full = GraphQueryService(db).neighborhood("foo", depth=2, detail_level="standard")
         filtered = GraphQueryService(db).neighborhood(
             "foo",
             depth=2,

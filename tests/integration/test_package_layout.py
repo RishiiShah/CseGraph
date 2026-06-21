@@ -1,9 +1,9 @@
-from pathlib import Path
 import json
 import os
 import site
 import subprocess
 import sys
+from pathlib import Path
 
 try:
     import tomllib
@@ -23,6 +23,36 @@ CORE_LANGUAGE_DEPENDENCIES = [
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
     "tree-sitter-javascript>=0.23",
+]
+
+BENCHMARK_DEPENDENCIES = ["tiktoken>=0.13,<1"]
+
+
+OPTIONAL_LANGUAGE_DEPENDENCIES = {
+    "go": ["tree-sitter-go>=0.23"],
+    "rust": ["tree-sitter-rust>=0.23"],
+    "java": ["tree-sitter-java>=0.23"],
+    "c": ["tree-sitter-c>=0.23"],
+    "cpp": ["tree-sitter-cpp>=0.23"],
+    "ruby": ["tree-sitter-ruby>=0.23"],
+    "csharp": ["tree-sitter-c-sharp>=0.23"],
+    "kotlin": ["tree-sitter-kotlin>=0.23"],
+    "groovy": ["tree-sitter-groovy>=0.1.2"],
+    "scala": ["tree-sitter-scala>=0.23"],
+    "php": ["tree-sitter-php>=0.23"],
+    "swift": ["tree-sitter-swift>=0.7"],
+    "lua": ["tree-sitter-lua>=0.2"],
+    "zig": ["tree-sitter-zig>=0.1"],
+    "powershell": ["tree-sitter-powershell>=0.1"],
+    "elixir": ["tree-sitter-elixir>=0.3"],
+    "objc": ["tree-sitter-objc>=0.23"],
+    "julia": ["tree-sitter-julia>=0.23"],
+    "verilog": ["tree-sitter-verilog>=0.23"],
+    "fortran": ["tree-sitter-fortran>=0.6"],
+}
+
+
+ALL_OPTIONAL_LANGUAGE_DEPENDENCIES = [
     "tree-sitter-go>=0.23",
     "tree-sitter-rust>=0.23",
     "tree-sitter-java>=0.23",
@@ -46,12 +76,16 @@ CORE_LANGUAGE_DEPENDENCIES = [
 ]
 
 
-def _project_metadata(path: Path) -> dict:
+def _pyproject_data(path: Path) -> dict:
     pyproject = path / "pyproject.toml"
     if "tomllib" in globals():
         with pyproject.open("rb") as fh:
-            return tomllib.load(fh)["project"]
-    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))["project"]
+            return tomllib.load(fh)
+    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))
+
+
+def _project_metadata(path: Path) -> dict:
+    return _pyproject_data(path)["project"]
 
 
 def _offline_pip_env() -> dict:
@@ -64,13 +98,17 @@ def _create_test_venv(path: Path) -> None:
     subprocess.run([sys.executable, "-m", "venv", str(path)], check=True)
     child_site_packages = Path(
         subprocess.check_output(
-        [
-            str(path / ("Scripts" if sys.platform.startswith("win") else "bin") / ("python.exe" if sys.platform.startswith("win") else "python")),
-            "-c",
-            "import site; print(site.getsitepackages()[0])",
-        ],
-        text=True,
-    ).strip()
+            [
+                str(
+                    path
+                    / ("Scripts" if sys.platform.startswith("win") else "bin")
+                    / ("python.exe" if sys.platform.startswith("win") else "python")
+                ),
+                "-c",
+                "import site; print(site.getsitepackages()[0])",
+            ],
+            text=True,
+        ).strip()
     )
     parent_site_packages = Path(site.getsitepackages()[0])
     excluded_prefixes = (
@@ -92,15 +130,41 @@ def _create_test_venv(path: Path) -> None:
 def test_one_distribution_package_layout_and_versions():
     repo_root = Path(__file__).resolve().parents[2]
 
-    root_project = _project_metadata(repo_root)
+    pyproject = _pyproject_data(repo_root)
+    root_project = pyproject["project"]
 
     assert root_project["name"] == "csegraph"
-    assert root_project["version"] == "1.7.1"
+    assert root_project["version"] == "1.8.0"
     assert root_project["readme"] == "README.md"
+    assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
-    assert set(root_project.get("optional-dependencies", {})) == {"test", "embeddings"}
+    optional_deps = root_project.get("optional-dependencies", {})
+    assert set(optional_deps) == {
+        "test",
+        "dev",
+        "docs",
+        "embeddings",
+        "benchmark",
+        "all",
+        *OPTIONAL_LANGUAGE_DEPENDENCIES,
+    }
+    for extra, dependencies in OPTIONAL_LANGUAGE_DEPENDENCIES.items():
+        assert optional_deps[extra] == dependencies
+    assert optional_deps["all"] == ALL_OPTIONAL_LANGUAGE_DEPENDENCIES
+    assert optional_deps["benchmark"] == BENCHMARK_DEPENDENCIES
+    assert optional_deps["docs"] == ["mkdocs>=1.6", "mkdocs-material>=9.5"]
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
+    classifiers = set(root_project["classifiers"])
+    assert "Typing :: Typed" in classifiers
+    assert {
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+    }.issubset(classifiers)
+    assert pyproject["tool"]["setuptools"]["package-data"]["csegraph"] == ["py.typed"]
     assert root_project["urls"] == {
         "Repository": "https://github.com/RishiiShah/CseGraph",
         "Issues": "https://github.com/RishiiShah/CseGraph/issues",
@@ -109,6 +173,7 @@ def test_one_distribution_package_layout_and_versions():
     }
 
     assert (repo_root / "csegraph" / "__init__.py").exists()
+    assert (repo_root / "csegraph" / "py.typed").read_text(encoding="utf-8") == ""
     assert (repo_root / "csegraph" / "_core" / "__init__.py").exists()
     assert (repo_root / "csegraph" / "_cli" / "__init__.py").exists()
     assert (repo_root / "csegraph-vscode" / "package.json").exists()
@@ -226,11 +291,11 @@ def test_private_core_module_entrypoint_points_to_public_cli(tmp_path):
 
 
 def test_status_and_postprocess_exports():
-    from csegraph._core import StatusService, StatusResult, PostprocessService, PostprocessResult
-    from csegraph import StatusService as SDKStatusService
+    from csegraph import PostprocessResult as SDKPostprocessResult
     from csegraph import PostprocessService as SDKPostprocessService
     from csegraph import StatusResult as SDKStatusResult
-    from csegraph import PostprocessResult as SDKPostprocessResult
+    from csegraph import StatusService as SDKStatusService
+    from csegraph._core import PostprocessResult, PostprocessService, StatusResult, StatusService
 
     assert StatusService is SDKStatusService
     assert PostprocessService is SDKPostprocessService
@@ -239,25 +304,36 @@ def test_status_and_postprocess_exports():
 
 
 def test_sdk_exports_context_engine_facade_only():
-    import csegraph._core as core
     import csegraph
+    import csegraph._core as core
 
     sdk_all = set(csegraph.__all__)
     expected = {
         "__version__",
+        "AsyncContextService",
+        "AsyncGraphQueryService",
+        "AsyncIndexService",
+        "AsyncRefreshService",
+        "BaseParser",
+        "ContextRelationship",
         "ContextNode",
         "ContextResult",
         "ContextService",
+        "DefaultTokenizer",
         "GraphEdgeView",
         "GraphNodeView",
         "GraphQueryService",
         "GraphResult",
         "IndexResult",
         "IndexService",
+        "ImportPrelude",
         "KeyEntity",
+        "LanguageConfig",
         "MinimalResult",
         "MinimalService",
         "NextToolSuggestion",
+        "ParsedFile",
+        "ParsedSymbol",
         "PathEdge",
         "PathResult",
         "PathStep",
@@ -268,13 +344,17 @@ def test_sdk_exports_context_engine_facade_only():
         "ProfileConfig",
         "RefreshResult",
         "RefreshService",
+        "RelationshipOccurrence",
         "StatusResult",
         "StatusService",
         "SufficiencyMetrics",
         "SufficiencyResult",
+        "Tokenizer",
         "VALID_REASONS",
         "get_profile",
         "load_profile",
+        "register_parser",
+        "register_tree_sitter_language",
         "to_dict",
     }
 
@@ -289,11 +369,11 @@ def test_sdk_exports_context_engine_facade_only():
 
 
 def test_diagnostic_services_are_module_path_only():
-    import csegraph._core as core
     import csegraph
+    import csegraph._core as core
     from csegraph._core.benchmark import BenchmarkService
-    from csegraph._core.graph.test_gaps import TestGapService
     from csegraph._core.graph.review_questions import ReviewQuestionsService
+    from csegraph._core.graph.test_gaps import TestGapService
 
     assert BenchmarkService is not None
     assert TestGapService is not None
@@ -322,6 +402,8 @@ def test_source_first_package_guard():
         path.relative_to(repo_root).as_posix()
         for path in repo_root.rglob("pyproject.toml")
         if "csegraph-vscode" not in path.relative_to(repo_root).as_posix()
+        and ".scratch/" not in path.relative_to(repo_root).as_posix()
+        and not path.relative_to(repo_root).as_posix().startswith("sandbox/")
     )
     assert publishable_pyprojects == ["pyproject.toml"]
 

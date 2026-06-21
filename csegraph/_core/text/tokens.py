@@ -1,13 +1,45 @@
 """Shared tokenization kernel used by both source-side and query-side tokenizers."""
+
 from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Set
 
 _STOP_WORDS = {
-    "in", "on", "by", "to", "of", "at", "is", "it", "or", "an", "do", "be",
-    "no", "up", "as", "if", "so", "we", "my", "py", "the", "and", "for", "with",
-    "from", "that", "this", "into", "are", "was", "has", "had", "not", "its",
+    "in",
+    "on",
+    "by",
+    "to",
+    "of",
+    "at",
+    "is",
+    "it",
+    "or",
+    "an",
+    "do",
+    "be",
+    "no",
+    "up",
+    "as",
+    "if",
+    "so",
+    "we",
+    "my",
+    "py",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "into",
+    "are",
+    "was",
+    "has",
+    "had",
+    "not",
+    "its",
 }
 
 _RE_CAMEL_SPLIT = re.compile(r"([a-z0-9])([A-Z])")
@@ -19,7 +51,11 @@ def _default_text_tokenize(text: str) -> List[str]:
     text = _RE_CAMEL_SPLIT.sub(r"\1 \2", text)
     text = _RE_ACRONYM_SPLIT.sub(r"\1 \2", text)
     text = _RE_NON_ALNUM.sub(" ", text)
-    return [token.lower() for token in text.split() if len(token) > 1 and token.lower() not in _STOP_WORDS]
+    return [
+        token.lower()
+        for token in text.split()
+        if len(token) > 1 and token.lower() not in _STOP_WORDS
+    ]
 
 
 def code_tokenize(text: str) -> List[str]:

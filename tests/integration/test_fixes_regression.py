@@ -1,20 +1,29 @@
 """Integration/regression tests verifying all correctness & performance fixes."""
+
 from __future__ import annotations
 
-import os
 import pytest
-from pathlib import Path
 
-from csegraph._core.index.services import IndexService, RefreshService, _parse_one_cached, _pick_call_target
+from csegraph._core.graph.queries import (
+    _node_view_from_row,
+    _path_step_from_row,
+    _resolve_graph_node,
+)
+from csegraph._core.hooks import HOOK_MARKER, install_hooks, uninstall_hooks
 from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.index.services import (
+    IndexService,
+    RefreshService,
+    _parse_one_cached,
+    _pick_call_target,
+)
 from csegraph._core.languages.registry import registry
-from csegraph._core.retrieval.context import ContextService, _resolve_target, _build_detail_pass
-from csegraph._core.graph.queries import _node_view_from_row, _path_step_from_row, _resolve_graph_node
-from csegraph._core.retrieval.scoring import lexical_scores
-from csegraph._core.text.entities import extract_query_entities
-from csegraph._core.hooks import uninstall_hooks, install_hooks, HOOK_MARKER
 from csegraph._core.languages.treesitter.languages import make_cpp_config
+from csegraph._core.retrieval.scoring import lexical_scores
+from csegraph._core.retrieval.target_resolution import resolve_target
+from csegraph._core.text.entities import extract_query_entities
+
 
 def test_symlink_dos_protection(tmp_path):
     repo_root = tmp_path / "repo"
@@ -51,8 +60,7 @@ def test_changed_paths_refresh_respects_csegraphignore(tmp_path):
     index = ProjectIndex(db)
     try:
         paths = {
-            row["path"]
-            for row in index.conn.execute("SELECT path FROM nodes WHERE type = 'file'")
+            row["path"] for row in index.conn.execute("SELECT path FROM nodes WHERE type = 'file'")
         }
     finally:
         index.close()
@@ -75,24 +83,53 @@ def test_cross_file_method_linkage(tmp_path):
     # Insert a class node
     index.conn.execute(
         "INSERT INTO nodes (id, parent_id, type, name, path, language, source_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ("symbol::class_def.py::class::MyClass", "file::class_def.py", "class", "MyClass", "class_def.py", "python", "hash1", 12345.6)
+        (
+            "symbol::class_def.py::class::MyClass",
+            "file::class_def.py",
+            "class",
+            "MyClass",
+            "class_def.py",
+            "python",
+            "hash1",
+            12345.6,
+        ),
     )
     # Insert file node
     index.conn.execute(
         "INSERT INTO nodes (id, parent_id, type, name, path, language, source_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ("file::method_def.py", "repo::test", "file", "method_def.py", "method_def.py", "python", "hash0", 12345.6)
+        (
+            "file::method_def.py",
+            "repo::test",
+            "file",
+            "method_def.py",
+            "method_def.py",
+            "python",
+            "hash0",
+            12345.6,
+        ),
     )
     # Insert a method node in another file with receiver "MyClass"
     # But parent_id is file, so it needs resolving.
     metadata_json = '{"receiver": "MyClass"}'
     index.conn.execute(
         "INSERT INTO nodes (id, parent_id, type, name, path, metadata, language, source_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("symbol::method_def.py::method::my_method", "file::method_def.py", "method", "MyClass.my_method", "method_def.py", metadata_json, "python", "hash2", 12345.6)
+        (
+            "symbol::method_def.py::method::my_method",
+            "file::method_def.py",
+            "method",
+            "MyClass.my_method",
+            "method_def.py",
+            metadata_json,
+            "python",
+            "hash2",
+            12345.6,
+        ),
     )
     index.conn.commit()
 
     # Run resolution
     from csegraph._core.index.services import _resolve_cross_file_methods
+
     _resolve_cross_file_methods(index)
 
     # Check parent_id updated to the class node
@@ -101,12 +138,10 @@ def test_cross_file_method_linkage(tmp_path):
 
 
 def test_lexical_heuristics_prefer_function():
-    symbol_by_name = {
-        "greet": ["opaque-method-id", "opaque-function-id"]
-    }
+    symbol_by_name = {"greet": ["opaque-method-id", "opaque-function-id"]}
     node_to_file_node = {
         "opaque-method-id": "file::app.py",
-        "opaque-function-id": "file::helpers.py"
+        "opaque-function-id": "file::helpers.py",
     }
     node_kind_by_id = {
         "opaque-method-id": "method",
@@ -144,14 +179,15 @@ def test_absolute_path_metadata_fallback(tmp_path):
     # Insert file node
     index.conn.execute(
         "INSERT INTO nodes (id, parent_id, type, name, path, language, source_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ("file::app.py", "repo::test", "file", "app.py", "app.py", "python", "hash3", 12345.6)
+        ("file::app.py", "repo::test", "file", "app.py", "app.py", "python", "hash3", 12345.6),
     )
     index.conn.commit()
 
     # Resolve target using empty repo_root fallback to metadata
     target_abs = str((repo / "app.py").resolve())
-    resolved = _resolve_target(target_abs, "task", {}, {}, index, repo_root="")
-    assert resolved == "file::app.py"
+    resolution = resolve_target(target_abs, "task", {}, {}, index, repo_root="")
+    assert resolution.status == "resolved"
+    assert resolution.target_id == "file::app.py"
 
     # Resolve graph node with empty repo_root
     resolved_node = _resolve_graph_node(index, target_abs, repo_root="")
@@ -160,8 +196,20 @@ def test_absolute_path_metadata_fallback(tmp_path):
 
 def test_lexical_scoring_candidates_optimization():
     symbols = {
-        "node1": {"name": "greet", "file_path": "app.py", "signature": "", "docstring": "", "language": "python"},
-        "node2": {"name": "unrelated", "file_path": "helpers.py", "signature": "", "docstring": "", "language": "python"},
+        "node1": {
+            "name": "greet",
+            "file_path": "app.py",
+            "signature": "",
+            "docstring": "",
+            "language": "python",
+        },
+        "node2": {
+            "name": "unrelated",
+            "file_path": "helpers.py",
+            "signature": "",
+            "docstring": "",
+            "language": "python",
+        },
     }
     summaries = {}
 

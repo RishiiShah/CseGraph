@@ -6,14 +6,12 @@ Spawns one watch subprocess per registered repo, tracks PIDs in
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -47,6 +45,7 @@ def _is_alive(pid: int) -> bool:
     try:
         if sys.platform == "win32":
             import ctypes
+
             kernel32 = ctypes.windll.kernel32
             handle = kernel32.OpenProcess(0x1000, False, pid)
             if handle:
@@ -102,9 +101,7 @@ class DaemonService:
 
     def _write_pid(self, alias: str, pid: int) -> None:
         self.pids_dir.mkdir(parents=True, exist_ok=True)
-        (self.pids_dir / f"{alias}.pid").write_text(
-            str(pid), encoding="utf-8"
-        )
+        (self.pids_dir / f"{alias}.pid").write_text(str(pid), encoding="utf-8")
 
     def _remove_pid(self, alias: str) -> None:
         pf = self.pids_dir / f"{alias}.pid"
@@ -114,9 +111,7 @@ class DaemonService:
     def _entry_status(self, alias: str, root: str) -> DaemonEntry:
         pid = self._read_pid(alias)
         if pid is not None and _is_alive(pid):
-            return DaemonEntry(
-                alias=alias, root=root, pid=pid, status="running"
-            )
+            return DaemonEntry(alias=alias, root=root, pid=pid, status="running")
         if pid is not None:
             self._remove_pid(alias)
         return DaemonEntry(alias=alias, root=root, status="stopped")
@@ -140,20 +135,20 @@ class DaemonService:
             targets = [e for e in targets if e.alias in alias_set]
             missing = alias_set - {e.alias for e in targets}
             if missing:
-                raise ValueError(
-                    f"Unknown aliases: {sorted(missing)}"
-                )
+                raise ValueError(f"Unknown aliases: {sorted(missing)}")
 
         entries: list[DaemonEntry] = []
         for entry in targets:
             existing_pid = self._read_pid(entry.alias)
             if existing_pid is not None and _is_alive(existing_pid):
-                entries.append(DaemonEntry(
-                    alias=entry.alias,
-                    root=entry.root,
-                    pid=existing_pid,
-                    status="already_running",
-                ))
+                entries.append(
+                    DaemonEntry(
+                        alias=entry.alias,
+                        root=entry.root,
+                        pid=existing_pid,
+                        status="already_running",
+                    )
+                )
                 continue
 
             watch_profile = profile or entry.profile
@@ -163,33 +158,40 @@ class DaemonService:
                 with open(log_path, "a", encoding="utf-8") as log_fh:
                     proc = subprocess.Popen(
                         [
-                            sys.executable, "-m", "csegraph._cli",
-                            "watch", entry.root,
-                            "--db", entry.db,
-                            "--profile", watch_profile,
+                            sys.executable,
+                            "-m",
+                            "csegraph._cli",
+                            "watch",
+                            entry.root,
+                            "--db",
+                            entry.db,
+                            "--profile",
+                            watch_profile,
                         ],
                         stdout=log_fh,
                         stderr=log_fh,
                         start_new_session=True,
                     )
                 self._write_pid(entry.alias, proc.pid)
-                entries.append(DaemonEntry(
-                    alias=entry.alias,
-                    root=entry.root,
-                    pid=proc.pid,
-                    status="started",
-                ))
+                entries.append(
+                    DaemonEntry(
+                        alias=entry.alias,
+                        root=entry.root,
+                        pid=proc.pid,
+                        status="started",
+                    )
+                )
             except Exception as exc:
-                entries.append(DaemonEntry(
-                    alias=entry.alias,
-                    root=entry.root,
-                    status="error",
-                    error=str(exc),
-                ))
+                entries.append(
+                    DaemonEntry(
+                        alias=entry.alias,
+                        root=entry.root,
+                        status="error",
+                        error=str(exc),
+                    )
+                )
 
-        running_count = sum(
-            1 for e in entries if e.status in ("started", "already_running")
-        )
+        running_count = sum(1 for e in entries if e.status in ("started", "already_running"))
         return DaemonResult(
             command="daemon",
             running=running_count > 0,
@@ -198,9 +200,7 @@ class DaemonService:
             message=f"{running_count} watcher(s) active",
         )
 
-    def stop(
-        self, aliases: Optional[List[str]] = None
-    ) -> DaemonResult:
+    def stop(self, aliases: Optional[List[str]] = None) -> DaemonResult:
         reg = self.registry.list()
         targets = reg.entries
         if aliases:
@@ -212,21 +212,25 @@ class DaemonService:
             pid = self._read_pid(entry.alias)
             if pid is None or not _is_alive(pid):
                 self._remove_pid(entry.alias)
-                entries.append(DaemonEntry(
-                    alias=entry.alias,
-                    root=entry.root,
-                    status="not_running",
-                ))
+                entries.append(
+                    DaemonEntry(
+                        alias=entry.alias,
+                        root=entry.root,
+                        status="not_running",
+                    )
+                )
                 continue
 
             _kill_process(pid)
             self._remove_pid(entry.alias)
-            entries.append(DaemonEntry(
-                alias=entry.alias,
-                root=entry.root,
-                pid=pid,
-                status="stopped",
-            ))
+            entries.append(
+                DaemonEntry(
+                    alias=entry.alias,
+                    root=entry.root,
+                    pid=pid,
+                    status="stopped",
+                )
+            )
 
         return DaemonResult(
             command="daemon",

@@ -3,10 +3,12 @@
 Each factory imports its tree-sitter package lazily so missing packages
 raise ImportError at registration time rather than module load time.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from importlib import import_module
+from importlib.util import find_spec
 from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from tree_sitter import Language, Node
@@ -68,7 +70,9 @@ class LanguageSpec:
     resolve_import_fn: Optional[Callable] = None
 
 
-def _loaders(module: str, extensions: Tuple[str, ...], function: str = "language") -> Dict[str, LanguageLoader]:
+def _loaders(
+    module: str, extensions: Tuple[str, ...], function: str = "language"
+) -> Dict[str, LanguageLoader]:
     return {ext: LanguageLoader(module, function) for ext in extensions}
 
 
@@ -89,7 +93,7 @@ def _spec(name: str) -> LanguageSpec:
 class LazyLanguageMap(dict):
     def __init__(self, spec: LanguageSpec) -> None:
         self.spec = spec
-        self._cache = {}
+        self._cache: Dict[str, Language] = {}
 
     def get(self, key, default=None):
         if key in self._cache:
@@ -163,9 +167,19 @@ def _make_config(name: str) -> LanguageConfig:
     )
 
 
+def is_language_available(name: str) -> bool:
+    spec = _spec(name)
+    return all(find_spec(loader.module) is not None for loader in spec.loaders.values())
+
+
+def available_language_factories() -> List[Callable[[], LanguageConfig]]:
+    return [factory for name, factory in LANGUAGE_FACTORIES if is_language_available(name)]
+
+
 # ---------------------------------------------------------------------------
 # Shared import / doc helpers
 # ---------------------------------------------------------------------------
+
 
 def _node_text(node: Node) -> str:
     return node.text.decode("utf-8") if node.text else ""
@@ -190,6 +204,7 @@ def _strip_string_quotes(text: str) -> str:
 # ---------------------------------------------------------------------------
 # TypeScript / JavaScript
 # ---------------------------------------------------------------------------
+
 
 def _ts_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
@@ -244,7 +259,11 @@ def _ts_module_name(rel_path: str) -> Optional[str]:
     _INDEX = ("index.ts", "index.tsx", "index.js", "index.jsx")
     for idx in _INDEX:
         if rel_path.endswith(f"/{idx}") or rel_path == idx:
-            return rel_path.rsplit(f"/{idx.split('.')[0]}.", 1)[0].replace("/", ".") if "/" in rel_path else rel_path.rsplit(".", 1)[0].replace("/", ".")
+            return (
+                rel_path.rsplit(f"/{idx.split('.')[0]}.", 1)[0].replace("/", ".")
+                if "/" in rel_path
+                else rel_path.rsplit(".", 1)[0].replace("/", ".")
+            )
     _EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
     for ext in _EXTS:
         if rel_path.endswith(ext):
@@ -286,6 +305,7 @@ def _ts_resolve_import(
 # Go
 # ---------------------------------------------------------------------------
 
+
 def _go_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
     for child in root.children:
@@ -315,6 +335,7 @@ def _go_collect_import_spec(node: Node, imports: Set[str]) -> None:
 # ---------------------------------------------------------------------------
 # Rust
 # ---------------------------------------------------------------------------
+
 
 def _rust_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
@@ -349,6 +370,7 @@ def _rust_module_name(rel_path: str) -> Optional[str]:
 # Java
 # ---------------------------------------------------------------------------
 
+
 def _java_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
     for child in root.children:
@@ -362,6 +384,7 @@ def _java_extract_imports(root: Node) -> List[str]:
 # ---------------------------------------------------------------------------
 # C / C++
 # ---------------------------------------------------------------------------
+
 
 def _c_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
@@ -379,6 +402,7 @@ def _c_extract_imports(root: Node) -> List[str]:
 # ---------------------------------------------------------------------------
 # Ruby
 # ---------------------------------------------------------------------------
+
 
 def _ruby_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
@@ -400,6 +424,7 @@ def _ruby_extract_imports(root: Node) -> List[str]:
 # C#
 # ---------------------------------------------------------------------------
 
+
 def _csharp_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
     for child in root.children:
@@ -417,6 +442,7 @@ def _csharp_extract_imports(root: Node) -> List[str]:
 # ---------------------------------------------------------------------------
 # Kotlin
 # ---------------------------------------------------------------------------
+
 
 def _kotlin_extract_imports(root: Node) -> List[str]:
     imports: Set[str] = set()
@@ -437,6 +463,7 @@ def _kotlin_extract_imports(root: Node) -> List[str]:
 # ---------------------------------------------------------------------------
 # Python
 # ---------------------------------------------------------------------------
+
 
 def _python_extract_imports(root: Node) -> List[str]:
     imports: List[str] = []
@@ -475,7 +502,7 @@ def _python_resolve_import(
     dots = len(import_name) - len(import_name.lstrip("."))
     suffix = import_name[dots:]
     parts = (current_module or "").split(".")
-    base = parts[:max(0, len(parts) - dots)]
+    base = parts[: max(0, len(parts) - dots)]
     target = ".".join(base + [suffix]) if suffix else ".".join(base)
     return module_to_file_id.get(target)
 
@@ -484,13 +511,16 @@ def _python_resolve_import(
 # Doc extraction callbacks (lazy imports from parser.py)
 # ---------------------------------------------------------------------------
 
+
 def _go_doc_callback() -> Callable:
     from csegraph._core.languages.treesitter.parser import _extract_go_doc
+
     return _extract_go_doc
 
 
 def _line_doc_callback(prefix: str) -> Callable:
     from csegraph._core.languages.treesitter.parser import _extract_line_doc
+
     return lambda n, l: _extract_line_doc(n, l, prefix)
 
 
@@ -498,373 +528,487 @@ def _line_doc_callback(prefix: str) -> Callable:
 # LANGUAGE_SPECS — full config data for all 22 languages
 # ---------------------------------------------------------------------------
 
-_register_specs([
-    LanguageSpec(
-        name="typescript",
-        extensions=(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"),
-        loaders={
-            ".ts": LanguageLoader("tree_sitter_typescript", "language_typescript"),
-            ".tsx": LanguageLoader("tree_sitter_typescript", "language_tsx"),
-            ".js": LanguageLoader("tree_sitter_javascript"),
-            ".jsx": LanguageLoader("tree_sitter_javascript"),
-            ".mjs": LanguageLoader("tree_sitter_javascript"),
-            ".cjs": LanguageLoader("tree_sitter_javascript"),
-        },
-        class_types=frozenset({
-            "class_declaration", "interface_declaration",
-            "enum_declaration", "type_alias_declaration",
-        }),
-        function_types=frozenset({"function_declaration", "method_definition"}),
-        call_types=frozenset({"call_expression", "new_expression"}),
-        function_boundary_types=frozenset({
-            "function_declaration", "arrow_function", "method_definition",
-        }),
-        export_type="export_statement",
-        lambda_decl_types=frozenset({"lexical_declaration", "variable_declaration"}),
-        lambda_value_type="arrow_function",
-        heritage_type="class_heritage",
-        heritage_clause_types=frozenset({"extends_clause", "implements_clause"}),
-        extra_excluded_dirs=frozenset({"node_modules"}),
-        test_dir_prefixes=("tests/", "test/", "__tests__/"),
-        test_file_suffixes=(".test", ".spec"),
-        test_name_prefixes=("test", "it", "describe"),
-        index_filenames=("index.ts", "index.tsx", "index.js", "index.jsx"),
-        extract_imports_fn=_ts_extract_imports,
-        module_name_fn=_ts_module_name,
-        resolve_import_fn=_ts_resolve_import,
-    ),
-    LanguageSpec(
-        name="go",
-        extensions=(".go",),
-        loaders=_loaders("tree_sitter_go", (".go",)),
-        class_types=frozenset({"type_spec"}),
-        function_types=frozenset({"function_declaration", "method_declaration"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({
-            "function_declaration", "method_declaration", "func_literal",
-        }),
-        declaration_wrapper_types=frozenset({"type_declaration"}),
-        class_body_field="",
-        method_receiver_field="receiver",
-        extra_excluded_dirs=frozenset({"vendor"}),
-        test_file_suffixes=("_test",),
-        test_name_prefixes=("Test", "Benchmark"),
-        extract_imports_fn=_go_extract_imports,
-        extract_doc_fn=_go_doc_callback(),
-    ),
-    LanguageSpec(
-        name="rust",
-        extensions=(".rs",),
-        loaders=_loaders("tree_sitter_rust", (".rs",)),
-        class_types=frozenset({"struct_item", "enum_item", "trait_item"}),
-        function_types=frozenset({"function_item"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_item", "closure_expression"}),
-        impl_types=frozenset({"impl_item"}),
-        extra_excluded_dirs=frozenset({"target"}),
-        extract_imports_fn=_rust_extract_imports,
-        extract_doc_fn=_line_doc_callback("///"),
-        module_name_fn=_rust_module_name,
-    ),
-    LanguageSpec(
-        name="java",
-        extensions=(".java",),
-        loaders=_loaders("tree_sitter_java", (".java",)),
-        class_types=frozenset({
-            "class_declaration", "interface_declaration",
-            "enum_declaration", "annotation_type_declaration",
-        }),
-        function_types=frozenset({"method_declaration", "constructor_declaration"}),
-        call_types=frozenset({"method_invocation", "object_creation_expression"}),
-        function_boundary_types=frozenset({
-            "method_declaration", "constructor_declaration", "lambda_expression",
-        }),
-        superclass_field="superclass",
-        interfaces_field="interfaces",
-        heritage_ident_types=frozenset({
-            "identifier", "type_identifier", "scoped_type_identifier",
-        }),
-        extra_excluded_dirs=frozenset({"build", ".gradle", "target", "out"}),
-        test_dir_prefixes=("test/", "tests/", "src/test/"),
-        test_file_suffixes=("Test", "Tests", "Spec"),
-        extract_imports_fn=_java_extract_imports,
-    ),
-    LanguageSpec(
-        name="c",
-        extensions=(".c", ".h"),
-        loaders=_loaders("tree_sitter_c", (".c", ".h")),
-        class_types=frozenset({"struct_specifier", "enum_specifier", "union_specifier"}),
-        function_types=frozenset({"function_definition"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_definition"}),
-        extra_excluded_dirs=frozenset({"build", "cmake-build-debug", "cmake-build-release"}),
-        test_name_prefixes=("test_", "Test"),
-        extract_imports_fn=_c_extract_imports,
-        extract_doc_fn=lambda n, l: "",
-    ),
-    LanguageSpec(
-        name="cpp",
-        extensions=(".cpp", ".cc", ".cxx", ".hpp", ".hxx"),
-        loaders=_loaders("tree_sitter_cpp", (".cpp", ".cc", ".cxx", ".hpp", ".hxx")),
-        class_types=frozenset({
-            "class_specifier", "struct_specifier",
-            "enum_specifier", "union_specifier",
-        }),
-        function_types=frozenset({"function_definition"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_definition", "lambda_expression"}),
-        heritage_type="base_class_clause",
-        heritage_clause_types=frozenset({"base_class_clause"}),
-        heritage_ident_types=frozenset({
-            "identifier", "type_identifier", "qualified_identifier",
-        }),
-        extra_excluded_dirs=frozenset({"build", "cmake-build-debug", "cmake-build-release"}),
-        test_name_prefixes=("test_", "Test", "TEST"),
-        test_file_suffixes=("_test", "Test", "Tests"),
-        extract_imports_fn=_c_extract_imports,
-        extract_doc_fn=lambda n, l: "",
-    ),
-    LanguageSpec(
-        name="ruby",
-        extensions=(".rb",),
-        loaders=_loaders("tree_sitter_ruby", (".rb",)),
-        class_types=frozenset({"class", "module"}),
-        function_types=frozenset({"method", "singleton_method"}),
-        call_types=frozenset({"call", "command"}),
-        function_boundary_types=frozenset({"method", "singleton_method", "lambda", "do_block"}),
-        superclass_field="superclass",
-        heritage_ident_types=frozenset({"identifier", "constant", "scope_resolution"}),
-        extra_excluded_dirs=frozenset({"vendor", "bundle"}),
-        test_dir_prefixes=("test/", "tests/", "spec/"),
-        test_file_suffixes=("_test", "_spec"),
-        test_name_prefixes=("test_",),
-        extract_imports_fn=_ruby_extract_imports,
-        extract_doc_fn=_go_doc_callback(),
-    ),
-    LanguageSpec(
-        name="csharp",
-        extensions=(".cs",),
-        loaders=_loaders("tree_sitter_c_sharp", (".cs",)),
-        class_types=frozenset({
-            "class_declaration", "struct_declaration",
-            "interface_declaration", "enum_declaration",
-            "record_declaration",
-        }),
-        function_types=frozenset({"method_declaration", "constructor_declaration"}),
-        call_types=frozenset({"invocation_expression", "object_creation_expression"}),
-        function_boundary_types=frozenset({
-            "method_declaration", "constructor_declaration",
-            "lambda_expression", "anonymous_method_expression",
-        }),
-        heritage_type="base_list",
-        heritage_clause_types=frozenset({"base_list"}),
-        heritage_ident_types=frozenset({"identifier", "generic_name", "qualified_name"}),
-        declaration_wrapper_types=frozenset({
-            "namespace_declaration", "file_scoped_namespace_declaration",
-        }),
-        extra_excluded_dirs=frozenset({"bin", "obj", "packages"}),
-        test_dir_prefixes=("tests/", "test/", "Tests/"),
-        test_file_suffixes=("Test", "Tests", "Spec"),
-        test_name_prefixes=("Test",),
-        extract_imports_fn=_csharp_extract_imports,
-        extract_doc_fn=_line_doc_callback("///"),
-    ),
-    LanguageSpec(
-        name="kotlin",
-        extensions=(".kt", ".kts"),
-        loaders=_loaders("tree_sitter_kotlin", (".kt", ".kts")),
-        class_types=frozenset({"class_declaration", "object_declaration"}),
-        function_types=frozenset({"function_declaration"}),
-        class_body_type="class_body",
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_declaration", "lambda_literal"}),
-        superclass_field="delegation_specifiers",
-        heritage_ident_types=frozenset({"identifier", "user_type", "type_identifier"}),
-        extra_excluded_dirs=frozenset({"build", ".gradle", "out"}),
-        test_dir_prefixes=("test/", "tests/", "src/test/"),
-        test_file_suffixes=("Test", "Tests", "Spec"),
-        extract_imports_fn=_kotlin_extract_imports,
-    ),
-    LanguageSpec(
-        name="groovy",
-        extensions=(".groovy",),
-        loaders=_loaders("tree_sitter_groovy", (".groovy",)),
-        class_types=frozenset({"class_declaration"}),
-        function_types=frozenset({"method_declaration"}),
-        call_types=frozenset({"method_invocation"}),
-        function_boundary_types=frozenset({"method_declaration"}),
-    ),
-    LanguageSpec(
-        name="scala",
-        extensions=(".scala",),
-        loaders=_loaders("tree_sitter_scala", (".scala",)),
-        class_types=frozenset({"class_definition", "object_definition", "trait_definition"}),
-        function_types=frozenset({"function_definition"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_definition"}),
-    ),
-    LanguageSpec(
-        name="php",
-        extensions=(".php",),
-        loaders=_loaders("tree_sitter_php", (".php",), "language_php"),
-        class_types=frozenset({"class_declaration"}),
-        function_types=frozenset({"method_declaration", "function_declaration"}),
-        call_types=frozenset({"function_call_expression", "method_call_expression"}),
-        function_boundary_types=frozenset({"method_declaration", "function_declaration"}),
-    ),
-    LanguageSpec(
-        name="swift",
-        extensions=(".swift",),
-        loaders=_loaders("tree_sitter_swift", (".swift",)),
-        class_types=frozenset({"class_declaration", "struct_declaration", "protocol_declaration"}),
-        function_types=frozenset({"function_declaration"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_declaration"}),
-    ),
-    LanguageSpec(
-        name="lua",
-        extensions=(".lua",),
-        loaders=_loaders("tree_sitter_lua", (".lua",)),
-        class_types=frozenset(),
-        function_types=frozenset({"function_declaration"}),
-        call_types=frozenset({"function_call"}),
-        function_boundary_types=frozenset({"function_declaration"}),
-    ),
-    LanguageSpec(
-        name="zig",
-        extensions=(".zig",),
-        loaders=_loaders("tree_sitter_zig", (".zig",)),
-        class_types=frozenset({"struct_declaration"}),
-        function_types=frozenset({"function_declaration"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_declaration"}),
-    ),
-    LanguageSpec(
-        name="powershell",
-        extensions=(".ps1", ".psm1", ".psd1"),
-        loaders=_loaders("tree_sitter_powershell", (".ps1", ".psm1", ".psd1")),
-        class_types=frozenset({"class_declaration"}),
-        function_types=frozenset({"function_declaration"}),
-        call_types=frozenset({"command"}),
-        function_boundary_types=frozenset({"function_declaration"}),
-    ),
-    LanguageSpec(
-        name="elixir",
-        extensions=(".ex", ".exs"),
-        loaders=_loaders("tree_sitter_elixir", (".ex", ".exs")),
-        class_types=frozenset({"module"}),
-        function_types=frozenset({"call"}),
-        call_types=frozenset({"call"}),
-        function_boundary_types=frozenset({"call"}),
-    ),
-    LanguageSpec(
-        name="objc",
-        extensions=(".m", ".mm"),
-        loaders=_loaders("tree_sitter_objc", (".m", ".mm")),
-        class_types=frozenset({"class_interface", "class_implementation"}),
-        function_types=frozenset({"method_definition", "function_definition"}),
-        call_types=frozenset({"message_expression", "call_expression"}),
-        function_boundary_types=frozenset({"method_definition", "function_definition"}),
-    ),
-    LanguageSpec(
-        name="julia",
-        extensions=(".jl",),
-        loaders=_loaders("tree_sitter_julia", (".jl",)),
-        class_types=frozenset({"struct_definition"}),
-        function_types=frozenset({"function_definition"}),
-        call_types=frozenset({"call_expression"}),
-        function_boundary_types=frozenset({"function_definition"}),
-    ),
-    LanguageSpec(
-        name="verilog",
-        extensions=(".v", ".sv", ".vh", ".svh"),
-        loaders=_loaders("tree_sitter_verilog", (".v", ".sv", ".vh", ".svh")),
-        class_types=frozenset({"module_declaration"}),
-        function_types=frozenset({"function_declaration", "task_declaration"}),
-        call_types=frozenset({"tf_call"}),
-        function_boundary_types=frozenset({"function_declaration", "task_declaration"}),
-    ),
-    LanguageSpec(
-        name="fortran",
-        extensions=(".f90", ".f", ".f03", ".f08"),
-        loaders=_loaders("tree_sitter_fortran", (".f90", ".f", ".f03", ".f08")),
-        class_types=frozenset({"module", "program"}),
-        function_types=frozenset({"function", "subroutine"}),
-        call_types=frozenset({"call_statement"}),
-        function_boundary_types=frozenset({"function", "subroutine"}),
-    ),
-    LanguageSpec(
-        name="python",
-        extensions=(".py",),
-        loaders=_loaders("tree_sitter_python", (".py",)),
-        class_types=frozenset({"class_definition"}),
-        function_types=frozenset({"function_definition"}),
-        call_types=frozenset({"call"}),
-        function_boundary_types=frozenset({"function_definition"}),
-        decorator_wrapper_type="decorated_definition",
-        superclass_field="superclasses",
-        heritage_ident_types=frozenset({"identifier", "type_identifier", "attribute"}),
-        test_file_suffixes=("_test",),
-        extract_imports_fn=_python_extract_imports,
-        module_name_fn=_python_module_name,
-        resolve_import_fn=_python_resolve_import,
-    ),
-])
+_register_specs(
+    [
+        LanguageSpec(
+            name="typescript",
+            extensions=(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"),
+            loaders={
+                ".ts": LanguageLoader("tree_sitter_typescript", "language_typescript"),
+                ".tsx": LanguageLoader("tree_sitter_typescript", "language_tsx"),
+                ".js": LanguageLoader("tree_sitter_javascript"),
+                ".jsx": LanguageLoader("tree_sitter_javascript"),
+                ".mjs": LanguageLoader("tree_sitter_javascript"),
+                ".cjs": LanguageLoader("tree_sitter_javascript"),
+            },
+            class_types=frozenset(
+                {
+                    "class_declaration",
+                    "interface_declaration",
+                    "enum_declaration",
+                    "type_alias_declaration",
+                }
+            ),
+            function_types=frozenset({"function_declaration", "method_definition"}),
+            call_types=frozenset({"call_expression", "new_expression"}),
+            function_boundary_types=frozenset(
+                {
+                    "function_declaration",
+                    "arrow_function",
+                    "method_definition",
+                }
+            ),
+            export_type="export_statement",
+            lambda_decl_types=frozenset({"lexical_declaration", "variable_declaration"}),
+            lambda_value_type="arrow_function",
+            heritage_type="class_heritage",
+            heritage_clause_types=frozenset({"extends_clause", "implements_clause"}),
+            extra_excluded_dirs=frozenset({"node_modules"}),
+            test_dir_prefixes=("tests/", "test/", "__tests__/"),
+            test_file_suffixes=(".test", ".spec"),
+            test_name_prefixes=("test", "it", "describe"),
+            index_filenames=("index.ts", "index.tsx", "index.js", "index.jsx"),
+            extract_imports_fn=_ts_extract_imports,
+            module_name_fn=_ts_module_name,
+            resolve_import_fn=_ts_resolve_import,
+        ),
+        LanguageSpec(
+            name="go",
+            extensions=(".go",),
+            loaders=_loaders("tree_sitter_go", (".go",)),
+            class_types=frozenset({"type_spec"}),
+            function_types=frozenset({"function_declaration", "method_declaration"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset(
+                {
+                    "function_declaration",
+                    "method_declaration",
+                    "func_literal",
+                }
+            ),
+            declaration_wrapper_types=frozenset({"type_declaration"}),
+            class_body_field="",
+            method_receiver_field="receiver",
+            extra_excluded_dirs=frozenset({"vendor"}),
+            test_file_suffixes=("_test",),
+            test_name_prefixes=("Test", "Benchmark"),
+            extract_imports_fn=_go_extract_imports,
+            extract_doc_fn=_go_doc_callback(),
+        ),
+        LanguageSpec(
+            name="rust",
+            extensions=(".rs",),
+            loaders=_loaders("tree_sitter_rust", (".rs",)),
+            class_types=frozenset({"struct_item", "enum_item", "trait_item"}),
+            function_types=frozenset({"function_item"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_item", "closure_expression"}),
+            impl_types=frozenset({"impl_item"}),
+            extra_excluded_dirs=frozenset({"target"}),
+            extract_imports_fn=_rust_extract_imports,
+            extract_doc_fn=_line_doc_callback("///"),
+            module_name_fn=_rust_module_name,
+        ),
+        LanguageSpec(
+            name="java",
+            extensions=(".java",),
+            loaders=_loaders("tree_sitter_java", (".java",)),
+            class_types=frozenset(
+                {
+                    "class_declaration",
+                    "interface_declaration",
+                    "enum_declaration",
+                    "annotation_type_declaration",
+                }
+            ),
+            function_types=frozenset({"method_declaration", "constructor_declaration"}),
+            call_types=frozenset({"method_invocation", "object_creation_expression"}),
+            function_boundary_types=frozenset(
+                {
+                    "method_declaration",
+                    "constructor_declaration",
+                    "lambda_expression",
+                }
+            ),
+            superclass_field="superclass",
+            interfaces_field="interfaces",
+            heritage_ident_types=frozenset(
+                {
+                    "identifier",
+                    "type_identifier",
+                    "scoped_type_identifier",
+                }
+            ),
+            extra_excluded_dirs=frozenset({"build", ".gradle", "target", "out"}),
+            test_dir_prefixes=("test/", "tests/", "src/test/"),
+            test_file_suffixes=("Test", "Tests", "Spec"),
+            extract_imports_fn=_java_extract_imports,
+        ),
+        LanguageSpec(
+            name="c",
+            extensions=(".c", ".h"),
+            loaders=_loaders("tree_sitter_c", (".c", ".h")),
+            class_types=frozenset({"struct_specifier", "enum_specifier", "union_specifier"}),
+            function_types=frozenset({"function_definition"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_definition"}),
+            extra_excluded_dirs=frozenset({"build", "cmake-build-debug", "cmake-build-release"}),
+            test_name_prefixes=("test_", "Test"),
+            extract_imports_fn=_c_extract_imports,
+            extract_doc_fn=lambda n, l: "",
+        ),
+        LanguageSpec(
+            name="cpp",
+            extensions=(".cpp", ".cc", ".cxx", ".hpp", ".hxx"),
+            loaders=_loaders("tree_sitter_cpp", (".cpp", ".cc", ".cxx", ".hpp", ".hxx")),
+            class_types=frozenset(
+                {
+                    "class_specifier",
+                    "struct_specifier",
+                    "enum_specifier",
+                    "union_specifier",
+                }
+            ),
+            function_types=frozenset({"function_definition"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_definition", "lambda_expression"}),
+            heritage_type="base_class_clause",
+            heritage_clause_types=frozenset({"base_class_clause"}),
+            heritage_ident_types=frozenset(
+                {
+                    "identifier",
+                    "type_identifier",
+                    "qualified_identifier",
+                }
+            ),
+            extra_excluded_dirs=frozenset({"build", "cmake-build-debug", "cmake-build-release"}),
+            test_name_prefixes=("test_", "Test", "TEST"),
+            test_file_suffixes=("_test", "Test", "Tests"),
+            extract_imports_fn=_c_extract_imports,
+            extract_doc_fn=lambda n, l: "",
+        ),
+        LanguageSpec(
+            name="ruby",
+            extensions=(".rb",),
+            loaders=_loaders("tree_sitter_ruby", (".rb",)),
+            class_types=frozenset({"class", "module"}),
+            function_types=frozenset({"method", "singleton_method"}),
+            call_types=frozenset({"call", "command"}),
+            function_boundary_types=frozenset({"method", "singleton_method", "lambda", "do_block"}),
+            superclass_field="superclass",
+            heritage_ident_types=frozenset({"identifier", "constant", "scope_resolution"}),
+            extra_excluded_dirs=frozenset({"vendor", "bundle"}),
+            test_dir_prefixes=("test/", "tests/", "spec/"),
+            test_file_suffixes=("_test", "_spec"),
+            test_name_prefixes=("test_",),
+            extract_imports_fn=_ruby_extract_imports,
+            extract_doc_fn=_go_doc_callback(),
+        ),
+        LanguageSpec(
+            name="csharp",
+            extensions=(".cs",),
+            loaders=_loaders("tree_sitter_c_sharp", (".cs",)),
+            class_types=frozenset(
+                {
+                    "class_declaration",
+                    "struct_declaration",
+                    "interface_declaration",
+                    "enum_declaration",
+                    "record_declaration",
+                }
+            ),
+            function_types=frozenset({"method_declaration", "constructor_declaration"}),
+            call_types=frozenset({"invocation_expression", "object_creation_expression"}),
+            function_boundary_types=frozenset(
+                {
+                    "method_declaration",
+                    "constructor_declaration",
+                    "lambda_expression",
+                    "anonymous_method_expression",
+                }
+            ),
+            heritage_type="base_list",
+            heritage_clause_types=frozenset({"base_list"}),
+            heritage_ident_types=frozenset({"identifier", "generic_name", "qualified_name"}),
+            declaration_wrapper_types=frozenset(
+                {
+                    "namespace_declaration",
+                    "file_scoped_namespace_declaration",
+                }
+            ),
+            extra_excluded_dirs=frozenset({"bin", "obj", "packages"}),
+            test_dir_prefixes=("tests/", "test/", "Tests/"),
+            test_file_suffixes=("Test", "Tests", "Spec"),
+            test_name_prefixes=("Test",),
+            extract_imports_fn=_csharp_extract_imports,
+            extract_doc_fn=_line_doc_callback("///"),
+        ),
+        LanguageSpec(
+            name="kotlin",
+            extensions=(".kt", ".kts"),
+            loaders=_loaders("tree_sitter_kotlin", (".kt", ".kts")),
+            class_types=frozenset({"class_declaration", "object_declaration"}),
+            function_types=frozenset({"function_declaration"}),
+            class_body_type="class_body",
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_declaration", "lambda_literal"}),
+            superclass_field="delegation_specifiers",
+            heritage_ident_types=frozenset({"identifier", "user_type", "type_identifier"}),
+            extra_excluded_dirs=frozenset({"build", ".gradle", "out"}),
+            test_dir_prefixes=("test/", "tests/", "src/test/"),
+            test_file_suffixes=("Test", "Tests", "Spec"),
+            extract_imports_fn=_kotlin_extract_imports,
+        ),
+        LanguageSpec(
+            name="groovy",
+            extensions=(".groovy",),
+            loaders=_loaders("tree_sitter_groovy", (".groovy",)),
+            class_types=frozenset({"class_declaration"}),
+            function_types=frozenset({"method_declaration"}),
+            call_types=frozenset({"method_invocation"}),
+            function_boundary_types=frozenset({"method_declaration"}),
+        ),
+        LanguageSpec(
+            name="scala",
+            extensions=(".scala",),
+            loaders=_loaders("tree_sitter_scala", (".scala",)),
+            class_types=frozenset({"class_definition", "object_definition", "trait_definition"}),
+            function_types=frozenset({"function_definition"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_definition"}),
+        ),
+        LanguageSpec(
+            name="php",
+            extensions=(".php",),
+            loaders=_loaders("tree_sitter_php", (".php",), "language_php"),
+            class_types=frozenset({"class_declaration"}),
+            function_types=frozenset({"method_declaration", "function_declaration"}),
+            call_types=frozenset({"function_call_expression", "method_call_expression"}),
+            function_boundary_types=frozenset({"method_declaration", "function_declaration"}),
+        ),
+        LanguageSpec(
+            name="swift",
+            extensions=(".swift",),
+            loaders=_loaders("tree_sitter_swift", (".swift",)),
+            class_types=frozenset(
+                {"class_declaration", "struct_declaration", "protocol_declaration"}
+            ),
+            function_types=frozenset({"function_declaration"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_declaration"}),
+        ),
+        LanguageSpec(
+            name="lua",
+            extensions=(".lua",),
+            loaders=_loaders("tree_sitter_lua", (".lua",)),
+            class_types=frozenset(),
+            function_types=frozenset({"function_declaration"}),
+            call_types=frozenset({"function_call"}),
+            function_boundary_types=frozenset({"function_declaration"}),
+        ),
+        LanguageSpec(
+            name="zig",
+            extensions=(".zig",),
+            loaders=_loaders("tree_sitter_zig", (".zig",)),
+            class_types=frozenset({"struct_declaration"}),
+            function_types=frozenset({"function_declaration"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_declaration"}),
+        ),
+        LanguageSpec(
+            name="powershell",
+            extensions=(".ps1", ".psm1", ".psd1"),
+            loaders=_loaders("tree_sitter_powershell", (".ps1", ".psm1", ".psd1")),
+            class_types=frozenset({"class_declaration"}),
+            function_types=frozenset({"function_declaration"}),
+            call_types=frozenset({"command"}),
+            function_boundary_types=frozenset({"function_declaration"}),
+        ),
+        LanguageSpec(
+            name="elixir",
+            extensions=(".ex", ".exs"),
+            loaders=_loaders("tree_sitter_elixir", (".ex", ".exs")),
+            class_types=frozenset({"module"}),
+            function_types=frozenset({"call"}),
+            call_types=frozenset({"call"}),
+            function_boundary_types=frozenset({"call"}),
+        ),
+        LanguageSpec(
+            name="objc",
+            extensions=(".m", ".mm"),
+            loaders=_loaders("tree_sitter_objc", (".m", ".mm")),
+            class_types=frozenset({"class_interface", "class_implementation"}),
+            function_types=frozenset({"method_definition", "function_definition"}),
+            call_types=frozenset({"message_expression", "call_expression"}),
+            function_boundary_types=frozenset({"method_definition", "function_definition"}),
+        ),
+        LanguageSpec(
+            name="julia",
+            extensions=(".jl",),
+            loaders=_loaders("tree_sitter_julia", (".jl",)),
+            class_types=frozenset({"struct_definition"}),
+            function_types=frozenset({"function_definition"}),
+            call_types=frozenset({"call_expression"}),
+            function_boundary_types=frozenset({"function_definition"}),
+        ),
+        LanguageSpec(
+            name="verilog",
+            extensions=(".v", ".sv", ".vh", ".svh"),
+            loaders=_loaders("tree_sitter_verilog", (".v", ".sv", ".vh", ".svh")),
+            class_types=frozenset({"module_declaration"}),
+            function_types=frozenset({"function_declaration", "task_declaration"}),
+            call_types=frozenset({"tf_call"}),
+            function_boundary_types=frozenset({"function_declaration", "task_declaration"}),
+        ),
+        LanguageSpec(
+            name="fortran",
+            extensions=(".f90", ".f", ".f03", ".f08"),
+            loaders=_loaders("tree_sitter_fortran", (".f90", ".f", ".f03", ".f08")),
+            class_types=frozenset({"module", "program"}),
+            function_types=frozenset({"function", "subroutine"}),
+            call_types=frozenset({"call_statement"}),
+            function_boundary_types=frozenset({"function", "subroutine"}),
+        ),
+        LanguageSpec(
+            name="python",
+            extensions=(".py",),
+            loaders=_loaders("tree_sitter_python", (".py",)),
+            class_types=frozenset({"class_definition"}),
+            function_types=frozenset({"function_definition"}),
+            call_types=frozenset({"call"}),
+            function_boundary_types=frozenset({"function_definition"}),
+            decorator_wrapper_type="decorated_definition",
+            superclass_field="superclasses",
+            heritage_ident_types=frozenset({"identifier", "type_identifier", "attribute"}),
+            test_file_suffixes=("_test",),
+            extract_imports_fn=_python_extract_imports,
+            module_name_fn=_python_module_name,
+            resolve_import_fn=_python_resolve_import,
+        ),
+    ]
+)
 
 
 # ---------------------------------------------------------------------------
 # Thin factory wrappers
 # ---------------------------------------------------------------------------
 
-def make_typescript_config() -> LanguageConfig: return _make_config("typescript")
-def make_go_config() -> LanguageConfig: return _make_config("go")
-def make_rust_config() -> LanguageConfig: return _make_config("rust")
-def make_java_config() -> LanguageConfig: return _make_config("java")
-def make_c_config() -> LanguageConfig: return _make_config("c")
-def make_cpp_config() -> LanguageConfig: return _make_config("cpp")
-def make_ruby_config() -> LanguageConfig: return _make_config("ruby")
-def make_csharp_config() -> LanguageConfig: return _make_config("csharp")
-def make_kotlin_config() -> LanguageConfig: return _make_config("kotlin")
-def make_groovy_config() -> LanguageConfig: return _make_config("groovy")
-def make_scala_config() -> LanguageConfig: return _make_config("scala")
-def make_php_config() -> LanguageConfig: return _make_config("php")
-def make_swift_config() -> LanguageConfig: return _make_config("swift")
-def make_lua_config() -> LanguageConfig: return _make_config("lua")
-def make_zig_config() -> LanguageConfig: return _make_config("zig")
-def make_powershell_config() -> LanguageConfig: return _make_config("powershell")
-def make_elixir_config() -> LanguageConfig: return _make_config("elixir")
-def make_objc_config() -> LanguageConfig: return _make_config("objc")
-def make_julia_config() -> LanguageConfig: return _make_config("julia")
-def make_verilog_config() -> LanguageConfig: return _make_config("verilog")
-def make_fortran_config() -> LanguageConfig: return _make_config("fortran")
-def make_python_config() -> LanguageConfig: return _make_config("python")
+
+def make_typescript_config() -> LanguageConfig:
+    return _make_config("typescript")
+
+
+def make_go_config() -> LanguageConfig:
+    return _make_config("go")
+
+
+def make_rust_config() -> LanguageConfig:
+    return _make_config("rust")
+
+
+def make_java_config() -> LanguageConfig:
+    return _make_config("java")
+
+
+def make_c_config() -> LanguageConfig:
+    return _make_config("c")
+
+
+def make_cpp_config() -> LanguageConfig:
+    return _make_config("cpp")
+
+
+def make_ruby_config() -> LanguageConfig:
+    return _make_config("ruby")
+
+
+def make_csharp_config() -> LanguageConfig:
+    return _make_config("csharp")
+
+
+def make_kotlin_config() -> LanguageConfig:
+    return _make_config("kotlin")
+
+
+def make_groovy_config() -> LanguageConfig:
+    return _make_config("groovy")
+
+
+def make_scala_config() -> LanguageConfig:
+    return _make_config("scala")
+
+
+def make_php_config() -> LanguageConfig:
+    return _make_config("php")
+
+
+def make_swift_config() -> LanguageConfig:
+    return _make_config("swift")
+
+
+def make_lua_config() -> LanguageConfig:
+    return _make_config("lua")
+
+
+def make_zig_config() -> LanguageConfig:
+    return _make_config("zig")
+
+
+def make_powershell_config() -> LanguageConfig:
+    return _make_config("powershell")
+
+
+def make_elixir_config() -> LanguageConfig:
+    return _make_config("elixir")
+
+
+def make_objc_config() -> LanguageConfig:
+    return _make_config("objc")
+
+
+def make_julia_config() -> LanguageConfig:
+    return _make_config("julia")
+
+
+def make_verilog_config() -> LanguageConfig:
+    return _make_config("verilog")
+
+
+def make_fortran_config() -> LanguageConfig:
+    return _make_config("fortran")
+
+
+def make_python_config() -> LanguageConfig:
+    return _make_config("python")
 
 
 # ---------------------------------------------------------------------------
 # Registry of all config factories
 # ---------------------------------------------------------------------------
 
-ALL_LANGUAGE_FACTORIES = [
-    make_python_config,
-    make_typescript_config,
-    make_go_config,
-    make_rust_config,
-    make_java_config,
-    make_c_config,
-    make_cpp_config,
-    make_ruby_config,
-    make_csharp_config,
-    make_kotlin_config,
-    make_groovy_config,
-    make_scala_config,
-    make_php_config,
-    make_swift_config,
-    make_lua_config,
-    make_zig_config,
-    make_powershell_config,
-    make_elixir_config,
-    make_objc_config,
-    make_julia_config,
-    make_verilog_config,
-    make_fortran_config,
+LANGUAGE_FACTORIES = [
+    ("python", make_python_config),
+    ("typescript", make_typescript_config),
+    ("go", make_go_config),
+    ("rust", make_rust_config),
+    ("java", make_java_config),
+    ("c", make_c_config),
+    ("cpp", make_cpp_config),
+    ("ruby", make_ruby_config),
+    ("csharp", make_csharp_config),
+    ("kotlin", make_kotlin_config),
+    ("groovy", make_groovy_config),
+    ("scala", make_scala_config),
+    ("php", make_php_config),
+    ("swift", make_swift_config),
+    ("lua", make_lua_config),
+    ("zig", make_zig_config),
+    ("powershell", make_powershell_config),
+    ("elixir", make_elixir_config),
+    ("objc", make_objc_config),
+    ("julia", make_julia_config),
+    ("verilog", make_verilog_config),
+    ("fortran", make_fortran_config),
 ]
+
+ALL_LANGUAGE_FACTORIES = [factory for _, factory in LANGUAGE_FACTORIES]

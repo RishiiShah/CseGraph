@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from csegraph._core.vcs import find_svn_root, svn_versioned_paths
 
 

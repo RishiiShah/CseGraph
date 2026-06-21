@@ -16,7 +16,7 @@ class ProfileConfig:
     dep_threshold: float = 0.80
     entity_threshold: float = 0.80
     semantic_threshold: float = 0.50
-    semantic_threshold_relaxed: float = 0.0
+    semantic_threshold_relaxed: float = 0.03
     confidence_threshold: float = 0.70
     max_bytes: Optional[int] = None
 
@@ -36,6 +36,7 @@ class IndexResult:
     changed_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
     timings_ms: Dict[str, float] = field(default_factory=dict)
     postprocess_level: str = "none"
     postprocess: Dict[str, Any] = field(default_factory=dict)
@@ -59,6 +60,7 @@ class RefreshResult:
     deleted_files: List[str] = field(default_factory=list)
     changed_symbols: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
     dependents_expanded: int = 0
     dependents_cap_hit: bool = False
     timings_ms: Dict[str, float] = field(default_factory=dict)
@@ -86,6 +88,7 @@ class ContextNode:
     reason: List[str] = field(default_factory=list)
     reason_details: List[Dict[str, Any]] = field(default_factory=list)
     explanation: Optional[str] = None
+    source_omitted_reason: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.language, str) or not self.language:
@@ -93,10 +96,46 @@ class ContextNode:
 
 
 @dataclass
+class RelationshipOccurrence:
+    path: str
+    line_range: Optional[List[int]] = None
+    enclosing_symbol_id: Optional[str] = None
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    snippet: Optional[str] = None
+
+
+@dataclass
+class ContextRelationship:
+    source: str
+    target: str
+    relation: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    occurrences: List[RelationshipOccurrence] = field(default_factory=list)
+    confidence: float = 1.0
+    confidence_tier: str = "EXTRACTED"
+    source_path: Optional[str] = None
+    target_path: Optional[str] = None
+
+
+@dataclass
+class ImportPrelude:
+    path: str
+    language: str
+    text: str
+    line_range: Optional[List[int]]
+    source_node_ids: List[str] = field(default_factory=list)
+    resolved_imports: List[str] = field(default_factory=list)
+
+
+@dataclass
 class SufficiencyResult:
     sufficient: bool
     metrics: SufficiencyMetrics
     thresholds: Dict[str, float] = field(default_factory=dict)
+    failure_reasons: List[Dict[str, Any]] = field(default_factory=list)
+    recovery: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -112,6 +151,10 @@ class ContextResult:
     sufficiency: SufficiencyResult
     total_estimated_tokens: int
     nodes: List[ContextNode]
+    relationships: List[ContextRelationship] = field(default_factory=list)
+    import_preludes: List[ImportPrelude] = field(default_factory=list)
+    target_input: Optional[str] = None
+    source_policy: str = "auto"
     raw_code_nodes: List[str] = field(default_factory=list)
     next_actions: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -229,9 +272,16 @@ class BenchmarkCorpusTask:
     id: str
     query: str
     target: Optional[str] = None
+    include_source: str = "never"
+    detail_level: str = "auto"
+    max_tokens: Optional[int] = None
     expected_nodes: List[str] = field(default_factory=list)
     expected_files: List[str] = field(default_factory=list)
     expected_symbols: List[str] = field(default_factory=list)
+    expected_relationships: List[Dict[str, str]] = field(default_factory=list)
+    expected_occurrence_snippets: List[str] = field(default_factory=list)
+    expected_import_preludes: List[str] = field(default_factory=list)
+    forbidden_source_patterns: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -250,14 +300,26 @@ class BenchmarkCorpusTaskResult:
     node_hit_rate: float
     file_hit_rate: float
     symbol_hit_rate: float
+    relationship_hit_rate: float
+    occurrence_snippet_hit_rate: float
+    import_prelude_hit_rate: float
+    forbidden_source_pattern_hit_rate: float
     expected_node_total: int
     expected_file_total: int
     expected_symbol_total: int
+    expected_relationship_total: int
+    expected_occurrence_snippet_total: int
+    expected_import_prelude_total: int
+    forbidden_source_pattern_total: int
     expected_hit_count: int
     expected_total: int
     missing_expected_nodes: List[str] = field(default_factory=list)
     missing_expected_files: List[str] = field(default_factory=list)
     missing_expected_symbols: List[str] = field(default_factory=list)
+    missing_expected_relationships: List[str] = field(default_factory=list)
+    missing_expected_occurrence_snippets: List[str] = field(default_factory=list)
+    missing_expected_import_preludes: List[str] = field(default_factory=list)
+    violating_forbidden_source_patterns: List[str] = field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -268,6 +330,7 @@ class BenchmarkCorpusSummary:
     failed_task_count: int
     overall_hit_rate: float
     task_pass_rate: float
+    sufficient_task_count: int
     total_context_tokens: int
     avg_context_tokens: float
     total_response_bytes: int

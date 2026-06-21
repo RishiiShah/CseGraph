@@ -6,7 +6,6 @@ from csegraph._core.core.ids import file_node_id
 from csegraph._core.retrieval.constants import REASON_ORDER
 from csegraph._core.retrieval.helpers import is_small_helper_row
 
-
 LEXICAL_EVIDENCE = {
     "fts5-bm25",
     "lexical-token-overlap",
@@ -76,7 +75,9 @@ def normalize_reasons(
 
 
 def build_explanation(reasons: Sequence[str]) -> str:
-    clauses = [EXPLANATION_BY_REASON[reason] for reason in reasons if reason in EXPLANATION_BY_REASON]
+    clauses = [
+        EXPLANATION_BY_REASON[reason] for reason in reasons if reason in EXPLANATION_BY_REASON
+    ]
     if not clauses:
         return "Included because it was selected by the context ranking."
     if len(clauses) == 1:
@@ -182,9 +183,12 @@ def _is_import_dependency(
         return False
     node_file = file_node_id(str(node_path))
     target_file = file_node_id(str(target_path))
-    return (
-        any(edge["relation"] == "imports" and edge["target_id"] == node_file for edge in outgoing.get(target_file, []))
-        or any(edge["relation"] == "imports" and edge["source_id"] == node_file for edge in incoming.get(target_file, []))
+    return any(
+        edge["relation"] == "imports" and edge["target_id"] == node_file
+        for edge in outgoing.get(target_file, [])
+    ) or any(
+        edge["relation"] == "imports" and edge["source_id"] == node_file
+        for edge in incoming.get(target_file, [])
     )
 
 

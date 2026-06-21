@@ -9,7 +9,6 @@ import pytest
 
 from csegraph._core.core.models import to_dict
 from csegraph._core.graph.architecture import ArchitectureService
-from csegraph._core.graph.communities import detect_communities
 from csegraph._core.index.services import IndexService
 from csegraph._core.postprocess import PostprocessService
 
@@ -48,8 +47,7 @@ _MULTI_MODULE_FILES = {
         "    app.route('/logout', handle_logout)\n"
     ),
     "tests/test_auth.py": (
-        "from auth.login import login\n"
-        "\ndef test_login():\n    assert login('a', 'b')\n"
+        "from auth.login import login\n\ndef test_login():\n    assert login('a', 'b')\n"
     ),
 }
 
@@ -111,9 +109,12 @@ class TestArchitectureOverview:
         assert "No communities" in result.warnings[0]
 
     def test_single_file_repo(self, tmp_path):
-        db = _index_and_postprocess(tmp_path, {
-            "main.py": "def hello():\n    pass\n",
-        })
+        db = _index_and_postprocess(
+            tmp_path,
+            {
+                "main.py": "def hello():\n    pass\n",
+            },
+        )
         result = ArchitectureService(db).overview()
         assert result.num_communities >= 1
         assert result.summaries[0].size >= 1

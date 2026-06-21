@@ -8,13 +8,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from csegraph._core.core.errors import UnsupportedSchemaError
 from csegraph._core.core.ids import file_node_id
-from csegraph._core.repo_state import git_head_state
 from csegraph._core.index.schema import (
     METADATA_UPSERT,
     SCHEMA_DDL,
     SCHEMA_USER_VERSION,
     SCHEMA_VERSION,
 )
+from csegraph._core.repo_state import git_head_state
 
 
 class ProjectIndex:
@@ -37,12 +37,18 @@ class ProjectIndex:
     def close(self) -> None:
         self.conn.close()
 
-    def initialize_schema(self) -> None:
+    def initialize_schema(self, *, reset_on_unsupported: bool = False) -> None:
         existing_version = self._existing_schema_version()
         if existing_version is None and self._has_csegraph_objects():
-            raise UnsupportedSchemaError()
+            if not reset_on_unsupported:
+                raise UnsupportedSchemaError()
+            self._drop_csegraph_objects()
+            existing_version = None
         if existing_version is not None and existing_version != SCHEMA_VERSION:
-            raise UnsupportedSchemaError()
+            if not reset_on_unsupported:
+                raise UnsupportedSchemaError()
+            self._drop_csegraph_objects()
+            existing_version = None
 
         cur = self.conn.cursor()
         cur.executescript(SCHEMA_DDL)
@@ -50,10 +56,39 @@ class ProjectIndex:
         cur.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
         self.conn.commit()
 
+    def _drop_csegraph_objects(self) -> None:
+        for name in (
+            "lexical_index",
+            "retrieval_context",
+            "retrieval_runs",
+            "embedding_cache",
+            "summaries",
+            "symbol_references",
+            "imports",
+            "relationships",
+            "edges",
+            "symbols",
+            "files",
+            "nodes",
+            "metadata",
+            "schema_meta",
+            "projects",
+        ):
+            self.conn.execute(f"DROP TABLE IF EXISTS {name}")
+        self.conn.commit()
+
     def _existing_schema_version(self) -> Optional[str]:
-        if self._table_exists("metadata"):
+        for table_name in ("metadata", "schema_meta"):
+            version = self._schema_version_from_table(table_name)
+            if version is not None:
+                return version
+
+        return None
+
+    def _schema_version_from_table(self, table_name: str) -> Optional[str]:
+        if self._table_exists(table_name):
             row = self.conn.execute(
-                "SELECT value FROM metadata WHERE key = 'schema_version'"
+                f"SELECT value FROM {table_name} WHERE key = 'schema_version'"
             ).fetchone()
             return row["value"] if row else None
 
@@ -77,7 +112,12 @@ class ProjectIndex:
         ).fetchone()
         return row is not None
 
-    def set_metadata(self, root_dir: str, profile: str) -> None:
+    def set_metadata(
+        self,
+        root_dir: str,
+        profile: str,
+        include_roots: Optional[Sequence[str]] = None,
+    ) -> None:
         now = time.time()
         existing = self.metadata(raise_if_empty=False)
         created_at = existing.get("created_at", str(now))
@@ -91,6 +131,8 @@ class ProjectIndex:
             "built_branch": branch or "",
             "built_commit": commit or "",
         }
+        if include_roots is not None:
+            rows["include_roots"] = json.dumps(list(include_roots), sort_keys=True)
         self.conn.executemany(
             """
             INSERT INTO metadata(key, value)
@@ -104,11 +146,12 @@ class ProjectIndex:
     def metadata(self, *, raise_if_empty: bool = True) -> Dict[str, str]:
         if not self._table_exists("metadata"):
             if raise_if_empty:
-                raise ValueError("No project is indexed in this database. Run csegraph index first.")
+                raise ValueError(
+                    "No project is indexed in this database. Run csegraph index first."
+                )
             return {}
         values = {
-            row["key"]: row["value"]
-            for row in self.conn.execute("SELECT key, value FROM metadata")
+            row["key"]: row["value"] for row in self.conn.execute("SELECT key, value FROM metadata")
         }
         if raise_if_empty and "root_dir" not in values:
             raise ValueError("No project is indexed in this database. Run csegraph index first.")
@@ -120,7 +163,12 @@ class ProjectIndex:
         self.conn.execute("DELETE FROM lexical_index")
         self.conn.execute("DELETE FROM summaries")
         self.conn.execute("DELETE FROM embedding_cache")
+        self.conn.execute("DELETE FROM symbol_references")
+        self.conn.execute("DELETE FROM imports")
+        self.conn.execute("DELETE FROM relationships")
         self.conn.execute("DELETE FROM edges")
+        self.conn.execute("DELETE FROM symbols")
+        self.conn.execute("DELETE FROM files")
         self.conn.execute("DELETE FROM nodes")
         self.conn.commit()
 
@@ -151,11 +199,26 @@ class ProjectIndex:
             f"DELETE FROM edges WHERE source IN ({placeholders})",
             node_ids,
         )
+        self.conn.execute(
+            f"DELETE FROM relationships WHERE source IN ({placeholders})",
+            node_ids,
+        )
         if remove_incoming:
             self.conn.execute(
                 f"DELETE FROM edges WHERE target IN ({placeholders})",
                 node_ids,
             )
+            self.conn.execute(
+                f"DELETE FROM relationships WHERE target IN ({placeholders})",
+                node_ids,
+            )
+        self.conn.execute(
+            f"DELETE FROM symbol_references WHERE source_file_id = ? OR enclosing_symbol_id IN ({placeholders})",
+            [file_id, *node_ids],
+        )
+        self.conn.execute("DELETE FROM imports WHERE file_id = ?", (file_id,))
+        self.conn.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
+        self.conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
         self.conn.execute(
             f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
             node_ids,
@@ -179,6 +242,13 @@ class ProjectIndex:
         self.conn.execute(
             """
             DELETE FROM edges
+             WHERE source NOT IN (SELECT id FROM nodes)
+                OR target NOT IN (SELECT id FROM nodes)
+            """
+        )
+        self.conn.execute(
+            """
+            DELETE FROM relationships
              WHERE source NOT IN (SELECT id FROM nodes)
                 OR target NOT IN (SELECT id FROM nodes)
             """
@@ -229,7 +299,10 @@ class ProjectIndex:
             ),
         )
         self.conn.commit()
-        return int(cur.lastrowid)
+        row_id = cur.lastrowid
+        if row_id is None:
+            raise RuntimeError("SQLite did not return a retrieval run id")
+        return int(row_id)
 
     def insert_retrieval_context(
         self,

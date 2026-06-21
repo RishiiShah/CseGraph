@@ -18,15 +18,11 @@ def _multi_relation_repo(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text(
-        "from helpers import fmt\n"
-        "\n"
-        "def greet(name: str) -> str:\n"
-        "    return fmt(name)\n",
+        "from helpers import fmt\n\ndef greet(name: str) -> str:\n    return fmt(name)\n",
         encoding="utf-8",
     )
     (repo / "helpers.py").write_text(
-        "def fmt(name: str) -> str:\n"
-        "    return f\"hi {name}\"\n",
+        'def fmt(name: str) -> str:\n    return f"hi {name}"\n',
         encoding="utf-8",
     )
     db = str(repo / ".scratch" / "csegraph" / "test.db")
@@ -83,9 +79,7 @@ class TestRelationFilterService:
 
     def test_filter_shrinks_edge_count(self, tmp_path):
         _, db = _multi_relation_repo(tmp_path)
-        full = GraphQueryService(db).neighborhood(
-            "file::app.py", depth=2, detail_level="standard"
-        )
+        full = GraphQueryService(db).neighborhood("file::app.py", depth=2, detail_level="standard")
         calls_only = GraphQueryService(db).neighborhood(
             "file::app.py",
             depth=2,

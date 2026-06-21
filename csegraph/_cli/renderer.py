@@ -29,7 +29,9 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
     lines = [
         f"Parsing: {files:,} files",
         indexing,
-        _postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason")),
+        _postprocess_line(
+            postprocess_level, postprocess, payload.get("postprocess_skipped_reason")
+        ),
     ]
     if graph_totals:
         label = "Full index" if postprocess_level == "full" else "Index"
@@ -51,6 +53,9 @@ def render_index_summary(payload: Dict[str, Any]) -> str:
     errors = _render_parse_errors(parse_errors)
     if errors:
         lines.extend(["", *errors])
+    warnings = _render_warnings(payload.get("warnings") or [])
+    if warnings:
+        lines.extend(["", *warnings])
     return "\n".join(lines) + "\n"
 
 
@@ -77,7 +82,9 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
         if parse_errors:
             indexing += f" ({len(parse_errors):,} parse errors)"
         lines.append(indexing)
-    lines.append(_postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason")))
+    lines.append(
+        _postprocess_line(postprocess_level, postprocess, payload.get("postprocess_skipped_reason"))
+    )
     if graph_totals:
         lines.append(
             f"Refresh: {graph_totals.get('files', 0):,} files, "
@@ -97,6 +104,9 @@ def render_refresh_summary(payload: Dict[str, Any]) -> str:
     errors = _render_parse_errors(parse_errors)
     if errors:
         lines.extend(["", *errors])
+    warnings = _render_warnings(payload.get("warnings") or [])
+    if warnings:
+        lines.extend(["", *warnings])
     return "\n".join(lines) + "\n"
 
 
@@ -195,6 +205,10 @@ def _render_benchmark_corpus_summary(payload: Dict[str, Any]) -> str:
         f"Overall hit rate: {_pct(summary.get('overall_hit_rate', 0.0))}",
         f"Task pass rate: {_pct(summary.get('task_pass_rate', 0.0))}",
         (
+            f"Sufficient contexts: {summary.get('sufficient_task_count', 0)} / "
+            f"{summary.get('task_count', 0)}"
+        ),
+        (
             f"Tokens: total={summary.get('total_context_tokens', 0)}, "
             f"avg={summary.get('avg_context_tokens', 0)}"
         ),
@@ -228,9 +242,41 @@ def _render_benchmark_corpus_summary(payload: Dict[str, Any]) -> str:
                 len(task.get("missing_expected_nodes") or [])
                 + len(task.get("missing_expected_files") or [])
                 + len(task.get("missing_expected_symbols") or [])
+                + len(task.get("missing_expected_relationships") or [])
+                + len(task.get("missing_expected_occurrence_snippets") or [])
+                + len(task.get("missing_expected_import_preludes") or [])
+                + len(task.get("violating_forbidden_source_patterns") or [])
             )
             if missing:
                 line += f", missing={missing}"
+            relationship_total = task.get("expected_relationship_total", 0)
+            if relationship_total:
+                line += (
+                    ", relationships="
+                    f"{relationship_total - len(task.get('missing_expected_relationships') or [])}/"
+                    f"{relationship_total}"
+                )
+            occurrence_total = task.get("expected_occurrence_snippet_total", 0)
+            if occurrence_total:
+                line += (
+                    ", occurrences="
+                    f"{occurrence_total - len(task.get('missing_expected_occurrence_snippets') or [])}/"
+                    f"{occurrence_total}"
+                )
+            prelude_total = task.get("expected_import_prelude_total", 0)
+            if prelude_total:
+                line += (
+                    ", imports="
+                    f"{prelude_total - len(task.get('missing_expected_import_preludes') or [])}/"
+                    f"{prelude_total}"
+                )
+            forbidden_total = task.get("forbidden_source_pattern_total", 0)
+            if forbidden_total:
+                line += (
+                    ", forbidden="
+                    f"{forbidden_total - len(task.get('violating_forbidden_source_patterns') or [])}/"
+                    f"{forbidden_total}"
+                )
         lines.append(line)
     lines.extend(
         [
@@ -376,12 +422,14 @@ def render_embeddings_summary(payload: Dict[str, Any]) -> str:
     elif action == "search":
         query = payload.get("query", "")
         hits = payload.get("hits", [])
-        lines.append(f"Embedding search: \"{query}\" ({len(hits)} results)")
+        lines.append(f'Embedding search: "{query}" ({len(hits)} results)')
         lines.append(f"  Model: {model}")
         lines.append("")
         for i, hit in enumerate(hits, 1):
             loc = hit["path"]
-            lines.append(f"  {i}. {hit['name']} ({hit['kind']})  {loc}  score={hit['score']:.4f}  [{hit['source']}]")
+            lines.append(
+                f"  {i}. {hit['name']} ({hit['kind']})  {loc}  score={hit['score']:.4f}  [{hit['source']}]"
+            )
     elif action == "status":
         embedded = payload.get("nodes_embedded", 0)
         stale = payload.get("nodes_skipped", 0)
@@ -480,7 +528,9 @@ def render_install_summary(payload: Dict[str, Any]) -> str:
     if payload.get("dry_run"):
         lines.append("  Mode:    dry run")
     for target in payload.get("installed", []):
-        action = "Would write" if target.get("dry_run") else target.get("action", "updated").capitalize()
+        action = (
+            "Would write" if target.get("dry_run") else target.get("action", "updated").capitalize()
+        )
         lines.append(f"  {action}: {target.get('platform')} -> {target.get('path')}")
     for target in payload.get("skipped", []):
         reason = target.get("reason") or "skipped"
@@ -547,14 +597,19 @@ def render_path_summary(payload: Dict[str, Any]) -> str:
 
 
 def render_context_markdown(payload: Dict[str, Any]) -> str:
+    request = payload.get("request") or {}
+    raw_target = payload.get("target")
+    target = raw_target if isinstance(raw_target, dict) else {}
+    budgets = payload.get("budgets") or {}
+    symbols = payload.get("symbols") or payload.get("nodes") or []
     lines: List[str] = [
         "# csegraph context",
         "",
-        f"Query: {payload['query']}",
-        f"Target: `{payload['target']}`",
-        f"Requested detail: `{payload.get('detail_level', 'auto')}`",
-        f"Returned detail: `{payload.get('returned_detail_level', 'minimal')}`",
-        f"Total estimated tokens: {payload['total_estimated_tokens']}",
+        f"Query: {request.get('task', payload.get('query', ''))}",
+        f"Target: `{target.get('id', payload.get('target', ''))}`",
+        f"Requested detail: `{request.get('detail_level', payload.get('detail_level', 'auto'))}`",
+        f"Returned detail: `{request.get('returned_detail_level', payload.get('returned_detail_level', 'minimal'))}`",
+        f"Total estimated tokens: {budgets.get('total_estimated_tokens', payload.get('total_estimated_tokens', 0))}",
         f"Sufficient: {payload['sufficiency']['sufficient']}",
         "",
     ]
@@ -573,7 +628,45 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
             lines.append(_render_next_action(action))
         lines.append("")
 
-    for rank, node in enumerate(payload["nodes"], start=1):
+    import_preludes = payload.get("import_preludes") or []
+    if import_preludes:
+        lines.extend(["## Import Preludes", ""])
+        for prelude in import_preludes:
+            line_range = _line_range_text(prelude.get("line_range"))
+            lines.extend(
+                [
+                    f"### `{prelude.get('path', '')}{line_range}`",
+                    "",
+                    f"```{prelude.get('language', '')}",
+                    str(prelude.get("text", "")).rstrip(),
+                    "```",
+                    "",
+                ]
+            )
+
+    relationships = payload.get("relationships") or []
+    if relationships:
+        lines.extend(["## Relationships", ""])
+        for relationship in relationships[:40]:
+            lines.append(
+                "- "
+                f"`{relationship.get('source')}` --"
+                f"{relationship.get('relation', '?')}--> "
+                f"`{relationship.get('target')}`"
+            )
+            for occurrence in _relationship_occurrences(relationship)[:2]:
+                line_range = _line_range_text(occurrence.get("line_range"))
+                lines.append(
+                    f"  - `{occurrence.get('path', '')}{line_range}` "
+                    f"{occurrence.get('kind', relationship.get('relation', ''))} "
+                    f"`{occurrence.get('name', '')}`"
+                )
+                snippet = occurrence.get("snippet")
+                if snippet:
+                    lines.extend(["", "```", str(snippet).rstrip(), "```", ""])
+        lines.append("")
+
+    for rank, node in enumerate(symbols, start=1):
         lines.extend(_render_node(rank, node))
     return "\n".join(lines).rstrip() + "\n"
 
@@ -594,6 +687,19 @@ def _render_next_action(action: Dict[str, Any]) -> str:
     suffix = f" - {reason}" if reason else ""
 
     return f"- {'; '.join(parts)}{suffix}"
+
+
+def _relationship_occurrences(relationship: Dict[str, Any]) -> List[Dict[str, Any]]:
+    direct = relationship.get("occurrences")
+    if isinstance(direct, list):
+        return [item for item in direct if isinstance(item, dict)]
+    metadata = relationship.get("metadata")
+    if not isinstance(metadata, dict):
+        return []
+    nested = metadata.get("occurrences")
+    if isinstance(nested, list):
+        return [item for item in nested if isinstance(item, dict)]
+    return []
 
 
 def _render_node(rank: int, node: Dict[str, Any]) -> List[str]:
@@ -675,9 +781,7 @@ def render_flows_summary(payload: Dict[str, Any]) -> str:
         reason = ep.get("detection_reason", "")
         crit = flow.get("criticality", 0)
         crit_bar = _criticality_bar(crit)
-        lines.append(
-            f"  {ep.get('name', '?')} ({ep.get('kind', '?')})  {loc}"
-        )
+        lines.append(f"  {ep.get('name', '?')} ({ep.get('kind', '?')})  {loc}")
         lines.append(
             f"    {crit_bar} criticality={crit:.2f}  "
             f"depth={flow.get('depth', 0)}  "
@@ -693,9 +797,7 @@ def render_flows_summary(payload: Dict[str, Any]) -> str:
         steps = flow.get("steps", [])
         if steps:
             shown = steps[:5]
-            step_names = ", ".join(
-                f"{s['name']}(d={s['depth']})" for s in shown
-            )
+            step_names = ", ".join(f"{s['name']}(d={s['depth']})" for s in shown)
             suffix = f" ... +{len(steps) - 5} more" if len(steps) > 5 else ""
             lines.append(f"    Calls: {step_names}{suffix}")
         lines.append("")
@@ -740,15 +842,19 @@ def render_report_markdown(payload: Dict[str, Any]) -> str:
 
 
 def _render_corpus_check(lines: List[str], payload: Dict[str, Any]) -> None:
-    lines.extend([
-        "## Corpus Check", "",
-        "| Metric | Count |", "|---|---:|",
-        f"| Files | {payload['total_files']:,} |",
-        f"| Symbols | {payload['total_symbols']:,} |",
-        f"| Edges | {payload['total_edges']:,} |",
-        f"| Parse errors | {payload['parse_error_count']:,} |",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Corpus Check",
+            "",
+            "| Metric | Count |",
+            "|---|---:|",
+            f"| Files | {payload['total_files']:,} |",
+            f"| Symbols | {payload['total_symbols']:,} |",
+            f"| Edges | {payload['total_edges']:,} |",
+            f"| Parse errors | {payload['parse_error_count']:,} |",
+            "",
+        ]
+    )
 
 
 def _render_summary_tables(lines: List[str], payload: Dict[str, Any]) -> None:
@@ -768,20 +874,24 @@ def _render_summary_tables(lines: List[str], payload: Dict[str, Any]) -> None:
 def _render_god_nodes(lines: List[str], payload: Dict[str, Any]) -> None:
     if not payload.get("god_nodes"):
         return
-    lines.extend([
-        "## God Nodes", "",
-        "| Rank | Name | Kind | Path | Degree |",
-        "|---:|---|---|---|---:|",
-    ])
+    lines.extend(
+        [
+            "## God Nodes",
+            "",
+            "| Rank | Name | Kind | Path | Degree |",
+            "|---:|---|---|---|---:|",
+        ]
+    )
     for rank, node in enumerate(payload["god_nodes"], start=1):
         lines.append(
-            f"| {rank} | `{node['name']}` | {node['kind']} "
-            f"| {node['path']} | {node['degree']} |"
+            f"| {rank} | `{node['name']}` | {node['kind']} | {node['path']} | {node['degree']} |"
         )
     lines.append("")
 
 
-def _render_gap_table(lines: List[str], gaps: List[Dict[str, Any]], reason: Optional[str] = None) -> None:
+def _render_gap_table(
+    lines: List[str], gaps: List[Dict[str, Any]], reason: Optional[str] = None
+) -> None:
     lines.extend(["| Name | Kind | Path | Degree |", "|---|---|---|---:|"])
     for node in gaps:
         if reason is not None and node.get("reason") != reason:
@@ -809,11 +919,14 @@ def _render_knowledge_gaps(lines: List[str], payload: Dict[str, Any]) -> None:
 def _render_sections(lines: List[str], payload: Dict[str, Any]) -> None:
     if not payload.get("sections"):
         return
-    lines.extend([
-        "## Sections", "",
-        "| Section | Files | Symbols | Internal edges | Cross-section deps |",
-        "|---|---:|---:|---:|---|",
-    ])
+    lines.extend(
+        [
+            "## Sections",
+            "",
+            "| Section | Files | Symbols | Internal edges | Cross-section deps |",
+            "|---|---:|---:|---:|---|",
+        ]
+    )
     for section in payload["sections"]:
         deps = ", ".join(section.get("cross_section_deps", []))
         lines.append(
@@ -827,12 +940,11 @@ def _render_sections(lines: List[str], payload: Dict[str, Any]) -> None:
 def _render_surprising(lines: List[str], payload: Dict[str, Any]) -> None:
     if not payload.get("surprising_connections"):
         return
-    lines.extend(["## Surprising Connections", "", "| Source | Relation | Target |", "|---|---|---|"])
+    lines.extend(
+        ["## Surprising Connections", "", "| Source | Relation | Target |", "|---|---|---|"]
+    )
     for edge in payload["surprising_connections"]:
-        lines.append(
-            f"| `{edge['source_path']}` | {edge['relation']} "
-            f"| `{edge['target_path']}` |"
-        )
+        lines.append(f"| `{edge['source_path']}` | {edge['relation']} | `{edge['target_path']}` |")
     lines.append("")
 
 
@@ -845,7 +957,9 @@ def _render_questions(lines: List[str], payload: Dict[str, Any]) -> None:
     lines.append("")
 
 
-def _postprocess_detail(level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]) -> str:
+def _postprocess_detail(
+    level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]
+) -> str:
     if skipped_reason:
         return f"postprocess=skipped ({skipped_reason})"
     if postprocess:
@@ -853,7 +967,9 @@ def _postprocess_detail(level: str, postprocess: Dict[str, Any], skipped_reason:
     return f"postprocess={level}"
 
 
-def _postprocess_line(level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]) -> str:
+def _postprocess_line(
+    level: str, postprocess: Dict[str, Any], skipped_reason: Optional[str]
+) -> str:
     if skipped_reason:
         return f"Postprocess: skipped ({skipped_reason})"
     if not postprocess:
@@ -896,6 +1012,14 @@ def _render_parse_errors(parse_errors: Dict[str, str]) -> List[str]:
     return lines
 
 
+def _render_warnings(warnings: List[str]) -> List[str]:
+    if not warnings:
+        return []
+    lines = ["  Warnings:"]
+    lines.extend(f"    {warning}" for warning in warnings)
+    return lines
+
+
 def _benchmark_stats(stats: Dict[str, Any]) -> str:
     if "raw_tokens" in stats:
         return (
@@ -922,6 +1046,12 @@ def _benchmark_stats(stats: Dict[str, Any]) -> str:
                     f"hit_rate={hit_rate}%",
                 ]
             )
+        if stats.get("relationship_count", 0):
+            parts.append(f"relationships={stats['relationship_count']}")
+        if stats.get("import_prelude_count", 0):
+            parts.append(f"imports={stats['import_prelude_count']}")
+        if stats.get("occurrence_snippet_count", 0):
+            parts.append(f"occurrences={stats['occurrence_snippet_count']}")
         return ", ".join(parts)
     preferred = (
         "files",

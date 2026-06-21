@@ -1,4 +1,5 @@
 """Deterministic project report generated from the SQLite index."""
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -104,7 +105,9 @@ def _build_node_sections(
 
 
 def _detect_surprising(
-    src: str, tgt: str, relation: str,
+    src: str,
+    tgt: str,
+    relation: str,
     node_info: Dict[str, Dict[str, Any]],
     seen: Set[Tuple[str, str, str]],
 ) -> Optional[Dict[str, Any]]:
@@ -119,8 +122,13 @@ def _detect_surprising(
     src_pkg = src_path.split("/")[0] if "/" in src_path else ""
     tgt_pkg = tgt_path.split("/")[0] if "/" in tgt_path else ""
     if src_pkg and tgt_pkg and src_pkg != tgt_pkg:
-        return {"source": src, "target": tgt, "relation": relation,
-                "source_path": src_path, "target_path": tgt_path}
+        return {
+            "source": src,
+            "target": tgt,
+            "relation": relation,
+            "source_path": src_path,
+            "target_path": tgt_path,
+        }
     return None
 
 
@@ -201,13 +209,15 @@ def _god_nodes(
         info = node_info.get(node_id, {})
         if _is_god_node_noise(info):
             continue
-        result.append({
-            "node_id": node_id,
-            "name": info.get("name", ""),
-            "kind": info.get("type", ""),
-            "path": info.get("path", ""),
-            "degree": deg,
-        })
+        result.append(
+            {
+                "node_id": node_id,
+                "name": info.get("name", ""),
+                "kind": info.get("type", ""),
+                "path": info.get("path", ""),
+                "degree": deg,
+            }
+        )
         if len(result) >= limit:
             break
     return result
@@ -222,15 +232,29 @@ def _is_god_node_noise(info: Dict[str, Any]) -> bool:
     return Path(str(info.get("path") or info.get("name") or "")).name in _GOD_NODE_NOISY_FILES
 
 
-_GAP_EXCLUDED_NAMES = frozenset({
-    "__init__", "__post_init__", "__repr__", "__str__", "__eq__",
-    "__hash__", "__lt__", "__le__", "__gt__", "__ge__",
-    "upgrade", "main", "_main",
-})
+_GAP_EXCLUDED_NAMES = frozenset(
+    {
+        "__init__",
+        "__post_init__",
+        "__repr__",
+        "__str__",
+        "__eq__",
+        "__hash__",
+        "__lt__",
+        "__le__",
+        "__gt__",
+        "__ge__",
+        "upgrade",
+        "main",
+        "_main",
+    }
+)
 
-_GAP_EXCLUDED_PATH_SEGMENTS = frozenset({
-    "migrations",
-})
+_GAP_EXCLUDED_PATH_SEGMENTS = frozenset(
+    {
+        "migrations",
+    }
+)
 
 _GAP_REASON_LABELS = {
     "isolated_symbol": "Isolated",
@@ -280,15 +304,17 @@ def _knowledge_gaps(
     for node_id, deg in candidates[:limit]:
         info = node_info[node_id]
         reason = _gap_reason(deg)
-        result.append({
-            "node_id": node_id,
-            "name": info["name"],
-            "kind": info["type"],
-            "path": info["path"],
-            "degree": deg,
-            "reason": reason,
-            "reason_label": _GAP_REASON_LABELS[reason],
-        })
+        result.append(
+            {
+                "node_id": node_id,
+                "name": info["name"],
+                "kind": info["type"],
+                "path": info["path"],
+                "degree": deg,
+                "reason": reason,
+                "reason_label": _GAP_REASON_LABELS[reason],
+            }
+        )
     return result
 
 
@@ -302,13 +328,15 @@ def _knowledge_gap_groups(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         nodes = by_reason.get(reason)
         if not nodes:
             continue
-        result.append({
-            "reason": reason,
-            "label": _GAP_REASON_LABELS[reason],
-            "description": _GAP_REASON_DESCRIPTIONS[reason],
-            "count": len(nodes),
-            "examples": [node["name"] for node in nodes[:5]],
-        })
+        result.append(
+            {
+                "reason": reason,
+                "label": _GAP_REASON_LABELS[reason],
+                "description": _GAP_REASON_DESCRIPTIONS[reason],
+                "count": len(nodes),
+                "examples": [node["name"] for node in nodes[:5]],
+            }
+        )
     return result
 
 

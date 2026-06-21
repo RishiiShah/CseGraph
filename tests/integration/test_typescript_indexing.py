@@ -1,9 +1,5 @@
 from pathlib import Path
 
-import pytest
-
-import tree_sitter
-
 from tests.conftest import run_cli, run_dev_cli
 
 
@@ -44,16 +40,37 @@ def test_context_retrieval_for_typescript(tmp_path):
     result = run_cli(
         "context",
         "Implement createUser method",
-        "--target", "createUser",
-        "--repo", str(repo),
+        "--target",
+        "createUser",
+        "--repo",
+        str(repo),
+        "--detail-level",
+        "standard",
         "--json",
     )
 
+    assert result["schema_version"] == "csegraph-context-v3"
     assert result["sufficiency"]["sufficient"] is True
-    node_ids = [n["id"] for n in result["nodes"]]
+    assert "nodes" not in result
+    node_ids = [n["id"] for n in result["symbols"]]
     assert any("createUser" in nid for nid in node_ids)
-    for node in result["nodes"]:
+    for node in result["symbols"]:
         assert node["language"] == "typescript"
+    assert any(
+        prelude["path"] == "service.ts"
+        and "import { formatName } from './utils';" in prelude["text"]
+        for prelude in result["import_preludes"]
+    )
+    relationships = {
+        (relationship["source"], relationship["relation"], relationship["target"])
+        for relationship in result["relationships"]
+    }
+    assert (
+        "symbol::service.ts::method::UserService.createUser",
+        "calls",
+        "symbol::utils.ts::function::formatName",
+    ) in relationships
+    assert ("file::service.ts", "imports", "file::utils.ts") in relationships
 
 
 def test_inspect_typescript_class(tmp_path):
@@ -62,9 +79,12 @@ def test_inspect_typescript_class(tmp_path):
     run_cli("index", str(repo), "--json")
 
     result = run_cli(
-        "inspect", "UserService",
-        "--repo", str(repo),
-        "--detail-level", "standard",
+        "inspect",
+        "UserService",
+        "--repo",
+        str(repo),
+        "--detail-level",
+        "standard",
         "--json",
     )
 
@@ -81,9 +101,12 @@ def test_typescript_cross_file_call_edge(tmp_path):
     result = run_cli(
         "inspect",
         "symbol::service.ts::method::UserService.createUser",
-        "--repo", str(repo),
-        "--depth", "1",
-        "--detail-level", "standard",
+        "--repo",
+        str(repo),
+        "--depth",
+        "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
 
@@ -105,10 +128,7 @@ def test_typescript_call_edge_prefers_imported_same_named_symbol(tmp_path):
         encoding="utf-8",
     )
     (repo / "main.ts").write_text(
-        "import { dup } from './b';\n\n"
-        "export function run(): string {\n"
-        "  return dup();\n"
-        "}\n",
+        "import { dup } from './b';\n\nexport function run(): string {\n  return dup();\n}\n",
         encoding="utf-8",
     )
     run_cli("index", str(repo), "--json")
@@ -116,9 +136,12 @@ def test_typescript_call_edge_prefers_imported_same_named_symbol(tmp_path):
     result = run_cli(
         "inspect",
         "symbol::main.ts::function::run",
-        "--repo", str(repo),
-        "--depth", "1",
-        "--detail-level", "standard",
+        "--repo",
+        str(repo),
+        "--depth",
+        "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
 
@@ -134,10 +157,14 @@ def test_typescript_import_edge(tmp_path):
     run_cli("index", str(repo), "--json")
 
     result = run_cli(
-        "inspect", "file::service.ts",
-        "--repo", str(repo),
-        "--depth", "1",
-        "--detail-level", "standard",
+        "inspect",
+        "file::service.ts",
+        "--repo",
+        str(repo),
+        "--depth",
+        "1",
+        "--detail-level",
+        "standard",
         "--json",
     )
 
@@ -201,9 +228,12 @@ def test_graph_visual_export_with_typescript(tmp_path):
     output = repo / ".scratch" / "csegraph" / "graph.html"
     result = run_cli(
         "export",
-        "--repo", str(repo),
-        "--format", "html",
-        "--output", str(output),
+        "--repo",
+        str(repo),
+        "--format",
+        "html",
+        "--output",
+        str(output),
         "--json",
     )
 

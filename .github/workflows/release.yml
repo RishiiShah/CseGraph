@@ -36,14 +36,20 @@ jobs:
         run: python -m pip install --upgrade pip build
 
       - name: Install csegraph editable
-        run: python -m pip install -e ".[test]"
+        run: python -m pip install -e ".[test,all]"
 
       - name: Run Python release verification
         run: |
           python -m pytest tests/ -q
           python -m compileall -q csegraph tools csegraph-vscode
           csegraph index . --json
-          python tools/csegraph_dev.py benchmark . --corpus benchmarks/context_quality/csegraph_self.json --json
+          mkdir -p sandbox
+          git clone --depth 1 https://github.com/karpathy/micrograd sandbox/micrograd
+          CSEGRAPH_BENCH_REPOS=micrograd CSEGRAPH_BENCH_QUERY_LIMIT=5 \
+            CSEGRAPH_CROSS_REPO_REPORT=benchmark_results/release_native_mcp_sandbox.md \
+            CSEGRAPH_CROSS_REPO_JSON=benchmark_results/release_native_mcp_sandbox.json \
+            python tools/cross_repo_benchmark.py
+          python tools/check_benchmark_regression.py --repo .
 
       - name: Build wheel and sdist
         run: python -m build

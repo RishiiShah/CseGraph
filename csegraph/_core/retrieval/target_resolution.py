@@ -1,4 +1,5 @@
 """Target resolution for context retrieval (exact match, ambiguity, inference)."""
+
 from __future__ import annotations
 
 import posixpath
@@ -128,10 +129,7 @@ def _query_symbol_candidates(
 ) -> List[Dict[str, Any]]:
     placeholders = ",".join("?" for _ in _SYMBOL_TYPES)
     sql = sql_template.format(types=placeholders)
-    return [
-        dict(row)
-        for row in index.conn.execute(sql, (*_SYMBOL_TYPES, *params))
-    ]
+    return [dict(row) for row in index.conn.execute(sql, (*_SYMBOL_TYPES, *params))]
 
 
 def _candidate_payload(row: Dict[str, Any], *, match: str) -> Dict[str, Any]:

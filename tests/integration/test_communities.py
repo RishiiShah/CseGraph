@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from csegraph._core.graph.communities import detect_communities
 from csegraph._core.core.models import to_dict
+from csegraph._core.graph.communities import detect_communities
 from csegraph._core.index.services import IndexService
 
 
@@ -24,11 +24,14 @@ def _index_repo(tmp_path: Path, files: dict[str, str]) -> str:
 
 class TestCommunityDetection:
     def test_detects_communities(self, tmp_path):
-        db = _index_repo(tmp_path, {
-            "a.py": "from b import helper\n\ndef main():\n    helper()\n",
-            "b.py": "def helper():\n    pass\n",
-            "c.py": "def standalone():\n    pass\n",
-        })
+        db = _index_repo(
+            tmp_path,
+            {
+                "a.py": "from b import helper\n\ndef main():\n    helper()\n",
+                "b.py": "def helper():\n    pass\n",
+                "c.py": "def standalone():\n    pass\n",
+            },
+        )
         result = detect_communities(db)
         assert result.command == "communities"
         assert result.num_communities >= 1
@@ -46,12 +49,16 @@ class TestCommunityDetection:
         assert result.communities == []
 
     def test_writes_community_ids(self, tmp_path):
-        db = _index_repo(tmp_path, {
-            "x.py": "def foo(): pass\ndef bar(): foo()\n",
-        })
+        db = _index_repo(
+            tmp_path,
+            {
+                "x.py": "def foo(): pass\ndef bar(): foo()\n",
+            },
+        )
         detect_communities(db)
 
         import sqlite3
+
         conn = sqlite3.connect(db)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -68,9 +75,12 @@ class TestCommunityDetection:
         assert isinstance(json.dumps(payload), str)
 
     def test_modularity_in_range(self, tmp_path):
-        db = _index_repo(tmp_path, {
-            "a.py": "def a1(): a2()\ndef a2(): pass\n",
-            "b.py": "def b1(): b2()\ndef b2(): pass\n",
-        })
+        db = _index_repo(
+            tmp_path,
+            {
+                "a.py": "def a1(): a2()\ndef a2(): pass\n",
+                "b.py": "def b1(): b2()\ndef b2(): pass\n",
+            },
+        )
         result = detect_communities(db)
         assert -0.5 <= result.modularity <= 1.0

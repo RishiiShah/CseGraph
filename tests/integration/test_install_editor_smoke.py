@@ -1,4 +1,5 @@
 """Smoke tests for MCP install targets and VS Code extension surface."""
+
 from __future__ import annotations
 
 import json
@@ -46,7 +47,7 @@ def test_vscode_extension_exposes_cli_command_setting():
 def test_vscode_extension_uses_profile_setting_for_cli_commands():
     source = _VSCODE_SRC.read_text(encoding="utf-8")
 
-    assert 'get<string>("profile", "medium")' in source
+    assert 'get<string>("profile", "auto")' in source
     assert '"--profile"' in source
     assert "getProfileArgs" in source
 

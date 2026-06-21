@@ -160,8 +160,7 @@ class RegistryService:
             try:
                 sr = StatusService(entry.db).status()
                 message_parts.append(
-                    f"{sr.total_nodes} nodes, {sr.total_edges} edges, "
-                    f"{sr.total_files} files"
+                    f"{sr.total_nodes} nodes, {sr.total_edges} edges, {sr.total_files} files"
                 )
                 if sr.warnings:
                     message_parts.extend(sr.warnings)

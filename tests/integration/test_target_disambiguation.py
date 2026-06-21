@@ -1,4 +1,5 @@
 """Target disambiguation returns a compact card instead of guessing."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,9 +35,9 @@ def test_ambiguous_target_returns_disambiguation_card(tmp_path):
     )
     payload = to_dict(context)
 
-    assert payload["target_resolution"] == "ambiguous"
-    assert len(payload["target_candidates"]) >= 2
-    assert payload["nodes"] == []
+    assert payload["target"]["resolution"] == "ambiguous"
+    assert len(payload["target"]["candidates"]) >= 2
+    assert payload["symbols"] == []
     assert any(a["action"] == "resolve_target" for a in payload["next_actions"])
     assert any("matched" in w for w in payload["warnings"])
 
@@ -54,8 +55,8 @@ def test_unique_symbol_name_still_resolves(tmp_path):
     )
     payload = to_dict(context)
 
-    assert payload["target_resolution"] == "resolved"
-    assert payload["nodes"]
+    assert payload["target"]["resolution"] == "resolved"
+    assert payload["symbols"]
 
 
 @pytest.mark.parametrize("target", ["a.py", "./a.py"])
@@ -77,5 +78,6 @@ def test_repo_relative_target_resolves_regardless_of_cwd(tmp_path, monkeypatch, 
         profile="small",
     )
     payload = to_dict(context)
-    assert payload["target_resolution"] == "resolved"
-    assert any(node["name"] == "a.py" for node in payload["nodes"])
+    assert payload["target"]["resolution"] == "resolved"
+    assert payload["target"]["id"] == "file::a.py"
+    assert any(symbol["path"] == "a.py" for symbol in payload["symbols"])

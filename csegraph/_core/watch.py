@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import logging
 import sys
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +11,8 @@ from csegraph._core.discovery import is_discoverable_rel_path
 from csegraph._core.graph.queries import clear_hub_cache
 from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.services import RefreshService
+
+logger = logging.getLogger(__name__)
 
 
 def watch(
@@ -21,18 +23,19 @@ def watch(
     extensions: Optional[set[str]] = None,
 ) -> None:
     try:
-        from watchfiles import watch as _watch, Change
+        from watchfiles import Change
+        from watchfiles import watch as _watch
     except ImportError:
-        print(
+        logger.error(
             "csegraph watch requires the 'watchfiles' package.\n"
-            "Install or reinstall csegraph with its runtime dependencies.",
-            file=sys.stderr,
+            "Install or reinstall csegraph with its runtime dependencies."
         )
         sys.exit(1)
 
     repo_path = Path(repo).resolve()
     if extensions is None:
         from csegraph._core.languages.registry import registry
+
         extensions = set(registry.supported_extensions())
 
     def _should_watch(_change: Change, path: str) -> bool:
@@ -43,7 +46,7 @@ def watch(
             return False
         return True
 
-    print(f"Watching {repo_path} for changes (profile={profile})...", file=sys.stderr, flush=True)
+    logger.info("Watching %s for changes (profile=%s)...", repo_path, profile)
 
     refresh_svc = RefreshService(db_path)
     try:
@@ -63,24 +66,23 @@ def watch(
             if not changed_paths:
                 continue
 
-            print(
-                f"[{time.strftime('%H:%M:%S')}] {len(changed_paths)} file(s) changed: "
-                f"{', '.join(rel_paths[:5])}{'...' if len(rel_paths) > 5 else ''}",
-                file=sys.stderr,
-                flush=True,
+            logger.info(
+                "%s file(s) changed: %s%s",
+                len(changed_paths),
+                ", ".join(rel_paths[:5]),
+                "..." if len(rel_paths) > 5 else "",
             )
 
             try:
                 result = refresh_svc.refresh(profile=profile, changed_paths=changed_paths)
                 clear_hub_cache()
-                print(
-                    f"[{time.strftime('%H:%M:%S')}] Refreshed: "
-                    f"{result.files_indexed} files, {result.symbols_indexed} symbols, "
-                    f"{result.edges_indexed} edges",
-                    file=sys.stderr,
-                    flush=True,
+                logger.info(
+                    "Refreshed: %s files, %s symbols, %s edges",
+                    result.files_indexed,
+                    result.symbols_indexed,
+                    result.edges_indexed,
                 )
             except Exception as exc:
-                print(f"[{time.strftime('%H:%M:%S')}] Refresh error: {exc}", file=sys.stderr, flush=True)
+                logger.error("Refresh error: %s", exc, exc_info=logger.isEnabledFor(logging.DEBUG))
     except KeyboardInterrupt:
-        print(f"\n[{time.strftime('%H:%M:%S')}] Stopped watching.", file=sys.stderr, flush=True)
+        logger.info("Stopped watching.")

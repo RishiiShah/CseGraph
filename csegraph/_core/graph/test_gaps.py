@@ -1,10 +1,10 @@
 """Test-gap analysis: finds untested symbols and ranks hotspots by risk."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-
 
 from csegraph._core.index.repository import ProjectIndex
 
@@ -120,9 +120,7 @@ class TestGapService:
                 untested_rows.append(row)
 
         untested_count = total_symbols - tested_count
-        coverage_pct = round(
-            (tested_count / total_symbols * 100) if total_symbols > 0 else 0.0, 1
-        )
+        coverage_pct = round((tested_count / total_symbols * 100) if total_symbols > 0 else 0.0, 1)
 
         hotspots = self._rank_hotspots(index, untested_rows, limit)
 
@@ -135,9 +133,7 @@ class TestGapService:
         for cid in sorted(community_stats):
             total_c, tested_c = community_stats[cid]
             pct = round((tested_c / total_c * 100) if total_c > 0 else 0.0, 1)
-            top_names = [
-                h.name for h in untested_by_community.get(cid, [])[:3]
-            ]
+            top_names = [h.name for h in untested_by_community.get(cid, [])[:3]]
             community_coverage.append(
                 CommunityCoverage(
                     community_id=cid,
@@ -215,18 +211,20 @@ class TestGapService:
             end = row["end_line"]
             line_range = [start, end] if start is not None and end is not None else None
 
-            scored.append(UntestedSymbol(
-                id=sym_id,
-                name=row["name"],
-                kind=row["type"],
-                path=row["path"],
-                line_range=line_range,
-                caller_count=caller_count,
-                cross_community_edges=cross_community,
-                community_id=community_id,
-                hotspot_score=hotspot_score,
-                risk_factors=risk_factors,
-            ))
+            scored.append(
+                UntestedSymbol(
+                    id=sym_id,
+                    name=row["name"],
+                    kind=row["type"],
+                    path=row["path"],
+                    line_range=line_range,
+                    caller_count=caller_count,
+                    cross_community_edges=cross_community,
+                    community_id=community_id,
+                    hotspot_score=hotspot_score,
+                    risk_factors=risk_factors,
+                )
+            )
 
         scored.sort(key=lambda s: (-s.hotspot_score, s.name))
         return scored[:limit]

@@ -49,7 +49,10 @@ def test_copilot_install_uses_vscode_servers_key(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     config = repo / ".vscode" / "mcp.json"
     config.parent.mkdir(parents=True)
-    config.write_text(json.dumps({"servers": {"other": {"type": "http", "url": "https://example.test"}}}), encoding="utf-8")
+    config.write_text(
+        json.dumps({"servers": {"other": {"type": "http", "url": "https://example.test"}}}),
+        encoding="utf-8",
+    )
 
     McpInstallService(repo).install(platform="copilot", dry_run=False)
 
@@ -63,11 +66,16 @@ def test_copilot_install_uses_vscode_servers_key(tmp_path: Path) -> None:
     }
 
 
-def test_auto_install_writes_root_mcp_and_skips_missing_platform_configs(tmp_path: Path) -> None:
+def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
 
     result = McpInstallService(repo).install(platform="auto", dry_run=False)
+
+    codex_text = (repo / ".codex" / "config.toml").read_text(encoding="utf-8")
+    assert "[mcp_servers.csegraph]" in codex_text
+    assert 'command = "csegraph"' in codex_text
+    assert 'args = ["serve"]' in codex_text
 
     data = _read_json(repo / ".mcp.json")
     assert data["mcpServers"]["csegraph"] == {
@@ -75,9 +83,56 @@ def test_auto_install_writes_root_mcp_and_skips_missing_platform_configs(tmp_pat
         "command": "csegraph",
         "args": ["serve"],
     }
-    skipped = {target.platform for target in result.skipped}
-    assert {"cursor", "gemini-cli", "kiro", "copilot"} <= skipped
-    assert {target.platform for target in result.installed} == {"claude-code"}
+    assert (
+        _read_json(repo / ".cursor" / "mcp.json")["mcpServers"]["csegraph"]["command"] == "csegraph"
+    )
+    assert (
+        _read_json(repo / ".gemini" / "settings.json")["mcpServers"]["csegraph"]["command"]
+        == "csegraph"
+    )
+    assert (
+        _read_json(repo / ".kiro" / "settings" / "mcp.json")["mcpServers"]["csegraph"]["command"]
+        == "csegraph"
+    )
+    assert _read_json(repo / ".vscode" / "mcp.json")["servers"]["csegraph"]["command"] == "csegraph"
+    codex_hooks = _read_json(repo / ".codex" / "hooks.json")
+    assert "PostToolUse" in codex_hooks["hooks"]
+    assert "PreToolUse" in codex_hooks["hooks"]
+    assert "hooks" in _read_json(repo / ".claude" / "settings.json")
+    assert {
+        path.name
+        for path in repo.glob("*.md")
+        if "csegraph" in path.read_text(encoding="utf-8").lower()
+    } >= {
+        "AGENTS.md",
+        "CLAUDE.md",
+        "CODEX.md",
+        "GEMINI.md",
+    }
+    gitignore = (repo / ".gitignore").read_text(encoding="utf-8")
+    assert ".csegraph/" in gitignore
+    assert ".codex/config.toml" in gitignore
+    assert ".codex/hooks.json" in gitignore
+    assert ".mcp.json" in gitignore
+    assert ".cursor/mcp.json" in gitignore
+    assert ".gemini/settings.json" in gitignore
+    assert ".kiro/settings/mcp.json" in gitignore
+    assert ".vscode/mcp.json" in gitignore
+    assert ".claude/settings.json" in gitignore
+    assert "AGENTS.md" in gitignore
+    assert result.skipped == []
+    assert {target.platform for target in result.installed} == {
+        "codex",
+        "claude-code",
+        "cursor",
+        "gemini-cli",
+        "kiro",
+        "copilot",
+        "instructions",
+        "hooks:claude-code",
+        "hooks:codex",
+        "gitignore",
+    }
 
 
 def test_dry_run_does_not_write_files(tmp_path: Path) -> None:
@@ -87,6 +142,8 @@ def test_dry_run_does_not_write_files(tmp_path: Path) -> None:
     result = McpInstallService(repo).install(platform="cursor", dry_run=True)
 
     assert not (repo / ".cursor" / "mcp.json").exists()
+    assert not (repo / "AGENTS.md").exists()
+    assert not (repo / ".gitignore").exists()
     assert result.installed[0].dry_run is True
     assert result.installed[0].path.endswith(os.path.join(".cursor", "mcp.json"))
 
@@ -95,7 +152,7 @@ def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     home = tmp_path / "home"
-    codex_config = home / ".codex" / "config.toml"
+    codex_config = repo / ".codex" / "config.toml"
     codex_config.parent.mkdir(parents=True)
     codex_config.write_text(
         '[mcp_servers.existing]\ncommand = "node"\nargs = ["server.js"]\n\n[profiles.dev]\nmodel = "gpt-5.4"\n',
@@ -111,6 +168,85 @@ def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:
     assert 'command = "csegraph"' in text
     assert 'args = ["serve"]' in text
     assert result.installed[0].platform == "codex"
+    assert result.installed[0].scope == "project"
+    assert not (home / ".codex" / "config.toml").exists()
+    hooks = _read_json(repo / ".codex" / "hooks.json")
+    assert (
+        hooks["hooks"]["PostToolUse"][0]["hooks"][0]["statusMessage"] == "Refreshing CseGraph index"
+    )
+    assert hooks["hooks"]["PreToolUse"][0]["hooks"][0]["statusMessage"] == "Checking CseGraph index"
+    assert (repo / "AGENTS.md").exists()
+    assert (repo / "CODEX.md").exists()
+    gitignore = (repo / ".gitignore").read_text(encoding="utf-8")
+    assert ".codex/config.toml" in gitignore
+    assert ".codex/hooks.json" in gitignore
+    assert "AGENTS.md" in gitignore
+    assert "CODEX.md" in gitignore
+
+
+def test_codex_install_merges_existing_hooks_json(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    hooks_path = repo / ".codex" / "hooks.json"
+    hooks_path.parent.mkdir(parents=True)
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "Stop": [{"hooks": [{"type": "command", "command": "echo done"}]}],
+                    "PostToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [{"type": "command", "command": "echo bash"}],
+                        }
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    McpInstallService(repo, command="env/bin/csegraph").install(platform="codex", dry_run=False)
+    McpInstallService(repo, command="env/bin/csegraph").install(platform="codex", dry_run=False)
+
+    hooks = _read_json(hooks_path)["hooks"]
+    assert hooks["Stop"][0]["hooks"][0]["command"] == "echo done"
+    assert any(group.get("matcher") == "Bash" for group in hooks["PostToolUse"])
+    csegraph_refresh_groups = [
+        group
+        for group in hooks["PostToolUse"]
+        if group.get("hooks", [{}])[0].get("statusMessage") == "Refreshing CseGraph index"
+    ]
+    assert len(csegraph_refresh_groups) == 1
+    command = csegraph_refresh_groups[0]["hooks"][0]["command"]
+    assert 'cd "$(git rev-parse --show-toplevel)"' in command
+    assert "env/bin/csegraph refresh . --profile small" in command
+
+
+def test_install_updates_gitignore_without_duplicating_covered_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".gitignore").write_text(".codex/\nAGENTS.md\n", encoding="utf-8")
+
+    result = McpInstallService(repo).install(platform="codex", dry_run=False)
+
+    gitignore = (repo / ".gitignore").read_text(encoding="utf-8")
+    assert gitignore.count(".codex/") == 1
+    assert ".codex/config.toml" not in gitignore
+    assert ".codex/hooks.json" not in gitignore
+    assert gitignore.count("AGENTS.md") == 1
+    assert "CODEX.md" in gitignore
+    assert ".csegraph/" in gitignore
+    assert any(target.platform == "gitignore" for target in result.installed)
+
+
+def test_install_can_skip_gitignore(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    result = McpInstallService(repo).install(platform="codex", gitignore=False, dry_run=False)
+
+    assert not (repo / ".gitignore").exists()
+    assert "gitignore" not in {target.platform for target in result.installed}
 
 
 # --- Instruction files ---
@@ -226,7 +362,8 @@ def test_vscode_install_creates_three_files(tmp_path: Path) -> None:
     repo.mkdir()
 
     result = McpInstallService(repo, command="csegraph").install(
-        platform="vscode", dry_run=False,
+        platform="vscode",
+        dry_run=False,
     )
 
     vscode_targets = [t for t in result.installed if t.platform == "vscode"]
@@ -238,7 +375,7 @@ def test_vscode_install_creates_three_files(tmp_path: Path) -> None:
     assert settings["csegraph.statusBar"] is True
 
     tasks = _read_json(repo / ".vscode" / "tasks.json")
-    assert tasks["version"] == "1.7.1"
+    assert tasks["version"] == "1.8.0"
     labels = {t["label"] for t in tasks["tasks"]}
     assert labels == {"csegraph: Build Index", "csegraph: Refresh", "csegraph: Status"}
 
@@ -256,7 +393,8 @@ def test_vscode_install_merges_with_existing_settings(tmp_path: Path) -> None:
     )
 
     McpInstallService(repo, command="my-csegraph").install(
-        platform="vscode", dry_run=False,
+        platform="vscode",
+        dry_run=False,
     )
 
     data = _read_json(settings_path)
@@ -271,13 +409,15 @@ def test_vscode_install_merges_tasks_without_duplicating(tmp_path: Path) -> None
     tasks_path = repo / ".vscode" / "tasks.json"
     tasks_path.parent.mkdir(parents=True)
     tasks_path.write_text(
-        json.dumps({
-                "version": "1.7.1",
-            "tasks": [
-                {"label": "csegraph: Build Index", "type": "shell", "command": "old"},
-                {"label": "my-task", "type": "shell", "command": "echo hi"},
-            ],
-        }),
+        json.dumps(
+            {
+                "version": "1.8.0",
+                "tasks": [
+                    {"label": "csegraph: Build Index", "type": "shell", "command": "old"},
+                    {"label": "my-task", "type": "shell", "command": "echo hi"},
+                ],
+            }
+        ),
         encoding="utf-8",
     )
 

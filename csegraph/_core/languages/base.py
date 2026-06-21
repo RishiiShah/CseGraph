@@ -1,4 +1,5 @@
 """BaseParser ABC, shared utilities, and Tokenizer protocol."""
+
 from __future__ import annotations
 
 import abc
@@ -9,18 +10,19 @@ from typing import Dict, FrozenSet, List, Optional, Protocol, runtime_checkable
 from csegraph._core.languages.types import ParsedFile
 from csegraph._core.text.tokens import _default_text_tokenize
 
-
-EXCLUDED_DIRS: FrozenSet[str] = frozenset({
-    ".git",
-    ".hg",
-    ".svn",
-    "__pycache__",
-    "node_modules",
-    "venv",
-    ".venv",
-    "env",
-    "site-packages",
-})
+EXCLUDED_DIRS: FrozenSet[str] = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        "node_modules",
+        "venv",
+        ".venv",
+        "env",
+        "site-packages",
+    }
+)
 
 
 def sha256_text(text: str) -> str:
@@ -40,8 +42,10 @@ def to_repo_relative(path: Path, root_dir: Path) -> str:
     resolved_root = root_dir.resolve()
     try:
         return resolved_path.relative_to(resolved_root).as_posix()
-    except ValueError:
-        raise ValueError(f"Path '{path}' resolves to '{resolved_path}', which is outside repository root '{root_dir}'")
+    except ValueError as exc:
+        raise ValueError(
+            f"Path '{path}' resolves to '{resolved_path}', which is outside repository root '{root_dir}'"
+        ) from exc
 
 
 class BaseParser(abc.ABC):

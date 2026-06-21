@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
-from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from collections import defaultdict, deque
+from typing import Any, Deque, Dict, List, Set, Tuple
 
 from csegraph._core.languages.registry import registry
 from csegraph._core.text.query_tokenizer import query_tokenizer
 from csegraph._core.text.tokens import tokenize_node_content
-
 
 RELATION_WEIGHTS: Dict[str, float] = {
     "calls": 2.5,
@@ -107,7 +106,7 @@ def lexical_scores(
                 scores[node_id] += score
                 evidence[node_id].append("fts5-bm25")
 
-    candidates = set()
+    candidates: Set[str] = set()
     if fts_seed:
         candidates.update(fts_seed.keys())
 
@@ -135,10 +134,10 @@ def lexical_scores(
                     break
 
     for node_id in candidates:
-        row = symbols.get(node_id)
-        if not row:
+        candidate_row = symbols.get(node_id)
+        if not candidate_row:
             continue
-        content_tokens = tokenize_node_content(node_id, row, summaries, registry)
+        content_tokens = tokenize_node_content(node_id, candidate_row, summaries, registry)
         overlap = task_tokens & content_tokens
         if overlap:
             scores[node_id] += float(len(overlap))
@@ -221,6 +220,40 @@ def apply_graph_expansion(
         boost = RELATION_WEIGHTS.get(relation, 0.2) / depth
         scores[neighbor] += boost
         evidence[neighbor].append(f"graph-{relation}")
-        evidence[neighbor].append(
-            f"expanded-from-{row['source']}-via-{relation}-depth{depth}"
-        )
+        evidence[neighbor].append(f"expanded-from-{row['source']}-via-{relation}-depth{depth}")
+
+
+def apply_graph_expansion_from_maps(
+    anchor: str,
+    radius: int,
+    scores: Dict[str, float],
+    evidence: Dict[str, List[str]],
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+    symbols: Dict[str, Dict[str, Any]],
+) -> None:
+    """Run the graph-expansion BFS from cached edge maps."""
+    seen: set[str] = set()
+    queue: Deque[Tuple[str, int, str | None, str | None]] = deque([(anchor, 0, None, None)])
+    while queue:
+        current, depth, source, relation = queue.popleft()
+        if depth > 0:
+            if current in seen:
+                continue
+            seen.add(current)
+            if current in symbols:
+                assert relation is not None
+                boost = RELATION_WEIGHTS.get(relation, 0.2) / depth
+                scores[current] += boost
+                evidence[current].append(f"graph-{relation}")
+                evidence[current].append(f"expanded-from-{source}-via-{relation}-depth{depth}")
+
+        if depth >= radius:
+            continue
+
+        next_depth = depth + 1
+        adjacent = [(edge, edge["target"]) for edge in outgoing.get(current, [])] + [
+            (edge, edge["source"]) for edge in incoming.get(current, [])
+        ]
+        for edge, neighbor in sorted(adjacent, key=lambda item: item[0].get("id") or 0):
+            queue.append((neighbor, next_depth, current, edge["relation"]))

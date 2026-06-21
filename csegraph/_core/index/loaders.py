@@ -5,7 +5,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from csegraph._core.index.repository import ProjectIndex
 
-
 SYMBOL_TYPES = ("class", "function", "method", "test")
 
 
@@ -37,9 +36,16 @@ def load_symbols(
     exclude_heavy: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     columns = [
-        "id", "parent_id", "type AS kind", "name", "path AS file_path",
-        "language", "start_line", "end_line", "source_hash",
-        "parent_id AS parent_symbol_id"
+        "id",
+        "parent_id",
+        "type AS kind",
+        "name",
+        "path AS file_path",
+        "language",
+        "start_line",
+        "end_line",
+        "source_hash",
+        "parent_id AS parent_symbol_id",
     ]
     if not exclude_heavy:
         columns.extend(["signature", "docstring", "metadata"])

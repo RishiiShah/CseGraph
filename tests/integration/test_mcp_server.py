@@ -7,22 +7,21 @@ against a real (temporary) csegraph index.
 
 from __future__ import annotations
 
-import json
 import asyncio
-import subprocess
+import json
 import tempfile
-import pytest
 from pathlib import Path
 
+import pytest
 from mcp.types import ListPromptsRequest, ListToolsRequest
 
 from csegraph._core.server.app import (
-    CORE_TOOL_NAMES,
-    create_server,
-    _handle_prompt,
-    _handle_tool,
     _PROMPTS,
     _TOOLS,
+    CORE_TOOL_NAMES,
+    _handle_prompt,
+    _handle_tool,
+    create_server,
 )
 
 
@@ -86,6 +85,14 @@ class TestToolListing:
 
         assert detail_level["enum"] == ["auto", "minimal", "standard", "full"]
         assert detail_level["default"] == "auto"
+
+    def test_profile_tools_accept_auto(self):
+        by_name = {tool.name: tool for tool in _TOOLS}
+        for name in ("csegraph_index", "csegraph_refresh", "csegraph_context"):
+            profile = by_name[name].inputSchema["properties"]["profile"]
+            assert profile["enum"] == ["auto", "small", "medium", "large"]
+            assert profile["default"] == "auto"
+        assert "profile" not in by_name["csegraph_minimal"].inputSchema["properties"]
 
 
 class TestPromptListing:
@@ -151,25 +158,83 @@ class TestHandleTool:
         repo = _make_repo(tmp_path)
         db = _scratch_db(repo)
 
-        result = _handle_tool("csegraph_index", {
-            "repo": str(repo),
-            "db": db,
-            "profile": "small",
-        })
+        result = _handle_tool(
+            "csegraph_index",
+            {
+                "repo": str(repo),
+                "db": db,
+                "profile": "small",
+            },
+        )
         assert result["command"] == "index"
         assert result["files_indexed"] >= 1
         assert result["symbols_indexed"] >= 1
 
-        ctx = _handle_tool("csegraph_context", {
-            "task": "How does greet work?",
-            "repo": str(repo),
-            "target": "greet",
-            "db": db,
-        })
-        assert "nodes" in ctx
-        assert ctx["query"] == "How does greet work?"
-        assert ctx["detail_level"] == "auto"
-        assert ctx["returned_detail_level"] in {"minimal", "standard"}
+        ctx = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "How does greet work?",
+                "repo": str(repo),
+                "target": "greet",
+                "db": db,
+            },
+        )
+        assert "symbols" in ctx
+        assert "nodes" not in ctx
+        assert ctx["request"]["task"] == "How does greet work?"
+        assert ctx["request"]["detail_level"] == "auto"
+        assert ctx["request"]["returned_detail_level"] in {"minimal", "standard"}
+
+    def test_default_mcp_profile_auto_resolves_to_concrete_profile(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = _scratch_db(repo)
+
+        indexed = _handle_tool(
+            "csegraph_index",
+            {
+                "repo": str(repo),
+                "db": db,
+            },
+        )
+
+        assert indexed["profile"] == "small"
+
+        ctx = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "How does greet work?",
+                "repo": str(repo),
+                "target": "greet",
+                "db": db,
+            },
+        )
+
+        assert ctx["request"]["profile"] == "small"
+
+    def test_context_returns_sufficient_v3_neighborhood_without_warning(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = _scratch_db(repo)
+        _handle_tool("csegraph_index", {"repo": str(repo), "db": db, "profile": "small"})
+
+        ctx = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "How does greet call fmt?",
+                "repo": str(repo),
+                "target": "greet",
+                "db": db,
+                "profile": "small",
+                "detail_level": "standard",
+            },
+        )
+
+        assert ctx["schema_version"] == "csegraph-context-v3"
+        assert ctx["target"]["id"] == "symbol::app.py::function::greet"
+        assert ctx["sufficiency"]["sufficient"] is True
+        assert ctx["warnings"] == []
+        assert ctx["symbols"]
+        assert any(relationship["relation"] == "calls" for relationship in ctx["relationships"])
+        assert any(prelude["path"] == "app.py" for prelude in ctx["import_preludes"])
 
     def test_index_allows_repo_local_scratch_db_path(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -192,10 +257,13 @@ class TestHandleTool:
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
         (repo / "extra.py").write_text("x = 1\n", encoding="utf-8")
-        result = _handle_tool("csegraph_refresh", {
-            "repo": str(repo),
-            "db": db,
-        })
+        result = _handle_tool(
+            "csegraph_refresh",
+            {
+                "repo": str(repo),
+                "db": db,
+            },
+        )
         assert result["command"] == "refresh"
 
     def test_graph_neighborhood(self, tmp_path):
@@ -203,12 +271,15 @@ class TestHandleTool:
         db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_graph", {
-            "node": "greet",
-            "repo": str(repo),
-            "db": db,
-            "depth": 1,
-        })
+        result = _handle_tool(
+            "csegraph_graph",
+            {
+                "node": "greet",
+                "repo": str(repo),
+                "db": db,
+                "depth": 1,
+            },
+        )
         assert "nodes" in result
         assert "edges" in result
 
@@ -217,12 +288,15 @@ class TestHandleTool:
         db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_graph", {
-            "node": "greet",
-            "repo": str(repo),
-            "db": db,
-            "depth": 1,
-        })
+        result = _handle_tool(
+            "csegraph_graph",
+            {
+                "node": "greet",
+                "repo": str(repo),
+                "db": db,
+                "depth": 1,
+            },
+        )
         assert result["detail_level"] == "minimal"
         assert result["summary"]
         assert result["edges"] == []
@@ -234,13 +308,16 @@ class TestHandleTool:
         db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_graph", {
-            "node": "greet",
-            "repo": str(repo),
-            "db": db,
-            "depth": 1,
-            "detail_level": "standard",
-        })
+        result = _handle_tool(
+            "csegraph_graph",
+            {
+                "node": "greet",
+                "repo": str(repo),
+                "db": db,
+                "depth": 1,
+                "detail_level": "standard",
+            },
+        )
         assert result["detail_level"] == "standard"
         assert result["truncated"] is False
         assert result["edges"]
@@ -250,12 +327,15 @@ class TestHandleTool:
         db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_path", {
-            "source": "greet",
-            "target": "fmt",
-            "repo": str(repo),
-            "db": db,
-        })
+        result = _handle_tool(
+            "csegraph_path",
+            {
+                "source": "greet",
+                "target": "fmt",
+                "repo": str(repo),
+                "db": db,
+            },
+        )
         assert result["detail_level"] == "minimal"
         assert result["found"] is True
         assert "→" in result["summary"]
@@ -281,13 +361,16 @@ class TestHandleTool:
         db = _scratch_db(repo)
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_path", {
-            "source": "greet",
-            "target": "fmt",
-            "repo": str(repo),
-            "db": db,
-            "detail_level": "standard",
-        })
+        result = _handle_tool(
+            "csegraph_path",
+            {
+                "source": "greet",
+                "target": "fmt",
+                "repo": str(repo),
+                "db": db,
+                "detail_level": "standard",
+            },
+        )
         assert result["found"] is True
         assert result["length"] >= 1
         assert len(result["nodes"]) >= 2
@@ -301,12 +384,15 @@ class TestHandleTool:
         db = _scratch_db(repo, "test2.db")
         _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-        result = _handle_tool("csegraph_path", {
-            "source": "alpha",
-            "target": "beta",
-            "repo": str(repo),
-            "db": db,
-        })
+        result = _handle_tool(
+            "csegraph_path",
+            {
+                "source": "alpha",
+                "target": "beta",
+                "repo": str(repo),
+                "db": db,
+            },
+        )
         assert result["found"] is True
         assert result["length"] >= 1
 
