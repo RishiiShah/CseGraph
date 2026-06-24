@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 1.8.1 - 2026-06-24
+
+### Added
+
+- Added platform-scoped MCP setup and doctor checks for Codex, Claude Code,
+  Cursor, Gemini CLI, Kiro, Copilot, and Antigravity, including host-specific
+  observed-call evidence.
+- Added cross-platform MCP launcher resolution for macOS, Linux, Windows,
+  PowerShell, user-script installs, and common project virtualenv directories.
+- Added per-context `token_usage` and per-MCP-session `session_token_usage`
+  estimates so agents can report approximate tokens used and saved.
+- Added install `next_steps` guidance that tells users to enable or approve the
+  generated MCP server in the target host and verify the six CseGraph tools.
+- Added hosted OS MCP install smoke coverage for Ubuntu, macOS, and Windows CI.
+
+### Changed
+
+- Changed watch logging to keep the `INFO:` tag while hiding internal logger
+  names and suppressing noisy `watchfiles.main` messages by default.
+- Changed generated agent guidance and MCP response trust metadata to treat
+  `.csegraph/index.db` as a private implementation detail behind the MCP tools.
+- Changed default tests so self-corpus dogfood benchmarks are opt-in; sandbox
+  benchmark coverage is the default evidence path.
+
+### Removed
+
+- Removed the old self token-reduction benchmark document now that sandbox
+  benchmark results are the canonical measurement.
+
 ## 1.8.0 - 2026-06-21
 
 ### Added

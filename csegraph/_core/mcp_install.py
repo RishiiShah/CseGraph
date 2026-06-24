@@ -25,6 +25,7 @@ Platform = Literal[
     "vscode",
 ]
 
+
 @dataclass(frozen=True)
 class PlatformAdapter:
     path: Path
@@ -275,6 +276,7 @@ class McpInstallService:
             server_command=str(server_entry["command"]),
             server_args=list(server_entry["args"]),
             dry_run=dry_run,
+            next_steps=_install_next_steps(platform, self.repo),
         )
 
         if platform == "auto":
@@ -528,7 +530,9 @@ class McpInstallService:
 
             if not dry_run:
                 data = _read_json_object(path)
-                hook_data = cfg["build"](self._server_entry(vscode_style=False)["command"], self.repo)
+                hook_data = cfg["build"](
+                    self._server_entry(vscode_style=False)["command"], self.repo
+                )
                 _merge_hooks(data, hook_data)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -741,3 +745,23 @@ def _gitignore_covers(entry: str, text: str) -> bool:
         if entry.startswith(pattern_as_dir + "/"):
             return True
     return False
+
+
+def _install_next_steps(platform: str, repo: Path) -> list[str]:
+    if platform == "auto":
+        return [
+            "Open each configured client's MCP/tools settings and enable or approve the csegraph server.",
+            "Confirm the six CseGraph tools are visible: csegraph_index, csegraph_refresh, csegraph_minimal, csegraph_context, csegraph_graph, and csegraph_path.",
+            f"Run `csegraph doctor {repo} --platform auto --require-observed-call --json` after each host has called a CseGraph tool.",
+        ]
+    if platform == "vscode":
+        return [
+            "Reload VS Code after installing or enabling the CseGraph extension recommendation.",
+            "Confirm the CseGraph status bar and commands are available in the workspace.",
+            f"Run `csegraph status {repo}` if the extension reports a stale or missing index.",
+        ]
+    return [
+        f"Open {platform}'s MCP/tools settings and enable or approve the csegraph server.",
+        "Confirm the six CseGraph tools are visible: csegraph_index, csegraph_refresh, csegraph_minimal, csegraph_context, csegraph_graph, and csegraph_path.",
+        f"Run `csegraph doctor {repo} --platform {platform} --require-observed-call --json` after the host has called a CseGraph tool.",
+    ]

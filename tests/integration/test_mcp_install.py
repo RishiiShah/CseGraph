@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomlkit as tomllib
 
 from csegraph._core.mcp_doctor import McpDoctorService
 from csegraph._core.mcp_install import McpInstallService
@@ -79,6 +83,9 @@ def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: P
     }
     assert result.installed[0].platform == "cursor"
     assert result.installed[0].action == "updated"
+    assert "Open cursor's MCP/tools settings" in result.next_steps[0]
+    assert "six CseGraph tools" in result.next_steps[1]
+    assert "--platform cursor" in result.next_steps[2]
 
 
 @pytest.mark.parametrize("host_os", ["darwin", "linux", "win32"])
@@ -229,6 +236,8 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
     assert ".claude/settings.json" in gitignore
     assert "AGENTS.md" in gitignore
     assert result.skipped == []
+    assert "each configured client's MCP/tools settings" in result.next_steps[0]
+    assert "--platform auto" in result.next_steps[2]
     assert {target.platform for target in result.installed} == {
         "codex",
         "claude-code",

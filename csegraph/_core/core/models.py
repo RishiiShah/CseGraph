@@ -440,6 +440,7 @@ class McpInstallResult:
     dry_run: bool
     installed: List[McpInstallTarget] = field(default_factory=list)
     skipped: List[McpInstallTarget] = field(default_factory=list)
+    next_steps: List[str] = field(default_factory=list)
     verification: Dict[str, Any] = field(default_factory=dict)
 
 

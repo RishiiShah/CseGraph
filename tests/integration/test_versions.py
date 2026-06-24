@@ -9,7 +9,7 @@ import csegraph
 import csegraph._cli
 import csegraph._core
 
-EXPECTED_VERSION = "1.8.0"
+EXPECTED_VERSION = "1.8.1"
 
 
 def _project_version(path: Path) -> str:

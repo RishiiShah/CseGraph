@@ -541,6 +541,12 @@ def render_install_summary(payload: Dict[str, Any]) -> str:
     for target in payload.get("skipped", []):
         reason = target.get("reason") or "skipped"
         lines.append(f"  Skipped: {target.get('platform')} ({reason})")
+    next_steps = payload.get("next_steps") or []
+    if next_steps:
+        lines.append("")
+        lines.append("Next steps:")
+        for step in next_steps:
+            lines.append(f"  - {step}")
     lines.append("")
     return "\n".join(lines)
 

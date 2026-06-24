@@ -388,6 +388,8 @@ def test_install_dry_run_json_reports_auto_targets(tmp_path):
     assert result["server_command"] == str(cli.resolve())
     assert result["server_args"] == ["serve", "--repo", str(tmp_path.resolve())]
     assert result["verification"]["state"] == "skipped"
+    assert "each configured client's MCP/tools settings" in result["next_steps"][0]
+    assert "--platform auto" in result["next_steps"][2]
     assert {target["platform"] for target in result["installed"]} == {
         "codex",
         "claude-code",
@@ -415,6 +417,7 @@ def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
 
     assert result["installed"][0]["platform"] == "cursor"
     assert result["installed"][0]["path"].endswith(os.path.join(".cursor", "mcp.json"))
+    assert "Open cursor's MCP/tools settings" in result["next_steps"][0]
 
 
 def test_doctor_auto_json_reports_project_platforms(tmp_path):

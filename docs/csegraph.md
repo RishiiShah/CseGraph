@@ -12,10 +12,10 @@ csegraph install --platform codex --dry-run --json
 csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
 ```
 
-Current package release: `1.8.0`. To install it exactly:
+Current package release: `1.8.1`. To install it exactly:
 
 ```bash
-pipx install csegraph==1.8.0
+pipx install csegraph==1.8.1
 ```
 
 The base package includes Python, JavaScript, and TypeScript grammars. Install

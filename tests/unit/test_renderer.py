@@ -1,4 +1,8 @@
-from csegraph._cli.renderer import render_benchmark_summary, render_index_summary
+from csegraph._cli.renderer import (
+    render_benchmark_summary,
+    render_index_summary,
+    render_install_summary,
+)
 
 
 def test_render_index_summary_with_parse_errors():
@@ -182,3 +186,28 @@ def test_render_context_markdown_reads_relationship_occurrences():
     assert "Token usage: 12 used, 108 saved vs indexed corpus, 10x reduction" in out
     assert "`auth.py:6-6` calls `verify_password`" in out
     assert "verify_password(password, user['password_hash'])" in out
+
+
+def test_render_install_summary_shows_next_steps():
+    payload = {
+        "server_name": "csegraph",
+        "server_command": "/env/bin/csegraph",
+        "server_args": ["serve", "--repo", "/repo", "--platform", "codex"],
+        "installed": [
+            {
+                "platform": "codex",
+                "path": "/repo/.codex/config.toml",
+                "action": "created",
+            }
+        ],
+        "next_steps": [
+            "Open codex's MCP/tools settings and enable or approve the csegraph server.",
+            "Confirm the six CseGraph tools are visible.",
+        ],
+    }
+
+    out = render_install_summary(payload)
+
+    assert "Next steps:" in out
+    assert "Open codex's MCP/tools settings" in out
+    assert "Confirm the six CseGraph tools" in out

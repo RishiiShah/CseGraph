@@ -111,7 +111,7 @@ jobs:
           assert project_dists == ["csegraph"], project_dists
           import csegraph
           from csegraph import ContextService
-          assert csegraph.__version__ == "1.8.0"
+          assert csegraph.__version__ == "1.8.1"
           assert ContextService is not None
           PY
 
@@ -159,6 +159,74 @@ jobs:
               for name in names
           )
           PY
+
+  mcp-install-smoke:
+    name: MCP install smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install csegraph editable
+        run: python -m pip install --upgrade pip -e ".[test,all]"
+
+      - name: Run MCP install smoke tests
+        run: |
+          python -m pytest \
+            tests/integration/test_mcp_install.py \
+            tests/integration/test_mcp_resolve.py \
+            tests/integration/test_install_editor_smoke.py \
+            -q
+
+      - name: Exercise installed CLI install and doctor flow
+        shell: python
+        run: |
+          import json
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          cli = shutil.which("csegraph")
+          assert cli, "csegraph console script was not found on PATH"
+
+          repo = Path(tempfile.mkdtemp()) / "sample-repo"
+          repo.mkdir()
+          (repo / "app.py").write_text("def hello():\n    return 'hello'\n", encoding="utf-8")
+
+          install = subprocess.run(
+              [cli, "install", str(repo), "--platform", "codex", "--no-verify", "--json"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          install_payload = json.loads(install.stdout)
+          assert install_payload["next_steps"]
+          assert (repo / ".codex" / "config.toml").exists()
+
+          subprocess.run([cli, "index", str(repo), "--json"], check=True, capture_output=True, text=True)
+
+          doctor = subprocess.run(
+              [cli, "doctor", str(repo), "--platform", "codex", "--no-verify", "--json"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          doctor_payload = json.loads(doctor.stdout)
+          assert doctor_payload["config_present"] is True
+          assert doctor_payload["contract_valid"] is True
+          assert doctor_payload["launcher_present"] is True
 
   quality:
     name: Python quality checks
