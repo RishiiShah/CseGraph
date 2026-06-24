@@ -27,21 +27,63 @@ for macOS, Linux, and Windows.
 Global `--verbose` and `--quiet` flags control diagnostic logging. Put them
 before the subcommand, for example `csegraph --verbose watch .`.
 
-`install` configures MCP clients to launch `csegraph serve`, writes
-platform-scoped agent guidance, and installs supported refresh/status lifecycle
-hooks. It also adds generated setup paths and `.csegraph/` to `.gitignore` by
-default. Use `--no-instructions`, `--no-hooks`, or `--no-gitignore` for a
-narrow MCP-only setup. The legacy `--instructions` and `--hooks` flags are
-still accepted when you want to force all supported instruction or hook targets.
+`install` configures MCP clients to launch the real CseGraph CLI MCP server as
+`csegraph serve --repo <absolute repo> --platform <client>`, writes
+platform-scoped agent guidance, installs supported refresh/status lifecycle
+hooks, verifies the generated MCP tool surface by default, and adds generated
+setup paths plus `.csegraph/` to `.gitignore`. Use `--no-instructions`,
+`--no-hooks`, `--no-gitignore`, or `--no-verify` for a narrower MCP-only setup.
+The legacy `--instructions` and `--hooks` flags are still accepted when you want
+to force all supported instruction or hook targets.
+
+Generated MCP configs are intended to be ready to use on macOS, Linux, and
+Windows. The installer resolves the native absolute CLI path, including Windows
+virtualenv/pipx launchers such as `Scripts\csegraph.exe`, `Scripts\csegraph.cmd`,
+or `Scripts\csegraph.bat`, and Python user-install launchers such as
+`%APPDATA%\Python\PythonXY\Scripts\csegraph.exe` or `~/.local/bin/csegraph`.
+It then writes the same `serve --repo <absolute repo> --platform <client>`
+contract for every supported host. If setup looks wrong, run `doctor`; do not
+hand-edit generated `mcp.json` files as the normal path.
 
 Use
-`--platform codex|cursor|claude-code|gemini-cli|kiro|copilot|vscode` to target
-one client. Install commands write repo-local client config by default,
-including `.codex/`, `.cursor/`, `.gemini/`, `.kiro/`, `.vscode/`, and
-`.mcp.json`.
+`--platform codex|cursor|claude-code|gemini-cli|kiro|antigravity-cli|antigravity-ide|copilot|vscode`
+to target one client. Install commands write repo-local client config by
+default, including `.codex/`, `.cursor/`, `.gemini/`, `.kiro/`, `.agents/`,
+`.vscode/`, and `.mcp.json`. `antigravity-ide` is explicit opt-in because it
+writes user-global Antigravity IDE MCP config under `~/.gemini/config/`.
 Codex hooks are written to `.codex/hooks.json` so they show up in Codex's Hooks
 view after the project config layer is trusted. Review generated local setup
 before sharing logs or issue reproductions, and do not commit it.
+
+Use `doctor` to distinguish generated config from real protocol and host use:
+
+```bash
+csegraph doctor . --platform auto --json
+csegraph doctor . --platform codex --json
+csegraph doctor . --platform cursor --require-observed-call --json
+```
+
+`doctor --platform auto` inspects every project-scoped platform config. It
+does not silently inspect or write global Antigravity IDE config; use
+`--platform antigravity-ide` when you want that explicit global check.
+After installation, open the current client's MCP/tools settings and enable or
+approve the `csegraph` server until the six CseGraph tools are visible. The
+local `.csegraph` index is shared, but host access is not: a Cursor config or
+observed Cursor tool call does not count as Codex, Claude Code, Gemini CLI,
+Kiro, Copilot, or Antigravity setup. Agents should not query
+`.csegraph/index.db` directly or use CLI context commands as a substitute for
+that platform's MCP server.
+
+Doctor output separates setup layers:
+
+- `config_present`: the platform config contains a `csegraph` server entry.
+- `contract_valid`: the entry uses a native absolute `csegraph` executable and
+  `["serve", "--repo", "<absolute repo>", "--platform", "<client>"]`, with
+  required `cwd` where applicable.
+- `protocol_verified`: the generated command initialized as an MCP server and
+  advertised the six canonical CseGraph tools.
+- `observed_call`: a real host for that same platform called one of those tools
+  in this repo.
 
 VS Code extension install and project setup live in the
 [extension README](https://github.com/RishiiShah/CseGraph/tree/main/csegraph-vscode#readme).
@@ -108,6 +150,8 @@ that root. Harnesses that need absolute file names should join `repo_root` and
 
 ```bash
 csegraph serve
+csegraph serve --repo /path/to/repo
+csegraph serve --repo /path/to/repo --platform codex
 csegraph serve --tools core
 csegraph serve --tools csegraph_minimal,csegraph_context
 ```
@@ -160,12 +204,14 @@ further calls:
 | Field | Where | Meaning |
 |---|---|---|
 | `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
+| `trust` | every MCP JSON response | Local trust metadata such as bound repo, effective repo, tool name, and index-health verdict when available. |
 | `response_bytes` | every response | Exact serialized JSON size in bytes. |
 | `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Context drop order: symbol `source_text`, `explanation`, `import_preludes`, `relationships[].occurrences[].snippet`, `relationships`, `symbols`. |
 | `confidence_breakdown` | `csegraph_graph`, `csegraph_path`, `csegraph_context` | Edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
 | `hubs_skipped` | `csegraph_graph`, `csegraph_path` | Number of high-degree utility nodes BFS refused to expand through. |
 | `relations_filter` | `csegraph_graph`, `csegraph_path` | Echo of the `relations` arg applied to traversal, for transparency. |
 | `next_tool_suggestions`, `next_actions` | `csegraph_minimal`, `csegraph_context` | Routing recommendations, already filtered against `tools_already_called`. |
+| `target.confidence`, `target.score_margin`, `sufficiency.verdict` | `csegraph_context` | Target-resolution and sufficiency trust signals. Low-confidence inferred targets are marked not sufficient instead of silently passing. |
 
 MCP prompts are workflow templates that clients expose as slash commands.
 
@@ -195,6 +241,7 @@ csegraph export . --format tree
 csegraph export . --format json --output graph.json
 csegraph export . --format graphml --output graph.graphml
 csegraph export . --format obsidian --output vault
+csegraph doctor . --platform codex --json
 csegraph watch .
 csegraph registry register /path/to/repo --alias app
 csegraph registry list
@@ -240,8 +287,8 @@ env/bin/python tools/run_full_mcp_benchmark.py
 SDK/internal service diagnostics, but those results should be labeled as
 internal SDK benchmarks rather than native MCP agent benchmarks.
 
-See [Token Reduction Benchmark](token-reduction-benchmark.md) for measured
-context-size reductions from benchmark runs on this repository.
+See [Agent Context Benchmarks](benchmarks.md) for measured context-size
+reductions from sandbox repositories.
 The benchmark corpus accepts file/symbol hits plus v3 evidence checks such as
 `expected_relationships`, `expected_occurrence_snippets`,
 `expected_import_preludes`, and `forbidden_source_patterns`.

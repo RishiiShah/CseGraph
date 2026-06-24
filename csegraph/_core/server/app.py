@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -61,9 +62,17 @@ def _db_path(repo: str, db: str | None = None) -> str:
     return str(repo_path / ".csegraph" / "index.db")
 
 
-def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
+def _handle_tool(
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    bound_repo: str | None = None,
+    host_platform: str | None = None,
+) -> Any:
     if name not in _CORE_MCP_TOOL_NAMES:
         raise ValueError(f"Unknown tool: {name}")
+    if bound_repo and "repo" not in arguments:
+        arguments = {**arguments, "repo": bound_repo}
     provided_max = arguments.get("max_bytes")
     if provided_max is not None:
         if isinstance(provided_max, float) and provided_max == int(provided_max):
@@ -81,10 +90,96 @@ def _handle_tool(name: str, arguments: dict[str, Any]) -> Any:
         if intent:
             _SESSION.inferred_intent = intent
     if isinstance(result, dict):
+        _apply_trust_metadata(
+            result,
+            tool=name,
+            arguments=arguments,
+            bound_repo=bound_repo,
+            host_platform=host_platform,
+        )
         _apply_session_filter(result)
         effective_max = provided_max if isinstance(provided_max, int) and provided_max > 0 else None
         _apply_byte_cap(result, effective_max)
+    _record_tool_call(
+        arguments.get("repo") or bound_repo,
+        name,
+        success=True,
+        host_platform=host_platform,
+    )
     return result
+
+
+def _apply_trust_metadata(
+    result: dict[str, Any],
+    *,
+    tool: str,
+    arguments: dict[str, Any],
+    bound_repo: str | None,
+    host_platform: str | None,
+) -> None:
+    repo = str(arguments.get("repo") or bound_repo or "")
+    trust = result.setdefault("trust", {})
+    if isinstance(trust, dict):
+        trust.setdefault("server", "csegraph")
+        trust.setdefault("tool", tool)
+        if host_platform:
+            trust.setdefault("platform", host_platform)
+        if bound_repo:
+            trust.setdefault("bound_repo", bound_repo)
+        if repo:
+            trust.setdefault("repo", repo)
+        health = result.get("index_health") or _index_health_payload(repo, arguments.get("db"))
+        if health:
+            trust.setdefault("index_health", health)
+    sufficiency = result.get("sufficiency")
+    if isinstance(sufficiency, dict):
+        sufficiency.setdefault(
+            "verdict",
+            "sufficient" if sufficiency.get("sufficient") is True else "not_sufficient",
+        )
+        metrics = sufficiency.get("metrics")
+        if isinstance(metrics, dict):
+            sufficiency.setdefault("applicable_metrics", list(metrics))
+
+
+def _index_health_payload(repo: str, db: str | None = None) -> dict[str, Any] | None:
+    if not repo:
+        return None
+    try:
+        from csegraph._core.core.models import to_dict as _to_dict
+        from csegraph._core.status import StatusService
+
+        status = StatusService(_db_path(repo, db)).status(verbose=False)
+        return _to_dict(status.index_health) if status.index_health is not None else None
+    except Exception:
+        return None
+
+
+def _record_tool_call(
+    repo: Any,
+    tool: str,
+    *,
+    success: bool,
+    host_platform: str | None = None,
+) -> None:
+    if not repo:
+        return
+    try:
+        repo_path = Path(str(repo)).resolve()
+        csegraph_dir = repo_path / ".csegraph"
+        csegraph_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "server": "csegraph",
+            "tool": tool,
+            "success": success,
+        }
+        if host_platform:
+            payload["platform"] = host_platform
+        with (csegraph_dir / "mcp_sessions.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    except Exception:
+        logger.debug("Failed to record CseGraph MCP session evidence", exc_info=True)
 
 
 def _apply_session_filter(result: dict[str, Any]) -> None:
@@ -533,7 +628,19 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     raise ValueError(f"Unknown tool: {name}")
 
 
-def create_server(*, allowed_tools: list[str] | None = None) -> Server:
+_SERVER_INSTRUCTIONS = (
+    "CseGraph is a local-first code context engine. Use only the advertised "
+    "csegraph_* MCP tools. Start with csegraph_minimal, follow one suggested "
+    "next tool, and avoid broad repo reads when CseGraph can supply the slice."
+)
+
+
+def create_server(
+    *,
+    allowed_tools: list[str] | None = None,
+    bound_repo: str | None = None,
+    host_platform: str | None = None,
+) -> Server:
     if allowed_tools is None:
         allowed_tools = CORE_TOOL_NAMES
     unknown = set(allowed_tools) - {t.name for t in _TOOLS}
@@ -544,7 +651,12 @@ def create_server(*, allowed_tools: list[str] | None = None) -> Server:
     prompts = _prompts_for_tools(allowed_tool_names)
     allowed_prompt_names = {prompt.name for prompt in prompts}
 
-    server = Server("csegraph")
+    instructions = _SERVER_INSTRUCTIONS
+    if bound_repo:
+        instructions += f" This server is bound to repo: {bound_repo}."
+    if host_platform:
+        instructions += f" This server was launched for platform: {host_platform}."
+    server = Server("csegraph", instructions=instructions)
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -566,12 +678,29 @@ def create_server(*, allowed_tools: list[str] | None = None) -> Server:
             if name not in allowed_tool_names:
                 raise ValueError(f"Tool '{name}' is not enabled for this server")
             if is_blocking_mcp_tool(name):
-                result = await asyncio.to_thread(_handle_tool, name, arguments)
+                result = await asyncio.to_thread(
+                    _handle_tool,
+                    name,
+                    arguments,
+                    bound_repo=bound_repo,
+                    host_platform=host_platform,
+                )
             else:
-                result = _handle_tool(name, arguments)
+                result = _handle_tool(
+                    name,
+                    arguments,
+                    bound_repo=bound_repo,
+                    host_platform=host_platform,
+                )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         except Exception as exc:
             logger.exception("Tool %s failed", name)
+            _record_tool_call(
+                arguments.get("repo") or bound_repo,
+                name,
+                success=False,
+                host_platform=host_platform,
+            )
             error_payload = {"error": str(exc), "tool": name}
             return CallToolResult(
                 content=[
@@ -586,8 +715,17 @@ def create_server(*, allowed_tools: list[str] | None = None) -> Server:
     return server
 
 
-async def run_stdio(*, allowed_tools: list[str] | None = None) -> None:
-    server = create_server(allowed_tools=allowed_tools)
+async def run_stdio(
+    *,
+    allowed_tools: list[str] | None = None,
+    bound_repo: str | None = None,
+    host_platform: str | None = None,
+) -> None:
+    server = create_server(
+        allowed_tools=allowed_tools,
+        bound_repo=bound_repo,
+        host_platform=host_platform,
+    )
     if allowed_tools:
         logger.info("csegraph MCP server running on stdio; exposing %s tools", len(allowed_tools))
     else:

@@ -185,6 +185,26 @@ class TestHandleTool:
         assert ctx["request"]["detail_level"] == "auto"
         assert ctx["request"]["returned_detail_level"] in {"minimal", "standard"}
 
+    def test_handle_tool_records_host_platform(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = _scratch_db(repo)
+
+        result = _handle_tool(
+            "csegraph_index",
+            {"repo": str(repo), "db": db, "profile": "small"},
+            host_platform="codex",
+        )
+
+        assert result["trust"]["platform"] == "codex"
+        evidence = repo / ".csegraph" / "mcp_sessions.jsonl"
+        events = [
+            json.loads(line)
+            for line in evidence.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert events[-1]["platform"] == "codex"
+        assert events[-1]["tool"] == "csegraph_index"
+
     def test_default_mcp_profile_auto_resolves_to_concrete_profile(self, tmp_path):
         repo = _make_repo(tmp_path)
         db = _scratch_db(repo)

@@ -527,6 +527,12 @@ def render_install_summary(payload: Dict[str, Any]) -> str:
     ]
     if payload.get("dry_run"):
         lines.append("  Mode:    dry run")
+    verification = payload.get("verification") or {}
+    if verification:
+        state = verification.get("state", "unknown")
+        lines.append(f"  Verify:  {state}")
+        if verification.get("error"):
+            lines.append(f"           {verification['error']}")
     for target in payload.get("installed", []):
         action = (
             "Would write" if target.get("dry_run") else target.get("action", "updated").capitalize()

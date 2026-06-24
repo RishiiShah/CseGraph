@@ -21,6 +21,7 @@ CORE_CONTEXT_COMMANDS = {
 SUPPORT_COMMANDS = {
     "export",
     "install",
+    "doctor",
     "watch",
     "lsp",
     "status",
@@ -145,6 +146,7 @@ def test_base_commands_expose_help_from_source_install():
         "status",
         "postprocess",
         "install",
+        "doctor",
         "serve",
     ]
 

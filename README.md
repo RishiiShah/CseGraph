@@ -35,7 +35,7 @@ relevant code, dependencies, imports, nearby tests, and selection reasons.
 pipx install csegraph
 cd /path/to/your/repository
 csegraph install --platform codex
-csegraph index .
+csegraph index
 ```
 
 Replace `codex` with your coding tool, or use `--platform auto` to configure
@@ -140,19 +140,47 @@ index:
 | Claude Code | `csegraph install --platform claude-code` |
 | Gemini CLI | `csegraph install --platform gemini-cli` |
 | Kiro | `csegraph install --platform kiro` |
+| Antigravity CLI | `csegraph install --platform antigravity-cli` |
+| Antigravity IDE global config | `csegraph install --platform antigravity-ide` |
 | GitHub Copilot | `csegraph install --platform copilot` |
 | VS Code project files | `csegraph install --platform vscode` |
 
 The installer configures the MCP server, writes platform-scoped agent
-instructions and supported lifecycle hooks, and adds generated local files to
-`.gitignore`. Preview the changes without writing files:
+instructions and supported lifecycle hooks, verifies the generated `csegraph
+serve --repo <repo> --platform <client>` MCP launcher, and adds generated local
+files to `.gitignore`. Each client gets its own platform tag, so a Cursor MCP
+call is not treated as Codex setup. Antigravity IDE writes user-global config
+only when explicitly selected. Preview the changes without writing files:
+
+On macOS, Linux, and Windows, generated MCP configs use a native absolute
+`csegraph` executable path. Windows virtualenv and pipx installs are resolved
+to `Scripts\csegraph.exe`, `.cmd`, or `.bat` automatically, so you should not
+need to edit `.mcp.json`, `.cursor/mcp.json`, or other generated MCP files by
+hand after installation. Python user installs are handled too: if `pip install
+--user csegraph` places the CLI under `%APPDATA%\Python\PythonXY\Scripts` on
+Windows or `~/.local/bin` on Linux, the installer can still write that absolute
+launcher path even when the folder is not on your terminal `PATH`.
 
 ```bash
 csegraph install --platform codex --dry-run
 ```
 
-Use `--no-hooks`, `--no-instructions`, or `--no-gitignore` when you want a
-narrower setup.
+Use `--no-hooks`, `--no-instructions`, `--no-gitignore`, or `--no-verify` when
+you want a narrower setup. Diagnose a platform with:
+
+```bash
+csegraph doctor --platform auto --json
+csegraph doctor --platform codex --require-observed-call --json
+```
+
+`doctor --platform auto` checks every project-scoped client config and reports
+which are missing, protocol-verified, or still waiting for real host use. After
+installing, open that client's MCP/tools settings and enable or approve the
+`csegraph` server so the six CseGraph tools are visible. A `.csegraph` index or
+another client's config is not enough; Codex, Cursor, Claude Code, and the other
+hosts each need their own enabled MCP entry. Agents should not query
+`.csegraph/index.db` directly or use CLI context commands as a substitute for
+that platform's MCP server.
 
 ## How It Works
 
@@ -181,16 +209,16 @@ shortest dependency path between two symbols.
 
 ```bash
 # Build the initial index
-csegraph index .
+csegraph index
 
 # Refresh changed files
-csegraph refresh .
+csegraph refresh
 
 # Watch the repository and refresh automatically
-csegraph watch .
+csegraph watch
 
 # Check index health
-csegraph status . --verbose
+csegraph status --verbose
 
 # Retrieve context for a task
 csegraph context "fix auth token refresh" --target refresh_token
@@ -202,7 +230,7 @@ csegraph inspect ContextService.build_context --depth 1
 csegraph path IndexService.index ContextService.build_context
 
 # Export an interactive graph
-csegraph export . --format html --output graph.html
+csegraph export --format html --output graph.html
 ```
 
 See the [CLI and MCP reference](docs/csegraph.md) for every command and flag.

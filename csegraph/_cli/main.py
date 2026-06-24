@@ -373,6 +373,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "claude-code",
             "gemini-cli",
             "kiro",
+            "antigravity-cli",
+            "antigravity-ide",
             "copilot",
             "vscode",
         ],
@@ -430,6 +432,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Do not modify .gitignore.",
     )
+    install.add_argument(
+        "--no-verify",
+        dest="verify",
+        action="store_false",
+        default=True,
+        help="Skip launching the generated MCP server to verify its tool surface.",
+    )
     _add_json(install)
 
     watch = subparsers.add_parser(
@@ -448,6 +457,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     serve = subparsers.add_parser("serve", help="Start the MCP stdio server for coding agents.")
     serve.add_argument(
+        "--repo",
+        dest="repo_opt",
+        default=None,
+        help="Bind this MCP server process to a repository root.",
+    )
+    serve.add_argument(
         "--tools",
         default=None,
         help=(
@@ -455,7 +470,56 @@ def _build_parser() -> argparse.ArgumentParser:
             "of the six core context-engine tool names."
         ),
     )
+    serve.add_argument(
+        "--platform",
+        choices=[
+            "codex",
+            "cursor",
+            "claude-code",
+            "gemini-cli",
+            "kiro",
+            "antigravity-cli",
+            "antigravity-ide",
+            "copilot",
+        ],
+        default=None,
+        help="Host platform that launched this MCP server.",
+    )
     _add_json(serve, suppress=True)
+
+    doctor = subparsers.add_parser("doctor", help="Diagnose CseGraph MCP platform setup.")
+    _add_repo_positional(doctor)
+    doctor.add_argument(
+        "--platform",
+        choices=[
+            "auto",
+            "codex",
+            "cursor",
+            "claude-code",
+            "gemini-cli",
+            "kiro",
+            "antigravity-cli",
+            "antigravity-ide",
+            "copilot",
+            "vscode",
+        ],
+        required=True,
+        help="MCP client platform to inspect.",
+    )
+    doctor.add_argument(
+        "--command",
+        dest="server_command",
+        default="csegraph",
+        help="Executable command to resolve when config is missing.",
+    )
+    doctor.add_argument(
+        "--require-observed-call",
+        action="store_true",
+        help="Report pending_host_approval until a real MCP tool call has been observed locally.",
+    )
+    doctor.add_argument("--format", choices=["json"], default=None, help="Output format.")
+    doctor.add_argument("--no-verify", dest="verify", action="store_false", default=True)
+    _add_json(doctor)
 
     lsp = subparsers.add_parser("lsp", help="Start the LSP stdio server for editors.")
     _add_repo_positional(lsp)
@@ -957,6 +1021,22 @@ def _dispatch(args: argparse.Namespace) -> Any:
             instructions=args.instructions,
             hooks=args.hooks,
             gitignore=args.gitignore,
+            verify=args.verify,
+        )
+    if args.command == "doctor":
+        from csegraph._core.mcp_doctor import McpDoctorService
+
+        repo = _repo_arg(args)
+        service = McpDoctorService(repo, command=args.server_command)
+        if args.platform == "auto":
+            return service.doctor_all(
+                require_observed_call=args.require_observed_call,
+                verify=args.verify,
+            )
+        return service.doctor(
+            platform=args.platform,
+            require_observed_call=args.require_observed_call,
+            verify=args.verify,
         )
     if args.command == "report":
         from csegraph._core.graph.report import ReportService
@@ -983,7 +1063,14 @@ def _dispatch(args: argparse.Namespace) -> Any:
             raise SystemExit(
                 "error: --tools resolved to an empty list. Use 'core' or a comma-separated list of tool names."
             )
-        asyncio.run(run_stdio(allowed_tools=allowed))
+        bound_repo = str(Path(args.repo_opt).resolve()) if args.repo_opt else None
+        asyncio.run(
+            run_stdio(
+                allowed_tools=allowed,
+                bound_repo=bound_repo,
+                host_platform=args.platform,
+            )
+        )
         return None
     if args.command == "lsp":
         from csegraph._core.lsp import run_stdio_lsp

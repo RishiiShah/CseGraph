@@ -375,18 +375,24 @@ def test_main_renders_index_json_for_canonical_command(tmp_path, capsys):
 
 
 def test_install_dry_run_json_reports_auto_targets(tmp_path):
+    cli = tmp_path / "env" / "bin" / "csegraph"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    os.chmod(cli, 0o755)
     result = run_cli("install", str(tmp_path), "--dry-run", "--json")
 
     assert result["command"] == "install"
     assert result["dry_run"] is True
-    assert result["server_command"] == "csegraph"
-    assert result["server_args"] == ["serve"]
+    assert result["server_command"] == str(cli.resolve())
+    assert result["server_args"] == ["serve", "--repo", str(tmp_path.resolve())]
+    assert result["verification"]["state"] == "skipped"
     assert {target["platform"] for target in result["installed"]} == {
         "codex",
         "claude-code",
         "cursor",
         "gemini-cli",
         "kiro",
+        "antigravity-cli",
         "copilot",
         "instructions",
         "hooks:claude-code",
@@ -407,6 +413,32 @@ def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
 
     assert result["installed"][0]["platform"] == "cursor"
     assert result["installed"][0]["path"].endswith(os.path.join(".cursor", "mcp.json"))
+
+
+def test_doctor_auto_json_reports_project_platforms(tmp_path):
+    cli = tmp_path / "env" / "bin" / "csegraph"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    os.chmod(cli, 0o755)
+
+    result = run_cli("doctor", str(tmp_path), "--platform", "auto", "--no-verify", "--json")
+
+    assert result["command"] == "doctor"
+    assert result["platform"] == "auto"
+    assert result["state"] == "config_missing"
+    assert result["configured_count"] == 0
+    assert result["missing_count"] == 8
+    assert result["contract_invalid_count"] == 0
+    assert {platform["platform"] for platform in result["platforms"]} == {
+        "codex",
+        "claude-code",
+        "cursor",
+        "gemini-cli",
+        "kiro",
+        "antigravity-cli",
+        "copilot",
+        "vscode",
+    }
 
 
 def test_install_codex_dry_run_json_uses_repo_config(tmp_path):
@@ -924,6 +956,7 @@ def test_cli_help_lists_only_product_commands():
         text=True,
     )
     public_commands = {
+        "doctor",
         "install",
         "index",
         "refresh",
@@ -1019,6 +1052,7 @@ def test_maintainer_cli_help_lists_only_private_commands():
     exposed_commands = set(match.group("commands").split(","))
     assert private_commands == exposed_commands
     for command in (
+        "doctor",
         "install",
         "index",
         "refresh",

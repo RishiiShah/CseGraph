@@ -18,8 +18,16 @@ csegraph install --platform codex
 csegraph index .
 ```
 
-Replace `codex` with `cursor`, `claude-code`, `gemini-cli`, `kiro`, `copilot`,
-or `vscode`. Use `--platform auto` to configure every supported MCP client.
+Replace `codex` with `cursor`, `claude-code`, `gemini-cli`, `kiro`,
+`antigravity-cli`, `copilot`, or `vscode`. Use `--platform auto` to configure
+every project-scoped MCP client. Use `--platform antigravity-ide` only when you
+explicitly want user-global Antigravity IDE config.
+
+Check project-scoped MCP setup with:
+
+```bash
+csegraph doctor --platform auto --json
+```
 
 Retrieve context directly from the CLI:
 
@@ -40,9 +48,7 @@ for macOS, Linux, and Windows.
 - [Architecture](architecture.md) explains the parser, index, graph, retrieval,
   and MCP server boundaries.
 - [Agent context benchmarks](benchmarks.md) records native MCP cross-repo
-  benchmark results.
-- [Token reduction benchmark](token-reduction-benchmark.md) records the current
-  context-quality and token-reduction results.
+  benchmark results, including context-size reductions from sandbox workloads.
 
 ## Core Loop
 

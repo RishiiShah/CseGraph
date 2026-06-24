@@ -438,6 +438,44 @@ class McpInstallResult:
     dry_run: bool
     installed: List[McpInstallTarget] = field(default_factory=list)
     skipped: List[McpInstallTarget] = field(default_factory=list)
+    verification: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class McpDoctorResult:
+    command: str
+    repo_root: str
+    platform: str
+    state: str
+    config_path: Optional[str] = None
+    config_present: bool = False
+    launcher_present: bool = False
+    contract_valid: bool = False
+    contract_issues: List[str] = field(default_factory=list)
+    protocol_verified: bool = False
+    observed_call: bool = False
+    require_observed_call: bool = False
+    server_entry: Dict[str, Any] = field(default_factory=dict)
+    verification: Dict[str, Any] = field(default_factory=dict)
+    host_verification: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class McpDoctorAggregateResult:
+    command: str
+    repo_root: str
+    platform: str
+    state: str
+    configured_count: int = 0
+    missing_count: int = 0
+    launcher_missing_count: int = 0
+    contract_invalid_count: int = 0
+    protocol_verified_count: int = 0
+    observed_call_count: int = 0
+    require_observed_call: bool = False
+    platforms: List[McpDoctorResult] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
 
 
 @dataclass
