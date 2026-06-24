@@ -43,3 +43,27 @@ class TestWatchKeyboardInterrupt:
         assert "Stopped watching." in log_text
         assert "KeyboardInterrupt" not in log_text
         assert "Traceback" not in log_text
+
+
+def test_watch_suppresses_watchfiles_info_logs_by_default(tmp_path: Path):
+    from csegraph._core.watch import watch
+
+    watchfiles_logger = logging.getLogger("watchfiles")
+    watchfiles_main_logger = logging.getLogger("watchfiles.main")
+    old_watchfiles_level = watchfiles_logger.level
+    old_watchfiles_main_level = watchfiles_main_logger.level
+
+    def _raise_interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    try:
+        watchfiles_logger.setLevel(logging.NOTSET)
+        watchfiles_main_logger.setLevel(logging.NOTSET)
+        with patch("watchfiles.watch", side_effect=_raise_interrupt):
+            watch(str(tmp_path), str(tmp_path / ".csegraph" / "index.db"))
+
+        assert watchfiles_logger.level == logging.WARNING
+        assert watchfiles_main_logger.level == logging.WARNING
+    finally:
+        watchfiles_logger.setLevel(old_watchfiles_level)
+        watchfiles_main_logger.setLevel(old_watchfiles_main_level)

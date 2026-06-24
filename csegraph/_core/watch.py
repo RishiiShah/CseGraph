@@ -15,6 +15,13 @@ from csegraph._core.index.services import RefreshService
 logger = logging.getLogger(__name__)
 
 
+def _suppress_watchfiles_info_logs() -> None:
+    if logger.isEnabledFor(logging.DEBUG):
+        return
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
+    logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
+
+
 def watch(
     repo: str,
     db_path: str,
@@ -31,6 +38,7 @@ def watch(
             "Install or reinstall csegraph with its runtime dependencies."
         )
         sys.exit(1)
+    _suppress_watchfiles_info_logs()
 
     repo_path = Path(repo).resolve()
     if extensions is None:

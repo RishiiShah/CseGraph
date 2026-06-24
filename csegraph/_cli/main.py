@@ -125,12 +125,14 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _configure_logging(args: argparse.Namespace) -> None:
+    level = _log_level_for_args(args)
     logging.basicConfig(
-        level=_log_level_for_args(args),
-        format="%(levelname)s %(name)s: %(message)s",
+        level=level,
+        format=_log_format_for_args(args),
         stream=sys.stderr,
         force=True,
     )
+    _configure_dependency_logging(level)
 
 
 def _log_level_for_args(args: argparse.Namespace) -> int:
@@ -145,6 +147,19 @@ def _log_level_for_args(args: argparse.Namespace) -> int:
     if verbose == 1 or _effective_command(args) in {"serve", "watch"}:
         return logging.INFO
     return logging.WARNING
+
+
+def _log_format_for_args(args: argparse.Namespace) -> str:
+    verbose = int(getattr(args, "log_verbose", 0) or 0)
+    if _effective_command(args) in {"serve", "watch"} and verbose == 0:
+        return "%(levelname)s: %(message)s"
+    return "%(levelname)s %(name)s: %(message)s"
+
+
+def _configure_dependency_logging(level: int) -> None:
+    watchfiles_level = logging.NOTSET if level <= logging.DEBUG else logging.WARNING
+    logging.getLogger("watchfiles").setLevel(watchfiles_level)
+    logging.getLogger("watchfiles.main").setLevel(watchfiles_level)
 
 
 def _effective_command(args: argparse.Namespace) -> str:
