@@ -107,8 +107,12 @@ include = ["csegraph*"]
 "csegraph._core.graph.templates" = ["*.html"]
 
 [tool.pytest.ini_options]
+addopts = ["-m", "not self_corpus"]
 testpaths = ["tests/unit", "tests/integration"]
 pythonpath = ["."]
+markers = [
+    "self_corpus: opt-in dogfood context-quality benchmark that indexes this repository; excluded from default pytest",
+]
 
 [tool.coverage.run]
 branch = true

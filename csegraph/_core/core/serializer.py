@@ -53,6 +53,8 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         "target": {
             "id": result.target,
             "resolution": result.target_resolution,
+            "confidence": getattr(result, "target_confidence", None),
+            "score_margin": getattr(result, "target_score_margin", None),
             "kind": target_node.kind if target_node is not None else None,
             "path": target_node.path if target_node is not None else None,
             "line_range": target_node.line_range if target_node is not None else None,
@@ -65,7 +67,7 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         ],
         "import_preludes": to_dict(getattr(result, "import_preludes", [])),
         "confidence_breakdown": to_dict(getattr(result, "confidence_breakdown", {})),
-        "sufficiency": to_dict(result.sufficiency),
+        "sufficiency": _sufficiency_to_dict(result.sufficiency),
         "budgets": {
             "total_estimated_tokens": result.total_estimated_tokens,
             "raw_code_nodes": to_dict(result.raw_code_nodes),
@@ -74,6 +76,15 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         "warnings": to_dict(result.warnings),
         "run_id": result.run_id,
     }
+
+
+def _sufficiency_to_dict(value: Any) -> Dict[str, Any]:
+    payload = to_dict(value)
+    payload["verdict"] = "sufficient" if payload.get("sufficient") is True else "not_sufficient"
+    metrics = payload.get("metrics")
+    if isinstance(metrics, dict):
+        payload["applicable_metrics"] = list(metrics)
+    return payload
 
 
 def _canonical_context_node_to_dict(node: Any) -> Dict[str, Any]:

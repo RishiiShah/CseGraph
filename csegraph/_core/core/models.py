@@ -163,6 +163,8 @@ class ContextResult:
     timings_ms: Dict[str, float] = field(default_factory=dict)
     target_resolution: str = "resolved"
     target_candidates: List[Dict[str, Any]] = field(default_factory=list)
+    target_confidence: Optional[float] = None
+    target_score_margin: Optional[float] = None
 
 
 @dataclass

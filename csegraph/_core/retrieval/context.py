@@ -312,6 +312,10 @@ class ContextService:
                 tier = relationship.confidence_tier or "EXTRACTED"
                 confidence_counts[tier] = confidence_counts.get(tier, 0) + 1
 
+            target_trust_failure = _target_trust_failure(resolution, metrics, config)
+            if target_trust_failure is not None:
+                sufficient = False
+
             run_id = index.insert_retrieval_run(
                 query=task,
                 target=target_id,
@@ -340,6 +344,8 @@ class ContextService:
             failure_reasons = (
                 _sufficiency_failure_reasons(metrics, config) if not sufficient else []
             )
+            if target_trust_failure is not None:
+                failure_reasons.append(target_trust_failure)
 
             return ContextResult(
                 command="context",
@@ -350,6 +356,8 @@ class ContextService:
                 target=target_id,
                 target_resolution=resolution.status,
                 target_candidates=list(resolution.candidates),
+                target_confidence=resolution.confidence,
+                target_score_margin=resolution.score_margin,
                 detail_level=detail_level,
                 returned_detail_level=returned_detail_level,
                 sufficiency=SufficiencyResult(
@@ -915,6 +923,8 @@ def _ambiguous_context_result(
         target=label,
         target_resolution="ambiguous",
         target_candidates=list(candidates),
+        target_confidence=resolution.confidence,
+        target_score_margin=resolution.score_margin,
         detail_level=detail_level,
         returned_detail_level="minimal",
         sufficiency=SufficiencyResult(
@@ -1499,6 +1509,28 @@ def _is_sufficient(metrics: Any, config: Any) -> bool:
         semantic_threshold_relaxed=config.semantic_threshold_relaxed,
         confidence_threshold=config.confidence_threshold,
     )
+
+
+def _target_trust_failure(resolution: Any, metrics: Any, config: Any) -> Dict[str, Any] | None:
+    if getattr(resolution, "status", "") != "inferred":
+        return None
+    confidence = getattr(resolution, "confidence", None)
+    if confidence is None:
+        return None
+    # Explicit targets, exact names, and paths bypass this guard. For inferred
+    # targets, require either a strong target ranking or real semantic overlap.
+    if confidence >= 0.55:
+        return None
+    if metrics.semantic_overlap >= config.semantic_threshold:
+        return None
+    return {
+        "metric": "target_confidence",
+        "actual": round(float(confidence), 4),
+        "threshold": 0.55,
+        "suggested_next_action": (
+            "Provide an explicit target or inspect the ranked target candidates before editing."
+        ),
+    }
 
 
 def _recover_sufficiency_context_ids(

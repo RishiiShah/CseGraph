@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from csegraph._core.benchmark import BenchmarkService
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CORPUS = _ROOT / "benchmarks" / "context_quality" / "csegraph_self.json"
+pytestmark = pytest.mark.self_corpus
 
 # Baselines from csegraph self-index (profile=small); tighten only with intent.
 _MIN_OVERALL_HIT_RATE = 0.9

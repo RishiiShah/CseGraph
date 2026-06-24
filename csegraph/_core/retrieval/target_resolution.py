@@ -20,6 +20,8 @@ class TargetResolution:
     target_id: str
     requested: Optional[str] = None
     candidates: List[Dict[str, Any]] = field(default_factory=list)
+    confidence: Optional[float] = None
+    score_margin: Optional[float] = None
 
 
 def resolve_target(
@@ -34,8 +36,25 @@ def resolve_target(
         scores, _ = lexical_scores(task, symbols, summaries, fts_seed=None)
         if not scores:
             return TargetResolution(status="unresolved", target_id="", requested=None)
-        best_id = max(scores.items(), key=lambda item: item[1])[0]
-        return TargetResolution(status="inferred", target_id=best_id, requested=None)
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        best_id, best_score = ranked[0]
+        second_score = ranked[1][1] if len(ranked) > 1 else 0.0
+        margin = max(0.0, best_score - second_score)
+        margin_ratio = margin / max(best_score, 1.0)
+        absolute = min(1.0, max(0.0, (best_score - 0.01) / 12.0))
+        confidence = round(max(0.0, min(1.0, 0.70 * margin_ratio + 0.30 * absolute)), 4)
+        return TargetResolution(
+            status="inferred",
+            target_id=best_id,
+            requested=None,
+            candidates=[
+                _candidate_payload_with_score(symbols[node_id], score=score, match="inferred")
+                for node_id, score in ranked[:_MAX_CANDIDATES]
+                if node_id in symbols
+            ],
+            confidence=confidence,
+            score_margin=round(margin, 4),
+        )
 
     requested = target.strip()
     if requested in symbols:
@@ -43,6 +62,7 @@ def resolve_target(
             status="resolved",
             target_id=requested,
             requested=requested,
+            confidence=1.0,
         )
 
     if index is None:
@@ -63,6 +83,7 @@ def resolve_target(
                 status="resolved",
                 target_id=file_id,
                 requested=requested,
+                confidence=1.0,
             )
 
     exact = _query_symbol_candidates(
@@ -113,6 +134,7 @@ def _resolution_from_candidates(
             status="resolved",
             target_id=rows[0]["id"],
             requested=requested,
+            confidence=1.0,
         )
     return TargetResolution(
         status="ambiguous",
@@ -140,6 +162,17 @@ def _candidate_payload(row: Dict[str, Any], *, match: str) -> Dict[str, Any]:
         "kind": row["type"],
         "match": match,
     }
+
+
+def _candidate_payload_with_score(
+    row: Dict[str, Any],
+    *,
+    score: float,
+    match: str,
+) -> Dict[str, Any]:
+    payload = _candidate_payload(row, match=match)
+    payload["score"] = round(float(score), 4)
+    return payload
 
 
 def _resolve_file_path(target: str, repo_root: str, index: ProjectIndex) -> str | None:

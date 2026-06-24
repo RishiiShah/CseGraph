@@ -33,6 +33,8 @@
     "metrics",
     "thresholds",
     "failure_reasons",
-    "recovery"
+    "recovery",
+    "verdict",
+    "applicable_metrics"
   ]
 }

@@ -6,7 +6,7 @@ from csegraph import ContextService, IndexService
 from csegraph._core.core.serializer import to_dict
 from csegraph._core.retrieval.constants import VALID_REASONS
 
-_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "context_contract_v2_shape.json"
+_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "context_contract_v3_shape.json"
 
 
 def _write_repo(root: Path) -> None:
@@ -102,6 +102,8 @@ def test_context_json_contract_is_canonical_only(tmp_path):
     assert payload["request"]["returned_detail_level"] == "minimal"
     assert payload["budgets"]["total_estimated_tokens"] >= 1
     assert payload["sufficiency"]["sufficient"] is True
+    assert payload["sufficiency"]["verdict"] == "sufficient"
+    assert payload["sufficiency"]["applicable_metrics"]
     assert "semantic_overlap_relaxed" in payload["sufficiency"]["thresholds"]
     assert payload["sufficiency"]["failure_reasons"] == []
     assert payload["sufficiency"]["recovery"] == []
@@ -112,6 +114,7 @@ def test_context_json_contract_is_canonical_only(tmp_path):
     assert payload["symbols"][0]["id"] == "symbol::service.py::function::create_user"
 
     assert payload["target"]["resolution"] == "resolved"
+    assert payload["target"]["confidence"] == 1.0
     assert payload["target"]["candidates"] == []
 
     for node in payload["symbols"]:
@@ -168,6 +171,31 @@ def test_context_standard_detail_includes_selected_source(tmp_path):
         node["id"] == "symbol::service.py::function::create_user"
         and "def create_user(name: str) -> dict:" in node.get("source_text", "")
         for node in payload["symbols"]
+    )
+
+
+def test_broad_prompt_with_low_confidence_inferred_target_is_not_sufficient(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "index.db"
+    _write_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task=(
+            "Plan verified MCP integration support for Claude Code, Cursor, Kiro, "
+            "Antigravity, Gemini CLI, GitHub Copilot, Codex, and VS Code."
+        ),
+        profile="small",
+    )
+    payload = to_dict(context)
+
+    assert payload["target"]["resolution"] == "inferred"
+    assert payload["target"]["confidence"] < 0.55
+    assert payload["sufficiency"]["sufficient"] is False
+    assert payload["sufficiency"]["verdict"] == "not_sufficient"
+    assert any(
+        reason.get("metric") == "target_confidence"
+        for reason in payload["sufficiency"]["failure_reasons"]
     )
 
 
