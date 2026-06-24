@@ -151,6 +151,8 @@ class ContextResult:
     sufficiency: SufficiencyResult
     total_estimated_tokens: int
     nodes: List[ContextNode]
+    indexed_corpus_bytes: int = 0
+    indexed_corpus_estimated_tokens: int = 0
     relationships: List[ContextRelationship] = field(default_factory=list)
     import_preludes: List[ImportPrelude] = field(default_factory=list)
     target_input: Optional[str] = None

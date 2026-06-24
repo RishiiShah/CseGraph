@@ -305,6 +305,7 @@ class ContextService:
                 import_preludes = []
                 prelude_tokens = 0
             estimated_tokens = node_tokens + prelude_tokens
+            corpus_bytes, corpus_tokens = _indexed_corpus_token_baseline(index)
 
             # Aggregate confidence tiers for edges among the returned context nodes.
             confidence_counts: Dict[str, int] = {}
@@ -382,6 +383,8 @@ class ContextService:
                 ),
                 total_estimated_tokens=estimated_tokens,
                 nodes=nodes,
+                indexed_corpus_bytes=corpus_bytes,
+                indexed_corpus_estimated_tokens=corpus_tokens,
                 relationships=relationships,
                 import_preludes=import_preludes,
                 target_input=target,
@@ -1886,6 +1889,20 @@ def _elapsed_ms(start: float) -> float:
 def _indexed_file_count(index: ProjectIndex) -> int:
     row = index.conn.execute("SELECT COUNT(*) AS count FROM nodes WHERE type = 'file'").fetchone()
     return int(row["count"] if row is not None else 0)
+
+
+def _indexed_corpus_token_baseline(index: ProjectIndex) -> tuple[int, int]:
+    row = index.conn.execute(
+        "SELECT COALESCE(SUM(size), 0) AS bytes FROM files WHERE parse_status != 'error'"
+    ).fetchone()
+    corpus_bytes = int(row["bytes"] if row is not None else 0)
+    return corpus_bytes, _estimate_chars4_tokens(corpus_bytes)
+
+
+def _estimate_chars4_tokens(char_count: int) -> int:
+    if char_count <= 0:
+        return 0
+    return max(1, math.ceil(char_count / 4))
 
 
 def _apply_token_budget(

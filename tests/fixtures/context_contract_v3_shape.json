@@ -10,6 +10,7 @@
     "import_preludes",
     "sufficiency",
     "budgets",
+    "token_usage",
     "confidence_breakdown",
     "next_actions",
     "warnings",

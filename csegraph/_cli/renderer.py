@@ -607,6 +607,7 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
     raw_target = payload.get("target")
     target = raw_target if isinstance(raw_target, dict) else {}
     budgets = payload.get("budgets") or {}
+    token_usage = payload.get("token_usage") or {}
     symbols = payload.get("symbols") or payload.get("nodes") or []
     lines: List[str] = [
         "# csegraph context",
@@ -616,9 +617,16 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
         f"Requested detail: `{request.get('detail_level', payload.get('detail_level', 'auto'))}`",
         f"Returned detail: `{request.get('returned_detail_level', payload.get('returned_detail_level', 'minimal'))}`",
         f"Total estimated tokens: {budgets.get('total_estimated_tokens', payload.get('total_estimated_tokens', 0))}",
-        f"Sufficient: {payload['sufficiency']['sufficient']}",
-        "",
     ]
+    token_line = _render_token_usage(token_usage)
+    if token_line:
+        lines.append(token_line)
+    lines.extend(
+        [
+            f"Sufficient: {payload['sufficiency']['sufficient']}",
+            "",
+        ]
+    )
 
     warnings = payload.get("warnings", [])
     if warnings:
@@ -1099,6 +1107,25 @@ def render_registry_summary(payload: Dict[str, Any]) -> str:
         lines.append(f"  {e['alias']:<20} {e['root']}")
         lines.append(f"  {'':20} db={e['db']}  profile={e['profile']}")
     return "\n".join(lines) + "\n"
+
+
+def _render_token_usage(token_usage: Dict[str, Any]) -> str:
+    if not token_usage:
+        return ""
+    used = token_usage.get("used_tokens")
+    if used is None:
+        return ""
+    saved = token_usage.get("saved_tokens")
+    baseline = token_usage.get("baseline_tokens")
+    ratio = token_usage.get("reduction_ratio")
+    parts = [f"{int(used):,} used"]
+    if saved is not None and baseline:
+        parts.append(f"{int(saved):,} saved vs indexed corpus")
+    if ratio:
+        parts.append(f"{float(ratio):g}x reduction")
+    estimator = token_usage.get("estimator")
+    suffix = f" ({estimator})" if estimator else ""
+    return f"Token usage: {', '.join(parts)}{suffix}"
 
 
 def render_daemon_summary(payload: Dict[str, Any]) -> str:

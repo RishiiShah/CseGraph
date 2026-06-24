@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import fields, is_dataclass
 from typing import Any, Dict
 
@@ -37,7 +39,7 @@ def to_dict(value: Any) -> Any:
 def _context_result_to_dict(result: Any) -> Dict[str, Any]:
     target_node = next((node for node in result.nodes if node.id == result.target), None)
     symbol_ids = {node.id for node in result.nodes}
-    return {
+    payload = {
         "command": result.command,
         "schema_version": CONTEXT_OUTPUT_SCHEMA_VERSION,
         "repo_root": result.repo_root,
@@ -76,6 +78,42 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         "warnings": to_dict(result.warnings),
         "run_id": result.run_id,
     }
+    payload["token_usage"] = _token_usage_to_dict(result, payload)
+    return payload
+
+
+def _token_usage_to_dict(result: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
+    baseline_tokens = int(getattr(result, "indexed_corpus_estimated_tokens", 0) or 0)
+    usage = {
+        "estimator": "chars/4 proxy",
+        "baseline": "indexed_corpus",
+        "used_tokens": 0,
+        "baseline_tokens": baseline_tokens,
+        "saved_tokens": 0,
+        "reduction_ratio": None,
+        "indexed_corpus_bytes": int(getattr(result, "indexed_corpus_bytes", 0) or 0),
+    }
+    for _ in range(4):
+        serialized = json.dumps(
+            {**payload, "token_usage": usage},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        used_tokens = _estimate_chars4_tokens(len(serialized))
+        if usage["used_tokens"] == used_tokens:
+            break
+        usage["used_tokens"] = used_tokens
+        usage["saved_tokens"] = max(0, baseline_tokens - used_tokens)
+        usage["reduction_ratio"] = (
+            round(baseline_tokens / used_tokens, 2) if baseline_tokens and used_tokens else None
+        )
+    return usage
+
+
+def _estimate_chars4_tokens(char_count: int) -> int:
+    if char_count <= 0:
+        return 0
+    return max(1, math.ceil(char_count / 4))
 
 
 def _sufficiency_to_dict(value: Any) -> Dict[str, Any]:

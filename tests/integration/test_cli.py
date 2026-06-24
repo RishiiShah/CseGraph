@@ -128,6 +128,8 @@ def test_cli_json_contracts(tmp_path):
         "expanded-from-" not in reason for node in context["symbols"] for reason in node["reason"]
     )
     assert all("explanation" not in node for node in context["symbols"])
+    assert context["token_usage"]["used_tokens"] >= 1
+    assert context["token_usage"]["saved_tokens"] >= 0
     assert "source_text" not in target_node
     assert target_node["estimated_tokens"] >= 1
     assert any(action["action"] == "expand_context" for action in context["next_actions"])

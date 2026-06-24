@@ -101,6 +101,10 @@ def test_context_json_contract_is_canonical_only(tmp_path):
     assert payload["request"]["detail_level"] == "auto"
     assert payload["request"]["returned_detail_level"] == "minimal"
     assert payload["budgets"]["total_estimated_tokens"] >= 1
+    assert payload["token_usage"]["estimator"] == "chars/4 proxy"
+    assert payload["token_usage"]["used_tokens"] >= 1
+    assert payload["token_usage"]["baseline_tokens"] >= 1
+    assert payload["token_usage"]["saved_tokens"] >= 0
     assert payload["sufficiency"]["sufficient"] is True
     assert payload["sufficiency"]["verdict"] == "sufficient"
     assert payload["sufficiency"]["applicable_metrics"]

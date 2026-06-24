@@ -149,6 +149,13 @@ def test_render_context_markdown_reads_relationship_occurrences():
             "returned_detail_level": "standard",
         },
         "budgets": {"total_estimated_tokens": 42},
+        "token_usage": {
+            "estimator": "chars/4 proxy",
+            "used_tokens": 12,
+            "baseline_tokens": 120,
+            "saved_tokens": 108,
+            "reduction_ratio": 10.0,
+        },
         "symbols": [],
         "relationships": [
             {
@@ -172,5 +179,6 @@ def test_render_context_markdown_reads_relationship_occurrences():
     out = render_context_markdown(payload)
 
     assert "## Relationships" in out
+    assert "Token usage: 12 used, 108 saved vs indexed corpus, 10x reduction" in out
     assert "`auth.py:6-6` calls `verify_password`" in out
     assert "verify_password(password, user['password_hash'])" in out
