@@ -204,8 +204,9 @@ further calls:
 | Field | Where | Meaning |
 |---|---|---|
 | `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
-| `trust` | every MCP JSON response | Local trust metadata such as bound repo, effective repo, tool name, and index-health verdict when available. |
+| `trust` | every MCP JSON response | Local trust metadata such as bound repo, effective repo, tool name, platform, index-health verdict, and the `access_contract` declaring that `.csegraph/index.db` is not an agent API. |
 | `token_usage` | `csegraph_context` | Estimated context tokens used, indexed-corpus baseline tokens, saved tokens, and reduction ratio using a `chars/4` proxy. |
+| `session_token_usage` | every MCP JSON response | Running per-MCP-session counters: calls, response tokens, context tokens used, indexed-corpus baseline tokens, saved tokens, and context reduction ratio using the same `chars/4` proxy. |
 | `response_bytes` | every response | Exact serialized JSON size in bytes. |
 | `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Context drop order: symbol `source_text`, `explanation`, `import_preludes`, `relationships[].occurrences[].snippet`, `relationships`, `symbols`. |
 | `confidence_breakdown` | `csegraph_graph`, `csegraph_path`, `csegraph_context` | Edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |

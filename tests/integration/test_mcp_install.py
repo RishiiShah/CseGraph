@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tomllib
 from pathlib import Path
+
+import pytest
 
 from csegraph._core.mcp_doctor import McpDoctorService
 from csegraph._core.mcp_install import McpInstallService
@@ -30,6 +33,17 @@ def _write_fake_windows_cli(repo: Path) -> str:
 
 def _serve_args(repo: Path, platform: str) -> list[str]:
     return ["serve", "--repo", str(repo.resolve()), "--platform", platform]
+
+
+def _mcp_entry(repo: Path, platform: str) -> dict:
+    if platform == "codex":
+        data = tomllib.loads((repo / ".codex" / "config.toml").read_text(encoding="utf-8"))
+        return data["mcp_servers"]["csegraph"]
+    if platform == "copilot":
+        return _read_json(repo / ".vscode" / "mcp.json")["servers"]["csegraph"]
+    if platform == "claude-code":
+        return _read_json(repo / ".mcp.json")["mcpServers"]["csegraph"]
+    return _read_json(repo / ".cursor" / "mcp.json")["mcpServers"]["csegraph"]
 
 
 def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: Path) -> None:
@@ -65,6 +79,27 @@ def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: P
     }
     assert result.installed[0].platform == "cursor"
     assert result.installed[0].action == "updated"
+
+
+@pytest.mark.parametrize("host_os", ["darwin", "linux", "win32"])
+@pytest.mark.parametrize("platform", ["codex", "cursor", "claude-code", "copilot"])
+def test_clean_install_smoke_matrix_generates_native_platform_entry(
+    tmp_path: Path,
+    monkeypatch,
+    host_os: str,
+    platform: str,
+) -> None:
+    monkeypatch.setattr(sys, "platform", host_os)
+    repo = tmp_path / f"repo-{host_os}-{platform}"
+    command = _write_fake_windows_cli(repo) if host_os == "win32" else _write_fake_cli(repo)
+
+    McpInstallService(repo).install(platform=platform, dry_run=False)
+
+    entry = _mcp_entry(repo, platform)
+    assert entry["command"] == command
+    assert entry["args"] == _serve_args(repo, platform)
+    if platform != "codex":
+        assert entry["type"] == "stdio"
 
 
 def test_cursor_install_resolves_windows_venv_executable(tmp_path: Path, monkeypatch) -> None:

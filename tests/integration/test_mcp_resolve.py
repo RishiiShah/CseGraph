@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 import csegraph._core.mcp_resolve as mcp_resolve
 from csegraph._core.mcp_resolve import McpLauncherResolutionError, build_mcp_server_entry
 
@@ -21,6 +23,28 @@ def test_build_entry_uses_project_venv_cli(tmp_path: Path) -> None:
         "type": "stdio",
         "command": str(cli.resolve()),
         "args": ["serve", "--repo", str(repo.resolve())],
+    }
+
+
+@pytest.mark.parametrize("venv_dir", ["env", ".venv", "venv", ".env"])
+def test_build_entry_resolves_common_project_venv_dirs(
+    tmp_path: Path,
+    monkeypatch,
+    venv_dir: str,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    repo = tmp_path / "repo"
+    cli = repo / venv_dir / "bin" / "csegraph"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    os.chmod(cli, 0o755)
+
+    entry = build_mcp_server_entry(repo, platform="codex")
+
+    assert entry == {
+        "type": "stdio",
+        "command": str(cli.resolve()),
+        "args": ["serve", "--repo", str(repo.resolve()), "--platform", "codex"],
     }
 
 

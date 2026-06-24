@@ -196,6 +196,16 @@ class TestHandleTool:
         )
 
         assert result["trust"]["platform"] == "codex"
+        assert result["trust"]["access_contract"] == {
+            "surface": "mcp_tools_only",
+            "direct_db_reads": "unsupported",
+            "platform_scoped": True,
+            "platform": "codex",
+            "message": (
+                "Use the enabled csegraph MCP server for this host. "
+                "Do not query .csegraph/index.db directly."
+            ),
+        }
         evidence = repo / ".csegraph" / "mcp_sessions.jsonl"
         events = [
             json.loads(line)
@@ -204,6 +214,40 @@ class TestHandleTool:
         ]
         assert events[-1]["platform"] == "codex"
         assert events[-1]["tool"] == "csegraph_index"
+
+    def test_session_token_usage_accumulates_across_tool_calls(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        db = _scratch_db(repo)
+
+        indexed = _handle_tool(
+            "csegraph_index",
+            {"repo": str(repo), "db": db, "profile": "small"},
+            host_platform="codex",
+        )
+        assert indexed["session_token_usage"]["scope"] == "mcp_session"
+        assert indexed["session_token_usage"]["calls"] == 1
+        assert indexed["session_token_usage"]["response_tokens"] >= 1
+        assert indexed["session_token_usage"]["context_used_tokens"] == 0
+        assert indexed["session_token_usage"]["saved_tokens"] == 0
+
+        ctx = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "How does greet call fmt?",
+                "repo": str(repo),
+                "target": "greet",
+                "db": db,
+                "profile": "small",
+            },
+            host_platform="codex",
+        )
+
+        usage = ctx["session_token_usage"]
+        assert usage["calls"] == 2
+        assert usage["response_tokens"] > indexed["session_token_usage"]["response_tokens"]
+        assert usage["context_used_tokens"] == ctx["token_usage"]["used_tokens"]
+        assert usage["baseline_tokens"] == ctx["token_usage"]["baseline_tokens"]
+        assert usage["saved_tokens"] == ctx["token_usage"]["saved_tokens"]
 
     def test_default_mcp_profile_auto_resolves_to_concrete_profile(self, tmp_path):
         repo = _make_repo(tmp_path)

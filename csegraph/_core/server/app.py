@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -98,6 +99,7 @@ def _handle_tool(
             host_platform=host_platform,
         )
         _apply_session_filter(result)
+        _apply_session_token_usage(result)
         effective_max = provided_max if isinstance(provided_max, int) and provided_max > 0 else None
         _apply_byte_cap(result, effective_max)
     _record_tool_call(
@@ -131,6 +133,19 @@ def _apply_trust_metadata(
         health = result.get("index_health") or _index_health_payload(repo, arguments.get("db"))
         if health:
             trust.setdefault("index_health", health)
+        trust.setdefault(
+            "access_contract",
+            {
+                "surface": "mcp_tools_only",
+                "direct_db_reads": "unsupported",
+                "platform_scoped": True,
+                "platform": host_platform or "unknown",
+                "message": (
+                    "Use the enabled csegraph MCP server for this host. "
+                    "Do not query .csegraph/index.db directly."
+                ),
+            },
+        )
     sufficiency = result.get("sufficiency")
     if isinstance(sufficiency, dict):
         sufficiency.setdefault(
@@ -195,6 +210,22 @@ def _apply_session_filter(result: dict[str, Any]) -> None:
             item for item in items if not (isinstance(item, dict) and item.get("tool") in called)
         ]
     result["tools_already_called"] = _SESSION.snapshot()
+
+
+def _apply_session_token_usage(result: dict[str, Any]) -> None:
+    response_tokens = _estimate_chars4_tokens(_encoded_size(result))
+    usage = result.get("token_usage")
+    _SESSION.record_token_usage(
+        response_tokens=response_tokens,
+        context_usage=usage if isinstance(usage, dict) else None,
+    )
+    result["session_token_usage"] = _SESSION.token_snapshot()
+
+
+def _estimate_chars4_tokens(byte_count: int) -> int:
+    if byte_count <= 0:
+        return 0
+    return max(1, math.ceil(byte_count / 4))
 
 
 def _encoded_size(result: dict[str, Any]) -> int:
@@ -372,6 +403,7 @@ def _finalize_response_bytes(result: dict[str, Any]) -> None:
 
 _TRIM_SKIP_KEYS = frozenset(
     {
+        "session_token_usage",
         "truncated_fields",
         "tools_already_called",
         "warnings",
@@ -631,7 +663,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 _SERVER_INSTRUCTIONS = (
     "CseGraph is a local-first code context engine. Use only the advertised "
     "csegraph_* MCP tools. Start with csegraph_minimal, follow one suggested "
-    "next tool, and avoid broad repo reads when CseGraph can supply the slice."
+    "next tool, and avoid broad repo reads when CseGraph can supply the slice. "
+    "Do not query .csegraph/index.db directly; it is a private implementation "
+    "detail behind the MCP tools."
 )
 
 
