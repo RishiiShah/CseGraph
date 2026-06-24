@@ -25,12 +25,14 @@ compatibility guarantees.
 
 Please include:
 
-- CseGraph version: `csegraph --version`.
+- CseGraph version:
+  `python -c "import csegraph; print(csegraph.__version__)"`.
 - Python version and operating system.
+- Installation method.
 - The command you ran and the full error output.
 - Whether the repository has an existing `.csegraph/index.db`.
 - A small reproduction repository or file snippet when possible.
 
-Generated local files such as `.csegraph/`, `.scratch/`, `.vscode/`, `.cursor/`,
-`.gemini/`, and `.kiro/` should stay out of issues unless the exact contents
-are needed to diagnose the problem.
+Generated local files such as `.csegraph/`, `.scratch/`, `.codex/`, `.claude/`,
+`.vscode/`, `.cursor/`, `.gemini/`, `.kiro/`, and `.mcp.json` should stay out
+of issues unless the exact contents are needed to diagnose the problem.

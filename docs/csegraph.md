@@ -1,29 +1,31 @@
 # csegraph Command Reference
 
-Runnable examples use the repository virtualenv. Installed users can replace
-`env/bin/csegraph` with `csegraph`.
+The examples below assume CseGraph is installed and the `csegraph` command is
+available on your PATH.
 
 ## Setup
 
 ```bash
-env/bin/python -m pip install -e .
-env/bin/csegraph install --platform auto
-env/bin/csegraph install --platform codex --dry-run --json
-env/bin/csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
+pipx install csegraph
+csegraph install --platform auto
+csegraph install --platform codex --dry-run --json
+csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
 ```
 
-Current package release: `1.8.0`. To install the published package exactly:
+Current package release: `1.8.0`. To install it exactly:
 
 ```bash
-python -m pip install csegraph==1.8.0
+pipx install csegraph==1.8.0
 ```
 
-The editable install includes Python, JavaScript, and TypeScript grammars. Use
-`env/bin/python -m pip install -e ".[all]"` when you want every optional
-tree-sitter grammar, or install individual extras such as `.[go,rust]`.
+The base package includes Python, JavaScript, and TypeScript grammars. Install
+individual extras such as `csegraph[go,rust]`, or use `csegraph[all]` for every
+optional Tree-sitter grammar. See the
+[platform-specific installation guide](https://github.com/RishiiShah/CseGraph#install)
+for macOS, Linux, and Windows.
 
 Global `--verbose` and `--quiet` flags control diagnostic logging. Put them
-before the subcommand, for example `env/bin/csegraph --verbose watch .`.
+before the subcommand, for example `csegraph --verbose watch .`.
 
 `install` configures MCP clients to launch `csegraph serve`, writes
 platform-scoped agent guidance, and installs supported refresh/status lifecycle
@@ -32,9 +34,11 @@ default. Use `--no-instructions`, `--no-hooks`, or `--no-gitignore` for a
 narrow MCP-only setup. The legacy `--instructions` and `--hooks` flags are
 still accepted when you want to force all supported instruction or hook targets.
 
-Use `--platform codex|cursor|claude-code|gemini-cli|kiro|copilot` to target one
-client. Install commands write repo-local client config by default, including
-`.codex/`, `.cursor/`, `.gemini/`, `.kiro/`, `.vscode/`, and `.mcp.json`.
+Use
+`--platform codex|cursor|claude-code|gemini-cli|kiro|copilot|vscode` to target
+one client. Install commands write repo-local client config by default,
+including `.codex/`, `.cursor/`, `.gemini/`, `.kiro/`, `.vscode/`, and
+`.mcp.json`.
 Codex hooks are written to `.codex/hooks.json` so they show up in Codex's Hooks
 view after the project config layer is trusted. Review generated local setup
 before sharing logs or issue reproductions, and do not commit it.
@@ -45,14 +49,14 @@ VS Code extension install and project setup live in the
 ## Index And Refresh
 
 ```bash
-env/bin/csegraph index .
-env/bin/csegraph index . --profile medium --postprocess full --json
-env/bin/csegraph index . --include-root apps/api --include-root packages/shared --json
-env/bin/csegraph refresh .
-env/bin/csegraph refresh . --postprocess minimal --json
-env/bin/csegraph postprocess . --level full --json
-env/bin/csegraph watch .
-env/bin/csegraph status . --verbose
+csegraph index .
+csegraph index . --profile medium --postprocess full --json
+csegraph index . --include-root apps/api --include-root packages/shared --json
+csegraph refresh .
+csegraph refresh . --postprocess minimal --json
+csegraph postprocess . --level full --json
+csegraph watch .
+csegraph status . --verbose
 ```
 
 Postprocess levels:
@@ -75,11 +79,11 @@ artifacts before handoff.
 ## Retrieval
 
 ```bash
-env/bin/csegraph context "fix auth token refresh" --target refresh_token --json
-env/bin/csegraph context "explain the index pipeline" --detail-level standard --format markdown
-env/bin/csegraph context "debug parser misses" --include-source always --max-tokens 6000 --explain --json
-env/bin/csegraph inspect ContextService.build_context --depth 1 --relations calls,imports --json
-env/bin/csegraph path IndexService.index ContextService.build_context --relations calls,imports --json
+csegraph context "fix auth token refresh" --target refresh_token --json
+csegraph context "explain the index pipeline" --detail-level standard --format markdown
+csegraph context "debug parser misses" --include-source always --max-tokens 6000 --explain --json
+csegraph inspect ContextService.build_context --depth 1 --relations calls,imports --json
+csegraph path IndexService.index ContextService.build_context --relations calls,imports --json
 ```
 
 Context flags:
@@ -103,9 +107,9 @@ that root. Harnesses that need absolute file names should join `repo_root` and
 ## MCP
 
 ```bash
-env/bin/csegraph serve
-env/bin/csegraph serve --tools core
-env/bin/csegraph serve --tools csegraph_minimal,csegraph_context
+csegraph serve
+csegraph serve --tools core
+csegraph serve --tools csegraph_minimal,csegraph_context
 ```
 
 MCP exposes six tools only:
@@ -133,8 +137,8 @@ maintainer-only benchmark/eval tools.
 ## LSP
 
 ```bash
-env/bin/csegraph lsp --repo .
-env/bin/csegraph lsp . --db .csegraph/index.db
+csegraph lsp --repo .
+csegraph lsp . --db .csegraph/index.db
 ```
 
 The LSP server speaks JSON-RPC over stdio for editor integrations. It advertises
@@ -177,26 +181,25 @@ MCP prompts are workflow templates that clients expose as slash commands.
 | `csegraph-explore-architecture` | Architecture map: minimal, graph neighborhood. |
 | `csegraph-onboard-developer` | Onboarding guide: minimal, context, graph. |
 
-Project `.mcp.json` should use `env/bin/csegraph`, or run
-`csegraph install --platform claude-code`, so Claude Code does not require a
-global `csegraph` on PATH.
+Run `csegraph install --platform claude-code` to generate the project
+`.mcp.json` configuration.
 
 ## Public Operations
 
 These are public CLI commands, not MCP tools:
 
 ```bash
-env/bin/csegraph analyze . --json
-env/bin/csegraph export . --format html --output graph.html
-env/bin/csegraph export . --format tree
-env/bin/csegraph export . --format json --output graph.json
-env/bin/csegraph export . --format graphml --output graph.graphml
-env/bin/csegraph export . --format obsidian --output vault
-env/bin/csegraph watch .
-env/bin/csegraph registry register /path/to/repo --alias app
-env/bin/csegraph registry list
-env/bin/csegraph daemon start --alias app
-env/bin/csegraph daemon status
+csegraph analyze . --json
+csegraph export . --format html --output graph.html
+csegraph export . --format tree
+csegraph export . --format json --output graph.json
+csegraph export . --format graphml --output graph.graphml
+csegraph export . --format obsidian --output vault
+csegraph watch .
+csegraph registry register /path/to/repo --alias app
+csegraph registry list
+csegraph daemon start --alias app
+csegraph daemon status
 ```
 
 Supported export formats:

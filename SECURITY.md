@@ -2,50 +2,115 @@
 
 ## Supported Versions
 
-CseGraph supports the latest released minor line. Older minor lines receive
-security fixes only when a maintainer explicitly announces an extended support
-window for that release.
+Only the latest released minor line receives security fixes.
+
+| Version | Supported |
+|---|---|
+| 1.8.x | Yes |
+| < 1.8 | No |
+
+If an older release receives an extended support window, maintainers will
+announce it explicitly.
 
 ## Reporting a Vulnerability
 
-Report suspected vulnerabilities privately through GitHub Security Advisories
-for this repository. Do not file public issues for exploitable vulnerabilities.
+If you discover a security vulnerability, please report it responsibly:
 
-Maintainers aim to acknowledge valid reports within seven days. The fix and
-release timeline depends on impact, exploitability, and whether the issue is in
-the CLI, MCP server, Python facade, VS Code extension, or dependency chain.
+1. **Do not open a public GitHub issue.**
+2. Use
+   [GitHub private vulnerability reporting](https://github.com/RishiiShah/CseGraph/security/advisories/new)
+   through the repository's **Security** tab.
+3. Include:
+   - A description of the vulnerability
+   - The affected CseGraph version and installation method
+   - Steps to reproduce or a proof of concept
+   - The affected surface: CLI, MCP server, Python API, or VS Code extension
+   - Potential impact
+   - Whether exploitation requires a malicious repository, local user input, or
+     network access
+   - A suggested fix, if you have one
 
-Please include:
+Maintainers aim to acknowledge valid reports within seven days. Remediation and
+release timing depends on severity, exploitability, and the affected component.
 
-- Affected version and installation method.
-- Reproduction steps or proof-of-concept details.
-- Impacted surface: CLI, MCP server, Python facade, or VS Code extension.
-- Whether the issue requires malicious repository contents, malicious user input,
-  or remote network interaction.
+## Security Model
 
-## Security Expectations
+CseGraph is a local development tool. Its normal workflow:
 
-- CseGraph is local-first and stores repository indexes under `.csegraph/`.
-- Registry and daemon features store local metadata under `~/.csegraph/`,
-  including registered repository paths, index database paths, daemon PID files,
-  and logs.
-- The MCP server runs as a local stdio process; do not expose it to untrusted
-  remote clients.
-- Generated artifacts such as `.csegraph/`, `.scratch/`, `dist/`, `build/`,
-  `.egg-info/`, VSIX files, `.vscode/`, `.cursor/`, `.gemini/`, `.kiro/`,
-  `csegraph-vscode/node_modules/`, and `csegraph-vscode/out/` must not be
-  committed.
-- The VS Code extension is a thin UI around the `csegraph` CLI and should not
-  vendor or reimplement graph engine behavior.
+- Runs the MCP server over local stdio; it does not open an MCP network listener
+- Stores repository indexes in `.csegraph/index.db`
+- Stores registry, daemon PID, and daemon log data under `~/.csegraph/`
+- Reads source files from the selected repository
+- Writes indexes, exports, scratch data, and generated client configuration
+  inside the repository
+- Makes no network requests during normal indexing, refresh, retrieval, MCP, or
+  VS Code operations
 
-## Network and Privacy Notes
+Repository contents are untrusted input. CseGraph can return source text,
+symbol names, documentation, and paths to a coding agent. Agents and users
+should treat that content as data, not as trusted instructions.
 
-Normal indexing, refresh, retrieval, MCP stdio, and VS Code extension commands
-run locally. The optional embeddings workflow can call an OpenAI-compatible
-endpoint only when explicitly configured and allowed with
-`CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS`; that sends symbol text to the configured
-endpoint.
+### Mitigations
 
-The VS Code extension writes command output to the local CseGraph output panel.
-For context and inspect commands, that output can include task text, symbol
-names, file paths, and selected code excerpts.
+| Vector | Mitigation |
+|---|---|
+| Path traversal | Source reads resolve paths and reject files outside the repository root. MCP database paths and export destinations are restricted to repository-local paths. |
+| SQL injection | User-derived query values use SQLite parameters. Dynamically generated SQL is limited to internal placeholders and fixed schema identifiers. |
+| Subprocess injection | Git and daemon subprocesses use argument lists instead of `shell=True`, with timeouts where commands can block. |
+| Daemon file traversal | Registry aliases used for PID and log filenames are restricted to alphanumeric characters, `_`, `-`, and `.`; `..` is rejected. |
+| Accidental cloud egress | Non-local embedding endpoints are rejected unless `CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS=1` is explicitly set. |
+| Model code execution | Local `sentence-transformers` models are loaded with `trust_remote_code=False`. |
+| MCP surface expansion | The stdio server exposes an explicit allowlist of six core tools. Unknown tool names are rejected. |
+| Oversized MCP responses | MCP responses support a hard `max_bytes` ceiling and deterministic field truncation. |
+| Unsupported database schema | Unknown or incompatible CseGraph schemas are rejected unless an explicit reset path is used. |
+| Supply-chain publishing | PyPI releases use GitHub trusted publishing with short-lived OIDC credentials. Release artifacts are built, inspected, and uploaded by CI. |
+
+### Trust Boundaries and Limitations
+
+- CseGraph does not remove prompt-injection text from source code. Coding agents
+  must continue to treat repository content as untrusted.
+- A malicious local user who can modify the repository, its index, generated
+  client configuration, or `~/.csegraph/` state is outside CseGraph's trust
+  boundary.
+- Generated HTML graph and tree exports contain indexed repository metadata.
+  Treat exports from untrusted repositories as untrusted HTML and open them only
+  in an appropriately isolated browser context.
+- The MCP server is intended for local stdio clients. Do not wrap or expose it
+  as an unauthenticated remote service.
+- The VS Code output panel can contain task text, symbol names, file paths, and
+  selected code excerpts.
+
+## Optional Network Access
+
+CseGraph is local-first, with these opt-in or user-triggered exceptions:
+
+- **OpenAI-compatible embeddings:** A configured endpoint receives symbol names,
+  signatures, docstrings, symbol kinds, and file paths. Non-localhost endpoints
+  require `CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS=1`.
+- **Local embedding model download:** Installing or first using
+  `sentence-transformers` may download model files from Hugging Face.
+- **HTML graph fonts:** Opening an exported interactive graph can request fonts
+  from Google Fonts. The graph data and visualization logic remain embedded in
+  the local HTML file.
+- **Package and extension installation:** Package managers and the VS Code
+  Marketplace use their normal network services.
+
+## Security Checks
+
+The CI pipeline runs:
+
+- The full Python test suite on Python 3.10 through 3.14
+- Ruff lint and formatting checks
+- Mypy type checking
+- Coverage execution
+- Package layout and generated-artifact guardrails
+- Wheel and source-distribution inspection before release
+- `npm audit --audit-level=high` for the VS Code extension
+- VS Code extension linting, compilation, and package inspection
+
+GitHub Actions use read-only repository permissions by default. PyPI publishing
+receives `id-token: write` only in the dedicated trusted-publishing job.
+
+CseGraph does not currently run Bandit or a dedicated Python dependency
+vulnerability scanner in CI. Reports or contributions that improve these checks
+are welcome.

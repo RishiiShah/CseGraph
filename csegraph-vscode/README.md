@@ -6,9 +6,8 @@ Current extension release: `1.8.0`, aligned with the CseGraph CLI package.
 
 ## Prerequisites
 
-- **CseGraph CLI installed**
-  - Install the package: `pip install csegraph`
-  - Or install from source at the repository root: `env/bin/pip install -e .`
+- **CseGraph CLI installed** using the
+  [platform-specific instructions](../README.md#install).
 
 ## Install
 
@@ -19,7 +18,6 @@ commands.
 ### Marketplace
 
 ```bash
-pip install csegraph
 code --install-extension rishiishah.csegraph-vscode
 ```
 
@@ -33,17 +31,6 @@ csegraph install --platform vscode
 ```
 
 This writes `.vscode/settings.json`, `tasks.json`, and `extensions.json` into your project, merging with existing config.
-
-### Local VSIX
-
-Use this only when testing changes from this repository.
-
-```bash
-cd csegraph-vscode
-npm ci
-npm run package
-code --install-extension csegraph-vscode-*.vsix --force
-```
 
 ## First Use
 

@@ -1,137 +1,306 @@
-# csegraph
+<h1 align="center">CseGraph</h1>
 
-[![CI](https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml/badge.svg)](https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/csegraph.svg)](https://pypi.org/project/csegraph/)
-[![Python](https://img.shields.io/pypi/pyversions/csegraph.svg)](https://pypi.org/project/csegraph/)
-[![License](https://img.shields.io/pypi/l/csegraph.svg)](LICENSE)
-[![VS Code installs](https://img.shields.io/visual-studio-marketplace/i/rishiishah.csegraph-vscode?label=VS%20Code%20installs)](https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode)
+<p align="center">
+  <strong>Give coding agents the code they need—not the whole repository.</strong>
+</p>
 
-CseGraph is a **context engine for coding agents**. Its only job is to hand an agent the accurate, minimal slice of code context needed to make a correct retrieval or edit, so the agent spends fewer tokens and skips tool calls it would otherwise make (broad grep, full-file read, repeated lookups).
+<p align="center">
+  <a href="https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml"><img src="https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/csegraph/"><img src="https://img.shields.io/pypi/v/csegraph?style=flat-square&color=blue" alt="PyPI"></a>
+  <a href="https://pypi.org/project/csegraph/"><img src="https://img.shields.io/pypi/pyversions/csegraph?style=flat-square" alt="Python"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/pypi/l/csegraph?style=flat-square" alt="License"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode"><img src="https://img.shields.io/visual-studio-marketplace/i/rishiishah.csegraph-vscode?style=flat-square&label=VS%20Code" alt="VS Code installs"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-compatible-green?style=flat-square" alt="MCP compatible"></a>
+</p>
 
-It indexes source code into a SQLite-backed dependency graph, then returns compact, task-specific context bundles before an agent edits.
+<p align="center">
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#set-up-your-coding-agent">Agent Setup</a> ·
+  <a href="#how-it-works">How It Works</a> ·
+  <a href="#benchmarks">Benchmarks</a> ·
+  <a href="docs/csegraph.md">CLI & MCP Reference</a>
+</p>
 
-The product loop is:
+<br>
 
-```text
-index -> refresh -> context -> optional inspect/path/analyze
+Coding agents often spend time and tokens searching broadly, reading entire
+files, and repeating lookups. CseGraph builds a local dependency graph of your
+repository and returns a small, task-specific context bundle containing the
+relevant code, dependencies, imports, nearby tests, and selection reasons.
+
+## Quick Start
+
+```bash
+pipx install csegraph
+cd /path/to/your/repository
+csegraph install --platform codex
+csegraph index .
 ```
 
-Use csegraph when you want an agent to see the target code, direct dependencies, imports, nearby tests, and a short explanation of why each node was selected without repeatedly scanning the repository.
+Replace `codex` with your coding tool, or use `--platform auto` to configure
+every supported MCP client. Restart the client after installation.
+
+Then ask your agent to use CseGraph, or query it directly:
+
+```bash
+csegraph context "explain how authentication refresh works" \
+  --detail-level auto \
+  --format markdown
+```
+
+The local index is stored at `.csegraph/index.db` and should not be committed.
 
 ## Install
 
-Current release: `1.8.0`.
+CseGraph requires Python 3.10 or newer. The recommended installation method is
+`pipx`, which makes the CLI globally available while keeping its dependencies
+isolated.
+
+### macOS
 
 ```bash
-pip install csegraph
+brew install pipx
+pipx ensurepath
+pipx install csegraph
 ```
 
-To pin this release exactly:
+Close and reopen your terminal after `pipx ensurepath`.
+
+### Ubuntu and Debian
 
 ```bash
-pip install csegraph==1.8.0
+sudo apt update
+sudo apt install pipx
+pipx ensurepath
+pipx install csegraph
 ```
 
-The base package includes Python, JavaScript, and TypeScript grammars. Install
-extra grammars only when you need them:
+### Fedora
 
 ```bash
-pip install "csegraph[go,rust]"
-pip install "csegraph[all]"
+sudo dnf install pipx
+pipx ensurepath
+pipx install csegraph
 ```
 
-Then run `csegraph --help` to confirm the CLI is on your PATH.
-
-## Five Minute Quickstart
+### Arch Linux
 
 ```bash
-cd /path/to/your/repo
-csegraph index .
-csegraph context "explain how authentication refresh works" --detail-level standard --format markdown
+sudo pacman -S python-pipx
+pipx ensurepath
+pipx install csegraph
 ```
 
-The default index lives at `.csegraph/index.db`. It is local runtime state and
-should not be committed.
+Close and reopen your terminal after `pipx ensurepath`.
 
-For VS Code extension install and setup, see
-[csegraph-vscode/README.md](csegraph-vscode/README.md).
+### Windows
 
-## Benchmarks & Performance
+Install [Python 3.10 or newer](https://www.python.org/downloads/windows/), then
+open PowerShell:
 
-The native MCP cross-repo benchmarking suite (`tools/cross_repo_benchmark.py`)
-evaluates CseGraph against 10 major open-source repositories, generating 100
-unique architectural queries per repository through the same stdio JSON-RPC path
-used by coding agents. Current `auto`, `small`, `medium`, and `large` profile
-results are recorded in the [Agent Context Benchmarks](docs/benchmarks.md).
-
-## Package Layout
-
-| Package | Location | Purpose |
-|---|---|---|
-| `csegraph` | repo root | One Python distribution containing the public CLI, MCP server, SDK facade, and private engine internals. |
-| `csegraph-vscode` | `csegraph-vscode/` | VS Code extension source. See [extension README](csegraph-vscode/README.md). |
-
-Public Python imports use `csegraph`. Internal implementation modules live under `csegraph._core` and `csegraph._cli`; they are not documented as public API.
-
-## Install From Source
-
-```bash
-env/bin/pip install -e .
+```powershell
+py -m pip install --user pipx
+py -m pipx ensurepath
+py -m pipx install csegraph
 ```
 
-For local development and test runs, install the test extra:
+Close and reopen PowerShell after `ensurepath`.
+
+### Verify
 
 ```bash
-env/bin/python -m pip install -e ".[test,all]"
-```
-
-For benchmark reports with OpenAI proxy token counts, include the benchmark
-extra:
-
-```bash
-env/bin/python -m pip install -e ".[benchmark,test,all]"
-```
-
-`requirements.txt` contains the product-only editable install.
-
-This repository is source-first. The public project is distributed as one Python
-package and the VS Code extension source; generated binaries, local graph
-databases, build outputs, and dashboard artifacts are not committed.
-
-## Project Hygiene
-
-- Security policy: [SECURITY.md](SECURITY.md)
-- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- Support guide: [SUPPORT.md](SUPPORT.md)
-- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Release checklist: [RELEASE.md](RELEASE.md)
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
-- CLI, MCP, and SDK reference: [docs/csegraph.md](docs/csegraph.md)
-- Architecture reference: [docs/architecture.md](docs/architecture.md)
-
-## Privacy and Local Files
-
-CseGraph is local-first. Indexes are written under the target repository's
-`.csegraph/` directory, while registry and daemon metadata use `~/.csegraph/`
-for registered repository paths, database paths, daemon PID files, and logs.
-
-No network request is required for normal indexing, retrieval, or MCP stdio. The
-optional embeddings workflow can call an OpenAI-compatible endpoint only when
-explicitly configured and allowed with
-`CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS`; that sends symbol text to the configured
-endpoint.
-
-## Development
-
-```bash
-pytest                              # Full test suite
-pytest tests/unit/                  # Unit tests only
-pytest tests/integration/           # Integration tests only
-pytest -x -q                        # Stop on first failure, quiet
-python -m compileall -q csegraph tools csegraph-vscode
 csegraph --help
 ```
 
+The base package includes Python, JavaScript, and TypeScript grammars. To install
+additional grammars, replace `csegraph` in the install command with one of:
+
+```bash
+pipx install "csegraph[go,rust]"
+pipx install "csegraph[all]"
+```
+
+To pin the current release exactly:
+
+```bash
+pipx install csegraph==1.8.0
+```
+
+## Set Up Your Coding Agent
+
+Run the matching command from the root of the repository you want CseGraph to
+index:
+
+| Platform | Command |
+|---|---|
+| All supported MCP clients | `csegraph install --platform auto` |
+| Codex | `csegraph install --platform codex` |
+| Cursor | `csegraph install --platform cursor` |
+| Claude Code | `csegraph install --platform claude-code` |
+| Gemini CLI | `csegraph install --platform gemini-cli` |
+| Kiro | `csegraph install --platform kiro` |
+| GitHub Copilot | `csegraph install --platform copilot` |
+| VS Code project files | `csegraph install --platform vscode` |
+
+The installer configures the MCP server, writes platform-scoped agent
+instructions and supported lifecycle hooks, and adds generated local files to
+`.gitignore`. Preview the changes without writing files:
+
+```bash
+csegraph install --platform codex --dry-run
+```
+
+Use `--no-hooks`, `--no-instructions`, or `--no-gitignore` when you want a
+narrower setup.
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A["Your repository"] --> B["Tree-sitter indexer"]
+    B --> C["Local SQLite dependency graph"]
+    C --> D["Minimal routing card"]
+    D --> E["Task-specific context"]
+    E --> F["Coding agent"]
+```
+
+1. `csegraph index` parses supported source files into symbols, imports, calls,
+   inheritance relationships, and test links.
+2. The `csegraph_minimal` MCP tool identifies the most relevant entities and
+   recommends the next graph operation.
+3. The `csegraph_context` MCP tool packages the smallest useful slice for the
+   current task. The CLI exposes the same workflow through `csegraph context`.
+4. `csegraph refresh` updates changed and deleted files without rebuilding
+   everything.
+
+For structural questions, CseGraph can inspect graph neighborhoods or find the
+shortest dependency path between two symbols.
+
+## Common Commands
+
+```bash
+# Build the initial index
+csegraph index .
+
+# Refresh changed files
+csegraph refresh .
+
+# Watch the repository and refresh automatically
+csegraph watch .
+
+# Check index health
+csegraph status . --verbose
+
+# Retrieve context for a task
+csegraph context "fix auth token refresh" --target refresh_token
+
+# Inspect callers, callees, imports, and test relationships
+csegraph inspect ContextService.build_context --depth 1
+
+# Find a dependency path
+csegraph path IndexService.index ContextService.build_context
+
+# Export an interactive graph
+csegraph export . --format html --output graph.html
+```
+
+See the [CLI and MCP reference](docs/csegraph.md) for every command and flag.
+
+## Features
+
+| Feature | What it provides |
+|---|---|
+| Minimal context retrieval | Task-specific code, relationships, imports, tests, and selection reasons |
+| Incremental refresh | Re-indexes changed and deleted files instead of rebuilding the whole graph |
+| MCP integration | Six focused tools for indexing, refreshing, routing, context, neighborhoods, and paths |
+| Local-first storage | Repository indexes stay in `.csegraph/index.db` |
+| Monorepo scoping | Repeatable `--include-root` options limit indexing to selected subtrees |
+| Multiple profiles | `auto`, `small`, `medium`, and `large` retrieval profiles |
+| Graph export | HTML, tree, JSON, GraphML, and Obsidian output |
+| Editor support | MCP setup for major coding agents plus a VS Code extension |
+| Public Python API | Sync and async services for custom integrations |
+
+## Language Support
+
+The base package includes:
+
+- Python
+- JavaScript
+- TypeScript and TSX
+
+Optional grammars include Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Groovy,
+Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Verilog,
+and Fortran.
+
+Install selected extras such as `csegraph[go,rust]`, or use `csegraph[all]` for
+every available grammar.
+
+## MCP Tools
+
+| Tool | Purpose |
+|---|---|
+| `csegraph_index` | Build a repository graph |
+| `csegraph_refresh` | Refresh changed and deleted files |
+| `csegraph_minimal` | Return a compact routing card and next-tool suggestions |
+| `csegraph_context` | Retrieve task-specific code context |
+| `csegraph_graph` | Inspect a graph neighborhood |
+| `csegraph_path` | Find the shortest path between two nodes |
+
+Agents should call `csegraph_minimal` first, follow one suggested tool, and use
+`csegraph_context` for the task-specific slice.
+
+## Benchmarks
+
+The native MCP benchmark runs 100 architectural queries against each of 10
+open-source repositories through the same stdio path used by coding agents.
+
+| Profile | Full-corpus baseline | MCP response volume | Reduction |
+|---|---:|---:|---:|
+| `auto` | 4.20B proxy tokens | 14.97M proxy tokens | **280.7x** |
+| `small` | 4.20B proxy tokens | 18.17M proxy tokens | **231.3x** |
+| `medium` | 4.20B proxy tokens | 18.10M proxy tokens | **232.1x** |
+| `large` | 4.20B proxy tokens | 18.46M proxy tokens | **227.6x** |
+
+These figures compare graph responses with reading the complete source corpus;
+results vary by repository size and query. See
+[Agent Context Benchmarks](docs/benchmarks.md) for per-repository results,
+latency, methodology, and limitations.
+
+## VS Code
+
+Install the
+[CseGraph extension from the Marketplace](https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode),
+then run:
+
+```bash
+csegraph install --platform vscode
+```
+
+Open the repository in VS Code and run **CseGraph: Build Index** from the
+command palette. See the [extension guide](csegraph-vscode/README.md) for
+commands, settings, keybindings, and troubleshooting.
+
+## Privacy
+
+Normal indexing, retrieval, refresh, MCP, and VS Code operations run locally.
+Repository indexes are written under `.csegraph/`; registry and daemon metadata
+are stored under `~/.csegraph/`.
+
+No network request is required for normal operation. Optional embeddings can
+call an OpenAI-compatible endpoint only when explicitly configured and allowed
+with `CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS`.
+
+## Documentation
+
+- [CLI, MCP, and SDK reference](docs/csegraph.md)
+- [Architecture](docs/architecture.md)
+- [Benchmarks](docs/benchmarks.md)
+- [Contributing](CONTRIBUTING.md)
+- [Support](SUPPORT.md)
+- [Security](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+
 ## License
 
-CseGraph is released under the MIT License. See [LICENSE](LICENSE).
+CseGraph is released under the [MIT License](LICENSE).

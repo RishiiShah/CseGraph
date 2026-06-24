@@ -82,7 +82,7 @@ jobs:
               for name in wheel_names
           )
           assert "Description-Content-Type: text/markdown" in metadata
-          assert "# csegraph" in metadata
+          assert "CseGraph" in metadata
           with tarfile.open(sdists[0]) as sdist:
               sdist_names = sdist.getnames()
           assert any("/csegraph/" in name for name in sdist_names)

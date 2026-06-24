@@ -51,7 +51,7 @@ assert all(
     for name in names
 )
 assert "Description-Content-Type: text/markdown" in metadata
-assert "# csegraph" in metadata
+assert "CseGraph" in metadata
 PY
 ```
 
