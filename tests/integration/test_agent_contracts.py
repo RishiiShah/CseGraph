@@ -94,14 +94,14 @@ def _command_reference_setup_lines() -> list[str]:
     ]
 
 
-def _readme_source_install_lines() -> list[str]:
-    readme = _read("README.md")
-    match = re.search(r"## Install From Source\n\n```bash\n(?P<body>.*?)\n```", readme, re.S)
-    assert match, "README.md must keep a bash Install From Source block"
+def _contributing_source_install_lines() -> list[str]:
+    contributing = _read("CONTRIBUTING.md")
+    match = re.search(r"## Development Setup\n\n```bash\n(?P<body>.*?)\n```", contributing, re.S)
+    assert match, "CONTRIBUTING.md must keep a bash Development Setup block"
     return [
         line.strip()
         for line in match.group("body").splitlines()
-        if line.strip().startswith("env/bin/pip install -e ")
+        if line.strip().startswith("python -m pip install -e ")
     ]
 
 
@@ -127,15 +127,14 @@ def test_readme_base_commands_are_real_cli_commands():
     assert not any(line.startswith("csegraph refresh .") for line in command_lines)
 
 
-def test_requirements_txt_matches_readme_source_install_order():
-    readme_installs = _readme_source_install_lines()
-    requirements_installs = [
-        f"env/bin/pip install {line}"
-        for line in _read("requirements.txt").splitlines()
-        if line.strip()
-    ]
+def test_source_install_stays_in_contributing_and_targets_root_package():
+    contributing_installs = _contributing_source_install_lines()
+    requirements = [line.strip() for line in _read("requirements.txt").splitlines() if line.strip()]
 
-    assert requirements_installs == readme_installs
+    assert "## Install From Source" not in _read("README.md")
+    assert requirements == ["-e ."]
+    assert contributing_installs
+    assert all(re.search(r""" -e ["']?\.""", line) for line in contributing_installs)
 
 
 def test_base_commands_expose_help_from_source_install():
