@@ -13,7 +13,7 @@ def test_mkdocs_site_scaffold_references_existing_pages():
         "index.md",
         "csegraph.md",
         "architecture.md",
-        "token-reduction-benchmark.md",
+        "benchmarks.md",
     ):
         assert (ROOT / "docs" / doc_path).exists()
         assert doc_path in config
