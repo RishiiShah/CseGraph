@@ -325,6 +325,12 @@ class BenchmarkCorpusTaskResult:
     missing_expected_import_preludes: List[str] = field(default_factory=list)
     violating_forbidden_source_patterns: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    target_resolution: Optional[str] = None
+    target_confidence: Optional[float] = None
+    sufficiency_failure_count: int = 0
+    recovery_action_count: int = 0
+    relationship_occurrence_count: int = 0
+    duplicate_occurrence_count: int = 0
 
 
 @dataclass

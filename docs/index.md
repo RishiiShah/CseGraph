@@ -8,20 +8,21 @@ Current release: `1.8.1`.
 
 ## Quick Start
 
-Install CseGraph with `pipx`, then configure it from the repository you want to
+Install CseGraph with `pip`, then configure it from the repository you want to
 index:
 
 ```bash
-pipx install csegraph
+pip install csegraph                         # or: uv tool install csegraph
 cd /path/to/your/repository
-csegraph install --platform codex
-csegraph index .
+csegraph install --platform auto
+csegraph index
 ```
 
-Replace `codex` with `cursor`, `claude-code`, `gemini-cli`, `kiro`,
-`antigravity-cli`, `copilot`, or `vscode`. Use `--platform auto` to configure
-every project-scoped MCP client. Use `--platform antigravity-ide` only when you
-explicitly want user-global Antigravity IDE config.
+Use `uv tool install csegraph` for an isolated CLI install, or `pipx install
+csegraph` if that is your preferred tool runner. Replace `auto` with `codex`,
+`cursor`, `claude-code`, `gemini-cli`, `kiro`, `antigravity-cli`, `copilot`, or
+`vscode` to configure one client. Use `--platform antigravity-ide` only when
+you explicitly want user-global Antigravity IDE config.
 
 Check project-scoped MCP setup with:
 

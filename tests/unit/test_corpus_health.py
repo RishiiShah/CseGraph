@@ -40,10 +40,20 @@ def test_large_index_verdict():
     )
 
 
-def test_stale_index_verdict():
+def test_age_only_index_verdict_is_cautious():
     health = assess_index_health(
         {"files": 20, "symbols": 100, "edges": 200, "approx_loc": 2000},
         index_age_hours=30.0,
+    )
+    assert health.verdict == "aged"
+    assert "age-check cautious" in health.summary
+
+
+def test_stale_index_verdict_from_head_warning():
+    health = assess_index_health(
+        {"files": 20, "symbols": 100, "edges": 200, "approx_loc": 2000},
+        index_age_hours=30.0,
+        external_warnings=["Graph was built at commit old but HEAD is now new."],
     )
     assert health.verdict == "stale"
 

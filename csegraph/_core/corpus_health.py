@@ -140,11 +140,12 @@ def assess_index_health(
             hints.append("Run `csegraph index` after switching branches.")
 
     if index_age_hours is not None and index_age_hours >= _STALE_HOURS:
-        if verdict not in ("rebuild",):
-            verdict = "stale"
+        if verdict == "ok":
+            verdict = "aged"
         hours = int(index_age_hours)
         hints.append(
-            f"Index last updated ~{hours}h ago; run `csegraph refresh` before trusting context."
+            f"Index last updated ~{hours}h ago; run `csegraph refresh` if files changed "
+            "or before high-stakes review/debug tasks."
         )
 
     if files == 0:
@@ -197,6 +198,12 @@ def assess_index_health(
         summary = (
             f"Index may be stale (~{int(index_age_hours)}h old, {files} files, {symbols} symbols). "
             "Refresh before review or debug tasks."
+        )
+    elif verdict == "aged" and index_age_hours is not None:
+        summary = (
+            f"Index is age-check cautious (~{int(index_age_hours)}h old, "
+            f"{files} files, {symbols} symbols). "
+            "Refresh if files changed or before review/debug tasks."
         )
     elif verdict == "thin":
         pass

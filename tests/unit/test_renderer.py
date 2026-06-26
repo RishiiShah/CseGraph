@@ -140,6 +140,42 @@ def test_render_benchmark_corpus_summary_shows_sufficiency_and_v3_evidence_count
     assert "forbidden=2/2" in out
 
 
+def test_render_benchmark_summary_shows_context_quality_signals():
+    payload = {
+        "command": "benchmark",
+        "repo_root": "/repo",
+        "db_path": "/repo/.csegraph/bench.db",
+        "graph_output_path": "/repo/.csegraph/graph.html",
+        "total_elapsed_ms": 10.0,
+        "steps": [
+            {
+                "name": "context",
+                "elapsed_ms": 1.25,
+                "stats": {
+                    "schema_version": "csegraph-context-v3",
+                    "returned_detail_level": "standard",
+                    "nodes": 3,
+                    "total_estimated_tokens": 120,
+                    "mcp_response_bytes": 900,
+                    "relationship_count": 2,
+                    "relationship_occurrence_count": 4,
+                    "target_confidence": 0.42,
+                    "sufficiency_failure_count": 1,
+                    "recovery_action_count": 2,
+                    "duplicate_occurrence_count": 1,
+                },
+            }
+        ],
+    }
+
+    out = render_benchmark_summary(payload)
+
+    assert "target_conf=0.42" in out
+    assert "failures=1" in out
+    assert "recovery=2" in out
+    assert "dup_occurrences=1" in out
+
+
 def test_render_context_markdown_reads_relationship_occurrences():
     from csegraph._cli.renderer import render_context_markdown
 
@@ -186,6 +222,47 @@ def test_render_context_markdown_reads_relationship_occurrences():
     assert "Token usage: 12 used, 108 saved vs indexed corpus, 10x reduction" in out
     assert "`auth.py:6-6` calls `verify_password`" in out
     assert "verify_password(password, user['password_hash'])" in out
+
+
+def test_render_context_markdown_shows_recovery_actions():
+    from csegraph._cli.renderer import render_context_markdown
+
+    payload = {
+        "query": "Improve architecture",
+        "target": "symbol::service.py::function::create_user",
+        "sufficiency": {
+            "sufficient": False,
+            "recovery": [
+                {
+                    "action": "try_architecture_context",
+                    "tool": "csegraph_context",
+                    "detail_level": "auto",
+                    "reason": "Retrieve context for a concrete subsystem.",
+                    "suggested_targets": [
+                        {
+                            "target": "symbol::service.py::function::create_user",
+                            "path": "service.py",
+                        }
+                    ],
+                }
+            ],
+        },
+        "request": {
+            "task": "Improve architecture",
+            "detail_level": "auto",
+            "returned_detail_level": "standard",
+        },
+        "budgets": {"total_estimated_tokens": 42},
+        "symbols": [],
+        "relationships": [],
+        "next_actions": [],
+    }
+
+    out = render_context_markdown(payload)
+
+    assert "## Recovery" in out
+    assert "`try_architecture_context`" in out
+    assert "target `symbol::service.py::function::create_user` (service.py)" in out
 
 
 def test_render_install_summary_shows_next_steps():

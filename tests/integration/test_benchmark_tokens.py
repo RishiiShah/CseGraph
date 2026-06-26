@@ -289,6 +289,12 @@ class TestBenchmarkContextQuality:
         assert context.stats["expected_node_total"] == 2
         assert context.stats["expected_node_hit_rate"] == 1.0
         assert context.stats["missing_expected_nodes"] == []
+        assert context.stats["target_resolution"] == "resolved"
+        assert context.stats["target_confidence"] == 1.0
+        assert context.stats["sufficiency_failure_count"] == 0
+        assert context.stats["recovery_action_count"] == 0
+        assert context.stats["duplicate_occurrence_count"] == 0
+        assert context.stats["relationship_occurrence_count"] >= 0
 
         refresh = next(s for s in result.steps if s.name == "refresh")
         assert refresh.elapsed_ms >= 0
@@ -335,6 +341,10 @@ class TestBenchmarkCorpusQuality:
         assert create.returned_target == "symbol::app.py::function::create_user"
         assert create.returned_detail_level in {"minimal", "standard"}
         assert create.sufficient in {True, False}
+        assert create.target_resolution == "resolved"
+        assert create.target_confidence == 1.0
+        assert create.duplicate_occurrence_count == 0
+        assert create.relationship_occurrence_count >= 0
         assert create.missing_expected_files == []
         assert create.missing_expected_symbols == []
         assert create.error is None

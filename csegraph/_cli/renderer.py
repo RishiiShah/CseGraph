@@ -235,6 +235,14 @@ def _render_benchmark_corpus_summary(payload: Dict[str, Any]) -> str:
             f"bytes={task.get('response_bytes', 0)}, "
             f"tool_calls={task.get('tool_call_count', 0)}"
         )
+        if task.get("target_confidence") is not None:
+            line += f", target_conf={float(task.get('target_confidence')):.2f}"
+        if task.get("sufficiency_failure_count", 0):
+            line += f", failures={task.get('sufficiency_failure_count', 0)}"
+        if task.get("recovery_action_count", 0):
+            line += f", recovery={task.get('recovery_action_count', 0)}"
+        if task.get("duplicate_occurrence_count", 0):
+            line += f", dup_occurrences={task.get('duplicate_occurrence_count', 0)}"
         if task.get("error"):
             line += f", error={task['error']}"
         else:
@@ -570,6 +578,16 @@ def render_status_summary(payload: Dict[str, Any]) -> str:
         lines.append(f"Built on branch: {payload['built_branch']}")
     if payload.get("built_commit"):
         lines.append(f"Built at commit: {payload['built_commit']}")
+    local_context = payload.get("local_context") or {}
+    if local_context.get("configured"):
+        included = local_context.get("included") or []
+        blocked = local_context.get("blocked") or []
+        unmatched = local_context.get("unmatched_patterns") or []
+        lines.append(
+            "Local context includes: "
+            f"{len(included)} included, {len(blocked)} blocked, "
+            f"{len(unmatched)} unmatched patterns"
+        )
     parse_errors = payload.get("parse_errors") or {}
     if parse_errors:
         lines.append("Parse errors:")
@@ -639,6 +657,19 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
         lines.extend(["## Warnings", ""])
         for warning in warnings:
             lines.append(f"- {warning}")
+        lines.append("")
+
+    recovery = (payload.get("sufficiency") or {}).get("recovery") or []
+    if recovery:
+        lines.extend(["## Recovery", ""])
+        for action in recovery:
+            lines.append(_render_next_action(action))
+            suggested_targets = action.get("suggested_targets") or []
+            for target_hint in suggested_targets[:3]:
+                target_id = target_hint.get("target") or target_hint.get("id") or ""
+                path = target_hint.get("path") or ""
+                suffix = f" ({path})" if path else ""
+                lines.append(f"  - target `{target_id}`{suffix}")
         lines.append("")
 
     next_actions = payload.get("next_actions", [])
@@ -1068,10 +1099,21 @@ def _benchmark_stats(stats: Dict[str, Any]) -> str:
             )
         if stats.get("relationship_count", 0):
             parts.append(f"relationships={stats['relationship_count']}")
+        if stats.get("relationship_occurrence_count", 0):
+            parts.append(f"occurrences={stats['relationship_occurrence_count']}")
+        target_confidence = stats.get("target_confidence")
+        if target_confidence is not None:
+            parts.append(f"target_conf={float(target_confidence):.2f}")
+        if stats.get("sufficiency_failure_count", 0):
+            parts.append(f"failures={stats['sufficiency_failure_count']}")
+        if stats.get("recovery_action_count", 0):
+            parts.append(f"recovery={stats['recovery_action_count']}")
+        if stats.get("duplicate_occurrence_count", 0):
+            parts.append(f"dup_occurrences={stats['duplicate_occurrence_count']}")
         if stats.get("import_prelude_count", 0):
             parts.append(f"imports={stats['import_prelude_count']}")
         if stats.get("occurrence_snippet_count", 0):
-            parts.append(f"occurrences={stats['occurrence_snippet_count']}")
+            parts.append(f"snippets={stats['occurrence_snippet_count']}")
         return ", ".join(parts)
     preferred = (
         "files",

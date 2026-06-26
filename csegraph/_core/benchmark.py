@@ -113,6 +113,12 @@ class BenchmarkService:
                 stats={
                     "nodes": len(context_result.nodes),
                     "relationship_count": len(getattr(context_result, "relationships", [])),
+                    "relationship_occurrence_count": _relationship_occurrence_count(
+                        getattr(context_result, "relationships", [])
+                    ),
+                    "duplicate_occurrence_count": _duplicate_occurrence_count(
+                        getattr(context_result, "relationships", [])
+                    ),
                     "import_prelude_count": len(getattr(context_result, "import_preludes", [])),
                     "occurrence_snippet_count": _occurrence_snippet_count(
                         getattr(context_result, "relationships", [])
@@ -122,7 +128,14 @@ class BenchmarkService:
                     "returned_detail_level": context_result.returned_detail_level,
                     "total_estimated_tokens": context_result.total_estimated_tokens,
                     "sufficient": context_result.sufficiency.sufficient,
+                    "sufficiency_failure_count": len(
+                        context_result.sufficiency.failure_reasons
+                    ),
+                    "recovery_action_count": len(context_result.sufficiency.recovery),
                     "target": context_result.target,
+                    "target_resolution": context_result.target_resolution,
+                    "target_confidence": context_result.target_confidence,
+                    "target_score_margin": context_result.target_score_margin,
                     "mcp_response_bytes": len(
                         json.dumps(context_payload, sort_keys=True).encode("utf-8")
                     ),
@@ -731,6 +744,12 @@ def _run_corpus_task(
         missing_expected_import_preludes=missing_import_preludes,
         violating_forbidden_source_patterns=violating_forbidden_source_patterns,
         error=None,
+        target_resolution=context.target_resolution,
+        target_confidence=context.target_confidence,
+        sufficiency_failure_count=len(context.sufficiency.failure_reasons),
+        recovery_action_count=len(context.sufficiency.recovery),
+        relationship_occurrence_count=_relationship_occurrence_count(context.relationships),
+        duplicate_occurrence_count=_duplicate_occurrence_count(context.relationships),
     )
 
 
@@ -809,6 +828,45 @@ def _occurrence_snippet_count(relationships: Iterable[Any]) -> int:
             if getattr(occurrence, "snippet", None):
                 count += 1
     return count
+
+
+def _relationship_occurrence_count(relationships: Iterable[Any]) -> int:
+    return sum(
+        1
+        for relationship in relationships
+        for _occurrence in getattr(relationship, "occurrences", [])
+    )
+
+
+def _duplicate_occurrence_count(relationships: Iterable[Any]) -> int:
+    duplicates = 0
+    for relationship in relationships:
+        seen: set[tuple[Any, ...]] = set()
+        for occurrence in getattr(relationship, "occurrences", []):
+            key = _occurrence_identity(occurrence)
+            if key in seen:
+                duplicates += 1
+            else:
+                seen.add(key)
+    return duplicates
+
+
+def _occurrence_identity(occurrence: Any) -> tuple[Any, ...]:
+    line_range = getattr(occurrence, "line_range", None)
+    metadata = getattr(occurrence, "metadata", {})
+    try:
+        metadata_key = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+    except TypeError:
+        metadata_key = repr(metadata)
+    return (
+        getattr(occurrence, "path", None),
+        tuple(line_range or ()),
+        getattr(occurrence, "enclosing_symbol_id", None),
+        getattr(occurrence, "name", None),
+        getattr(occurrence, "kind", None),
+        getattr(occurrence, "snippet", None),
+        metadata_key,
+    )
 
 
 def _collect_visible_source_strings(context: Any) -> list[str]:

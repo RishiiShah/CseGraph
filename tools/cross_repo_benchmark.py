@@ -28,6 +28,19 @@ from mcp.client.stdio import stdio_client
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SANDBOX_DIR = REPO_ROOT / "sandbox"
+O200K_BPE_URL = "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
+O200K_BPE_HASH = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
+O200K_PAT_STR = "|".join(
+    [
+        r"""[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?""",
+        r"""[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?""",
+        r"""\p{N}{1,3}""",
+        r""" ?[^\s\p{L}\p{N}]+[\r\n/]*""",
+        r"""\s*[\r\n]+""",
+        r"""\s+(?!\S)""",
+        r"""\s+""",
+    ]
+)
 
 DEFAULT_REPOS = (
     "nanoGPT",
@@ -145,6 +158,7 @@ def load_openai_tokenizer() -> tuple[Any | None, str]:
         "CSEGRAPH_BENCH_OPENAI_ENCODING",
         os.environ.get("CSEGRAPH_BENCH_TOKENIZER", "o200k_base"),
     ).strip()
+    local_bpe = os.environ.get("CSEGRAPH_BENCH_OPENAI_BPE", "").strip()
     try:
         import tiktoken
     except Exception:  # pragma: no cover - optional dependency fallback
@@ -157,8 +171,84 @@ def load_openai_tokenizer() -> tuple[Any | None, str]:
             return encoding, f"tiktoken:model={model};encoding={name}"
         encoding = tiktoken.get_encoding(encoding_name)
         return encoding, f"tiktoken:encoding={encoding_name}"
-    except Exception as exc:  # pragma: no cover - defensive fallback for unknown models
+    except Exception as exc:
+        if encoding_name != "o200k_base":
+            return None, f"unavailable ({exc})"
+        fallback = _load_local_o200k_tokenizer(tiktoken, local_bpe)
+        if fallback is not None:
+            encoding, source = fallback
+            return encoding, f"tiktoken:encoding=o200k_base;source={source}"
         return None, f"unavailable ({exc})"
+
+
+def _load_local_o200k_tokenizer(
+    tiktoken_module: Any,
+    configured_path: str,
+) -> tuple[Any, str] | None:
+    candidates = []
+    if configured_path:
+        candidates.append(Path(configured_path).expanduser())
+    candidates.extend(_local_o200k_candidates())
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            from tiktoken.load import load_tiktoken_bpe
+            from tiktoken_ext.openai_public import ENDOFPROMPT, ENDOFTEXT
+
+            try:
+                mergeable_ranks = load_tiktoken_bpe(str(path), expected_hash=O200K_BPE_HASH)
+            except Exception:
+                mergeable_ranks = _load_length_prefixed_tiktoken_bpe(path)
+            encoding = tiktoken_module.Encoding(
+                name="o200k_base",
+                pat_str=O200K_PAT_STR,
+                mergeable_ranks=mergeable_ranks,
+                special_tokens={ENDOFTEXT: 199999, ENDOFPROMPT: 200018},
+            )
+            return encoding, str(path)
+        except Exception:
+            continue
+    return None
+
+
+def _load_length_prefixed_tiktoken_bpe(path: Path) -> dict[bytes, int]:
+    data = path.read_bytes()
+    ranks: dict[bytes, int] = {}
+    offset = 0
+    rank = 0
+    while offset < len(data):
+        length = data[offset]
+        offset += 1
+        token = data[offset : offset + length]
+        if len(token) != length:
+            raise ValueError(f"Truncated length-prefixed token data in {path}")
+        ranks[token] = rank
+        offset += length
+        rank += 1
+    if len(ranks) < 199_000:
+        raise ValueError(f"Unexpectedly small o200k token table in {path}")
+    return ranks
+
+
+def _local_o200k_candidates() -> list[Path]:
+    candidates = [
+        REPO_ROOT / ".scratch" / "csegraph" / "o200k_base.tiktoken",
+        Path.home()
+        / "Library"
+        / "Application Support"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "github.copilot-chat"
+        / "o200k_base.tiktoken",
+    ]
+    vscode_cache_root = Path.home() / "Library" / "Caches" / "com.microsoft.VSCode.ShipIt"
+    try:
+        candidates.extend(vscode_cache_root.glob("**/extensions/copilot/dist/o200k_base.tiktoken"))
+    except OSError:
+        pass
+    return candidates
 
 
 _OPENAI_TOKENIZER, _OPENAI_TOKENIZER_LABEL = load_openai_tokenizer()

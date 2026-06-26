@@ -291,11 +291,14 @@ async def run_one_workflow(
 
 def pick_graph_target(payload: dict[str, Any]) -> str | None:
     target = payload.get("target")
-    if isinstance(target, str) and target.strip():
+    if isinstance(target, str) and _is_graph_target(target):
         return target.strip()
     if isinstance(target, dict):
+        graph_target_id = target.get("graph_target_id")
+        if isinstance(graph_target_id, str) and _is_graph_target(graph_target_id):
+            return graph_target_id.strip()
         target_id = target.get("id")
-        if isinstance(target_id, str) and target_id.strip():
+        if isinstance(target_id, str) and _is_graph_target(target_id):
             return target_id.strip()
     nodes = payload.get("symbols") or payload.get("nodes")
     if isinstance(nodes, list) and nodes:
@@ -305,6 +308,11 @@ def pick_graph_target(payload: dict[str, Any]) -> str | None:
             if isinstance(node_id, str) and node_id.strip():
                 return node_id.strip()
     return None
+
+
+def _is_graph_target(value: str) -> bool:
+    value = value.strip()
+    return value.startswith(("symbol::", "file::", "folder::"))
 
 
 def read_json(path: Path) -> dict[str, Any] | None:
