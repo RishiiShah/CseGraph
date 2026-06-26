@@ -3,6 +3,7 @@ from pathlib import Path
 
 import csegraph._core.retrieval.context as context_module
 from csegraph import ContextService, IndexService
+from csegraph._core.core.models import ContextRelationship
 from csegraph._core.core.serializer import to_dict
 from csegraph._core.retrieval.constants import VALID_REASONS
 
@@ -98,6 +99,8 @@ def test_context_json_contract_is_canonical_only(tmp_path):
 
     assert payload["request"]["task"] == "Implement create_user with clean_name"
     assert payload["target"]["id"] == "symbol::service.py::function::create_user"
+    assert payload["target"]["graph_target_id"] == "symbol::service.py::function::create_user"
+    assert payload["target"]["display"] == "create_user"
     assert payload["request"]["detail_level"] == "auto"
     assert payload["request"]["returned_detail_level"] == "minimal"
     assert payload["budgets"]["total_estimated_tokens"] >= 1
@@ -201,6 +204,28 @@ def test_broad_prompt_with_low_confidence_inferred_target_is_not_sufficient(tmp_
         reason.get("metric") == "target_confidence"
         for reason in payload["sufficiency"]["failure_reasons"]
     )
+
+
+def test_broad_architecture_prompt_suggests_architecture_recovery(tmp_path):
+    repo = tmp_path / "repo"
+    db_path = tmp_path / "index.db"
+    _write_repo(repo)
+    IndexService(db_path).index(repo, profile="small")
+
+    context = ContextService(db_path).build_context(
+        task="What should we improve in the architecture and retrieval roadmap?",
+        profile="small",
+    )
+    payload = to_dict(context)
+
+    assert payload["target"]["resolution"] == "inferred"
+    assert payload["target"]["confidence"] < 0.55
+    actions = {
+        recovery.get("action"): recovery for recovery in payload["sufficiency"]["recovery"]
+    }
+    assert "try_architecture_context" in actions
+    assert actions["try_architecture_context"]["tool"] == "csegraph_context"
+    assert actions["try_architecture_context"]["suggested_targets"]
 
 
 def test_context_full_detail_includes_explanations_and_source(tmp_path):
@@ -370,6 +395,56 @@ def test_occurrence_cap_prioritizes_target_calls_over_imports(tmp_path, monkeypa
         call in occurrence.get("snippet", "")
         for call in ("load_user(", "verify_password(", "issue_token(")
     )
+
+
+def test_relationship_occurrence_dedup_preserves_first_seen_order(tmp_path, monkeypatch):
+    relationship = ContextRelationship(
+        source="symbol::auth.py::function::authenticate_user",
+        target="symbol::passwords.py::function::verify_password",
+        relation="calls",
+    )
+    duplicate_row = {
+        "path": "auth.py",
+        "start_line": 6,
+        "end_line": 6,
+        "source": "verify_password(password, user['password_hash'])",
+        "metadata": "{}",
+        "enclosing_symbol_id": "symbol::auth.py::function::authenticate_user",
+        "name": "verify_password",
+        "kind": "calls",
+    }
+    second_row = {
+        **duplicate_row,
+        "start_line": 8,
+        "end_line": 8,
+        "source": "return issue_token(user['id'])",
+        "name": "issue_token",
+    }
+
+    class FakeIndex:
+        def metadata(self):
+            return {"root_dir": str(tmp_path)}
+
+    monkeypatch.setattr(
+        context_module,
+        "_relationship_reference_rows",
+        lambda _index, _relationship: [duplicate_row, dict(duplicate_row), second_row],
+    )
+    monkeypatch.setattr(context_module, "OCCURRENCE_PER_RELATIONSHIP_LIMIT", 3)
+
+    context_module._attach_symbol_reference_occurrences(
+        FakeIndex(),
+        [relationship],
+        include_snippet=True,
+        total_limit=10,
+    )
+    context_module._dedupe_relationship_occurrences([relationship])
+
+    assert [occurrence.name for occurrence in relationship.occurrences] == [
+        "verify_password",
+        "issue_token",
+    ]
+    assert [occurrence.line_range for occurrence in relationship.occurrences] == [[6, 6], [8, 8]]
 
 
 def test_include_source_never_still_returns_relationships_and_import_preludes(tmp_path):

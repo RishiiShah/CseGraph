@@ -137,6 +137,14 @@ class TestTaskKeywordRouting:
         result = MinimalService(db).first(task="explore the architecture")
         assert result.task_intent == "explore"
 
+    def test_broad_improvement_prompt_routes_to_context_first(self, tmp_path):
+        _, db = _indexed(tmp_path)
+        result = MinimalService(db).first(
+            task="What should we improve in the context engine roadmap?"
+        )
+        assert result.task_intent == "explore"
+        assert result.next_tool_suggestions[0].tool == "csegraph_context"
+
     def test_unmatched_task_falls_back_to_general(self, tmp_path):
         _, db = _indexed(tmp_path)
         result = MinimalService(db).first(task="add a totally unrelated feature")

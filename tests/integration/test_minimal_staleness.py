@@ -13,7 +13,7 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def test_minimal_warns_when_index_stale(tmp_path: Path):
+def test_minimal_marks_age_only_index_as_cautious_not_stale(tmp_path: Path):
     repo = _make_repo(tmp_path)
     db = str(repo / ".scratch" / "csegraph" / "test.db")
 
@@ -35,7 +35,8 @@ def test_minimal_warns_when_index_stale(tmp_path: Path):
         idx.close()
 
     result = _handle_tool("csegraph_minimal", {"repo": str(repo), "db": db})
-    assert "stale" in result["summary"].lower()
-    assert "csegraph_refresh" in result["summary"] or any(
-        s.get("tool") == "csegraph_refresh" for s in result.get("next_tool_suggestions", [])
+    assert result["index_health"]["verdict"] == "aged"
+    assert "age-check cautious" in result["summary"].lower()
+    assert all(
+        s.get("tool") != "csegraph_refresh" for s in result.get("next_tool_suggestions", [])
     )

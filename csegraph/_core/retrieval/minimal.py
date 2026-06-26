@@ -37,6 +37,9 @@ _INTENT_KEYWORDS: List[tuple[str, tuple[str, ...]]] = [
             "learn",
             "what is",
             "how does",
+            "improve",
+            "improvement",
+            "roadmap",
         ),
     ),
 ]
@@ -307,6 +310,23 @@ def _suggestions_for_intent(
             ),
         ]
     if intent == "explore":
+        if _is_broad_context_task(task):
+            return [
+                NextToolSuggestion(
+                    tool="csegraph_context",
+                    reason=(
+                        "Retrieve task-specific subsystem context before choosing a narrow symbol."
+                    ),
+                    args={"task": task_arg, "detail_level": "auto"},
+                ),
+                NextToolSuggestion(
+                    tool="csegraph_graph",
+                    reason=(
+                        "Inspect a high-degree key entity at depth 2 for an architecture sketch."
+                    ),
+                    args={"depth": 2, "detail_level": "minimal"},
+                ),
+            ]
         return [
             NextToolSuggestion(
                 tool="csegraph_graph",
@@ -326,6 +346,22 @@ def _suggestions_for_intent(
             args={"task": task_arg, "detail_level": "auto"},
         ),
     ]
+
+
+def _is_broad_context_task(task: Optional[str]) -> bool:
+    lowered = (task or "").lower()
+    return any(
+        re.search(rf"\b{re.escape(keyword)}\b", lowered)
+        for keyword in (
+            "improve",
+            "improvement",
+            "improvements",
+            "roadmap",
+            "architecture",
+            "context engine",
+            "retrieval",
+        )
+    )
 
 
 def _estimate_tokens(result: MinimalResult) -> int:

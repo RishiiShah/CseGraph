@@ -39,6 +39,7 @@ def to_dict(value: Any) -> Any:
 def _context_result_to_dict(result: Any) -> Dict[str, Any]:
     target_node = next((node for node in result.nodes if node.id == result.target), None)
     symbol_ids = {node.id for node in result.nodes}
+    graph_target_id = result.target if _is_graph_node_id(result.target) else None
     payload = {
         "command": result.command,
         "schema_version": CONTEXT_OUTPUT_SCHEMA_VERSION,
@@ -54,6 +55,8 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
         },
         "target": {
             "id": result.target,
+            "graph_target_id": graph_target_id,
+            "display": target_node.name if target_node is not None else result.target,
             "resolution": result.target_resolution,
             "confidence": getattr(result, "target_confidence", None),
             "score_margin": getattr(result, "target_score_margin", None),
@@ -175,6 +178,10 @@ def _needs_relationship_path(endpoint: str, symbol_ids: set[str]) -> bool:
     if endpoint.startswith("file::"):
         return False
     return True
+
+
+def _is_graph_node_id(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(("symbol::", "file::", "folder::"))
 
 
 def _relationship_occurrence_to_dict(occurrence: Any) -> Dict[str, Any]:

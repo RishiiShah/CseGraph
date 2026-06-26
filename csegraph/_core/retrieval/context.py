@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import itertools
+import json
 import math
 import re
 import time
@@ -54,6 +55,7 @@ IMPORT_PRELUDE_TOTAL_LINE_LIMIT = 40
 IMPORT_PRELUDE_TOTAL_CHAR_LIMIT = 4000
 OCCURRENCE_LIMIT_BY_PROFILE = {"small": 24, "medium": 48, "large": 72}
 OCCURRENCE_PER_RELATIONSHIP_LIMIT = 2
+RETURNED_NODE_LIMIT_BY_PROFILE = {"large": 80}
 
 
 class ContextService:
@@ -225,7 +227,7 @@ class ContextService:
             )
 
             t0 = time.perf_counter()
-            returned_detail_level = "minimal" if detail_level == "auto" else detail_level
+            returned_detail_level = _initial_detail_level(detail_level, task, resolution)
             nodes, metrics, sufficient = _build_detail_pass(
                 detail_level=returned_detail_level,
                 target_id=target_id,
@@ -378,7 +380,9 @@ class ContextService:
                         returned_detail_level=returned_detail_level,
                         source_policy=include_source,
                         target_id=target_id,
+                        task=task,
                         failure_reasons=failure_reasons,
+                        target_candidates=resolution.candidates,
                     ),
                 ),
                 total_estimated_tokens=estimated_tokens,
@@ -430,17 +434,13 @@ def _assemble_context_nodes(
             if returned_detail_level == "minimal" or source_policy == "never"
             else raw_summary
         )
-        source_text = _read_node_source(repo_root, row) if node_id in source_ids else None
-        source_omitted_reason = (
-            None
-            if source_text is not None
-            else _source_omitted_reason(
-                row=row,
-                node_id=node_id,
-                source_ids=source_ids,
-                returned_detail_level=returned_detail_level,
-                source_policy=source_policy,
-            )
+        source_text = None
+        source_omitted_reason = _source_omitted_reason(
+            row=row,
+            node_id=node_id,
+            source_ids=source_ids,
+            returned_detail_level=returned_detail_level,
+            source_policy=source_policy,
         )
         estimated_tokens = _estimate_node_tokens(row, summary, source_text)
         reason = normalize_reasons(
@@ -473,7 +473,7 @@ def _assemble_context_nodes(
                 line_range=_line_range(row["start_line"], row["end_line"]),
                 score=node_score,
                 language=row["language"],
-                raw_code=node_id in raw_nodes and source_text is not None,
+                raw_code=False,
                 evidence=clean_evidence,
                 summary=summary,
                 lineage=lineage,
@@ -592,6 +592,7 @@ def _build_context_relationships(
         include_snippet=include_snippets,
         total_limit=occurrence_limit,
     )
+    _dedupe_relationship_occurrences(relationships)
     _trim_relationship_occurrences(relationships, total_limit=occurrence_limit)
     return relationships
 
@@ -736,6 +737,42 @@ def _trim_relationship_occurrences(
             used = total_limit
             continue
         used += len(relationship.occurrences)
+
+
+def _dedupe_relationship_occurrences(relationships: Sequence[ContextRelationship]) -> None:
+    for relationship in relationships:
+        if len(relationship.occurrences) < 2:
+            continue
+        deduped: List[RelationshipOccurrence] = []
+        seen: set[tuple[Any, ...]] = set()
+        for occurrence in relationship.occurrences:
+            key = _relationship_occurrence_key(occurrence)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(occurrence)
+        relationship.occurrences = deduped
+
+
+def _relationship_occurrence_key(occurrence: RelationshipOccurrence) -> tuple[Any, ...]:
+    line_range = tuple(occurrence.line_range or ())
+    try:
+        metadata_key = json.dumps(
+            occurrence.metadata,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except TypeError:
+        metadata_key = repr(occurrence.metadata)
+    return (
+        occurrence.path,
+        line_range,
+        occurrence.enclosing_symbol_id,
+        occurrence.name,
+        occurrence.kind,
+        occurrence.snippet,
+        metadata_key,
+    )
 
 
 def _relationship_reference_rows(
@@ -915,7 +952,7 @@ def _ambiguous_context_result(
     resolution: TargetResolution,
     timings: Dict[str, float],
 ) -> ContextResult:
-    label = resolution.requested or ""
+    label = resolution.requested or "inferred from task"
     candidates = resolution.candidates
     return ContextResult(
         command="context",
@@ -949,7 +986,10 @@ def _ambiguous_context_result(
         next_actions=[
             {
                 "action": "resolve_target",
-                "reason": "Multiple symbols matched; pass node id or qualified name before editing.",
+                "reason": (
+                    "The debugging target is ambiguous; pass a node id, qualified name, "
+                    "file path, or stack frame before editing."
+                ),
                 "candidates": candidates,
             }
         ],
@@ -975,7 +1015,10 @@ def _select_context_ids(
     budget: int,
 ) -> List[str]:
     baseline_score = 0.01
-    adaptive_budget = min(budget, max(MINIMAL_NODE_LIMIT, budget))
+    adaptive_budget = min(
+        budget,
+        max(MINIMAL_NODE_LIMIT, RETURNED_NODE_LIMIT_BY_PROFILE.get(profile_name, budget)),
+    )
     caps = _relation_caps(profile_name)
 
     # Deterministic sort for context_ids (descending node_id as tie-breaker)
@@ -1008,6 +1051,7 @@ def _select_context_ids(
             if (
                 node_id != target_id
                 and "bounded-callee" in evidence.get(node_id, [])
+                and not _has_lexical_evidence(evidence.get(node_id, []))
                 and path
                 and selected_by_path.get(path, 0) >= DIRECT_CALLEE_PATH_LIMIT
                 and len(selected) >= MINIMAL_NODE_LIMIT
@@ -1388,6 +1432,36 @@ def _validate_detail_level(value: str) -> str:
     return value
 
 
+def _initial_detail_level(
+    requested_detail_level: str,
+    task: str,
+    resolution: TargetResolution,
+) -> str:
+    if requested_detail_level != "auto":
+        return requested_detail_level
+    task_tokens = _task_tokens(task)
+    debugging = bool(
+        task_tokens
+        & {
+            "bug",
+            "crash",
+            "debug",
+            "error",
+            "exception",
+            "failed",
+            "failing",
+            "failure",
+            "fix",
+            "regression",
+            "traceback",
+        }
+    )
+    trusted_target = resolution.status == "resolved" or (
+        resolution.status == "inferred" and (resolution.confidence or 0.0) >= 0.55
+    )
+    return "standard" if debugging and trusted_target else "minimal"
+
+
 def _returned_detail_level(detail_level: str, sufficient: bool) -> str:
     if detail_level == "auto":
         return "minimal" if sufficient else "standard"
@@ -1676,7 +1750,9 @@ def _sufficiency_recovery(
     returned_detail_level: str,
     source_policy: str,
     target_id: str,
+    task: str,
     failure_reasons: Sequence[Dict[str, Any]],
+    target_candidates: Sequence[Dict[str, Any]] = (),
 ) -> List[Dict[str, Any]]:
     if sufficient:
         return []
@@ -1709,6 +1785,19 @@ def _sufficiency_recovery(
                 "reason": "Dependency coverage is below threshold.",
             }
         )
+    if "target_confidence" in failure_metrics and _is_architecture_or_roadmap_task(task):
+        recovery.append(
+            {
+                "action": "try_architecture_context",
+                "tool": "csegraph_context",
+                "detail_level": "auto",
+                "reason": (
+                    "This looks like a broad architecture or roadmap request; retrieve "
+                    "context for a concrete subsystem rather than trusting the inferred target."
+                ),
+                "suggested_targets": _architecture_recovery_targets(target_candidates),
+            }
+        )
     if {"entity_coverage", "semantic_overlap"} & failure_metrics:
         recovery.append(
             {
@@ -1718,6 +1807,47 @@ def _sufficiency_recovery(
             }
         )
     return recovery
+
+
+def _is_architecture_or_roadmap_task(task: str) -> bool:
+    tokens = _task_tokens(task)
+    return bool(
+        tokens
+        & {
+            "architecture",
+            "architectural",
+            "roadmap",
+            "improve",
+            "improvement",
+            "improvements",
+            "product",
+            "strategy",
+            "overview",
+            "explore",
+            "context",
+            "retrieval",
+        }
+    )
+
+
+def _architecture_recovery_targets(
+    candidates: Sequence[Dict[str, Any]],
+    *,
+    limit: int = 3,
+) -> List[Dict[str, str]]:
+    targets: List[Dict[str, str]] = []
+    for candidate in candidates[:limit]:
+        target_id = str(candidate.get("id") or "")
+        if not target_id:
+            continue
+        targets.append(
+            {
+                "target": target_id,
+                "name": str(candidate.get("name") or target_id),
+                "path": str(candidate.get("path") or ""),
+            }
+        )
+    return targets
 
 
 def _dependency_budget(config: Any) -> int:
@@ -1786,6 +1916,14 @@ def _build_detail_pass(
         source_policy=include_source,
     )
     nodes = _apply_token_budget(nodes, max_tokens)
+    nodes = _materialize_selected_sources(
+        nodes=nodes,
+        repo_root=repo_root,
+        symbols=symbols,
+        source_ids=source_ids,
+        raw_nodes=set(raw_nodes),
+        max_tokens=max_tokens,
+    )
     retained_ids = [node.id for node in nodes]
     metrics = compute_metrics(
         task,
@@ -1820,6 +1958,42 @@ def _read_node_source(repo_root: str, row: Dict[str, Any]) -> Optional[str]:
     return read_source_lines(repo_root, str(file_path), int(start_line), int(end_line))
 
 
+def _materialize_selected_sources(
+    *,
+    nodes: List[ContextNode],
+    repo_root: str,
+    symbols: Dict[str, Dict[str, Any]],
+    source_ids: set[str],
+    raw_nodes: set[str],
+    max_tokens: Optional[int],
+) -> List[ContextNode]:
+    used_tokens = sum(node.estimated_tokens for node in nodes)
+    materialized: List[ContextNode] = []
+    for node in nodes:
+        if node.id not in source_ids:
+            materialized.append(node)
+            continue
+        source_text = _read_node_source(repo_root, symbols[node.id])
+        if source_text is None:
+            materialized.append(node)
+            continue
+        source_tokens = _estimate_tokens(source_text)
+        projected_tokens = used_tokens - node.estimated_tokens + source_tokens
+        if max_tokens is not None and projected_tokens > max_tokens:
+            candidate = copy.copy(node)
+            candidate.source_omitted_reason = "token_budget"
+            materialized.append(candidate)
+            continue
+        candidate = copy.copy(node)
+        candidate.source_text = source_text
+        candidate.estimated_tokens = source_tokens
+        candidate.raw_code = node.id in raw_nodes
+        candidate.source_omitted_reason = None
+        used_tokens = projected_tokens
+        materialized.append(candidate)
+    return materialized
+
+
 def _estimate_node_tokens(
     row: Dict[str, Any],
     summary: str,
@@ -1832,8 +2006,6 @@ def _estimate_node_tokens(
         for value in (
             str(row.get("name") or ""),
             str(row.get("file_path") or ""),
-            str(row.get("signature") or ""),
-            str(row.get("docstring") or ""),
             summary,
         )
         if value

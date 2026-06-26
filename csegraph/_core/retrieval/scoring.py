@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections import defaultdict, deque
 from typing import Any, Deque, Dict, List, Set, Tuple
@@ -23,12 +24,16 @@ _BM25_WEIGHTS = (8.0, 4.0, 2.0, 1.0, 2.0, 1.0)
 
 _SUBSTRING_STOPWORDS = {
     "about",
+    "bug",
     "build",
     "code",
+    "context",
     "does",
+    "error",
     "file",
     "find",
     "first",
+    "fix",
     "from",
     "how",
     "into",
@@ -43,15 +48,37 @@ _SUBSTRING_STOPWORDS = {
 _TEST_QUERY_TOKENS = {
     "assert",
     "coverage",
-    "fail",
-    "failed",
-    "failing",
-    "failure",
     "pytest",
     "regression",
     "test",
     "tests",
 }
+_BUG_QUERY_TOKENS = {
+    "bug",
+    "crash",
+    "debug",
+    "error",
+    "exception",
+    "fail",
+    "failed",
+    "failing",
+    "failure",
+    "fix",
+    "regression",
+    "stack",
+    "trace",
+    "traceback",
+}
+_SOURCE_PATH_RE = re.compile(
+    r"(?P<path>(?:[A-Za-z]:)?[A-Za-z0-9_./\\-]+\."
+    r"(?:py|pyi|js|jsx|ts|tsx|java|kt|kts|go|rs|rb|php|cs|cpp|cc|c|h|hpp|swift))"
+    r"(?::\d+)?",
+    re.IGNORECASE,
+)
+_STACK_SYMBOL_PATTERNS = (
+    re.compile(r"\bin\s+([A-Za-z_][A-Za-z0-9_.]*)"),
+    re.compile(r"\bat\s+([A-Za-z_$][A-Za-z0-9_.$]*)\s*\("),
+)
 
 
 def fts_lexical_scores(
@@ -151,13 +178,56 @@ def lexical_scores(
             scores[node_id] += 1.5
             evidence[node_id].append("file-path-match")
         scores[node_id] += 0.01
-        if not _is_test_query(task_tokens) and _is_test_symbol(row):
+        if not _is_explicit_test_query(task, task_tokens) and _is_test_symbol(row):
             scores[node_id] *= 0.45
+    _apply_bug_evidence_boosts(task, task_tokens, symbols, scores, evidence)
     return scores, evidence
 
 
 def _is_test_query(task_tokens: set[str]) -> bool:
     return bool(task_tokens & _TEST_QUERY_TOKENS)
+
+
+def _is_explicit_test_query(task: str, task_tokens: set[str]) -> bool:
+    if _is_test_query(task_tokens):
+        return True
+    lowered = task.lower().replace("\\", "/")
+    return bool(
+        re.search(r"\btest_[a-z0-9_]+\b", lowered)
+        or "/tests/" in lowered
+        or lowered.startswith("tests/")
+        or "/__tests__/" in lowered
+    )
+
+
+def _apply_bug_evidence_boosts(
+    task: str,
+    task_tokens: set[str],
+    symbols: Dict[str, Dict[str, Any]],
+    scores: Dict[str, float],
+    evidence: Dict[str, List[str]],
+) -> None:
+    if not (task_tokens & _BUG_QUERY_TOKENS):
+        return
+
+    path_hints = {
+        match.group("path").replace("\\", "/").lower().lstrip("./")
+        for match in _SOURCE_PATH_RE.finditer(task)
+    }
+    symbol_hints = {
+        match.group(1).rsplit(".", 1)[-1].lower()
+        for pattern in _STACK_SYMBOL_PATTERNS
+        for match in pattern.finditer(task)
+    }
+    for node_id, row in symbols.items():
+        path = str(row.get("file_path") or row.get("path") or "").replace("\\", "/").lower()
+        name = str(row.get("name") or "").rsplit(".", 1)[-1].lower()
+        if path and any(path == hint or hint.endswith(f"/{path}") for hint in path_hints):
+            scores[node_id] += 12.0
+            evidence[node_id].append("bug-file-evidence")
+        if name and name in symbol_hints:
+            scores[node_id] += 8.0
+            evidence[node_id].append("bug-stack-symbol")
 
 
 def _is_test_symbol(row: Dict[str, Any]) -> bool:

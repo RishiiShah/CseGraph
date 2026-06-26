@@ -10,8 +10,21 @@ from typing import Any, Dict, List, Optional
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.retrieval.scoring import lexical_scores
 
-_SYMBOL_TYPES = ("class", "function", "method", "test")
+_SYMBOL_TYPES = ("class", "function", "method", "test", "document")
 _MAX_CANDIDATES = 8
+_DEBUG_TASK_TERMS = {
+    "bug",
+    "crash",
+    "debug",
+    "error",
+    "exception",
+    "failed",
+    "failing",
+    "failure",
+    "fix",
+    "regression",
+    "traceback",
+}
 
 
 @dataclass
@@ -43,15 +56,25 @@ def resolve_target(
         margin_ratio = margin / max(best_score, 1.0)
         absolute = min(1.0, max(0.0, (best_score - 0.01) / 12.0))
         confidence = round(max(0.0, min(1.0, 0.70 * margin_ratio + 0.30 * absolute)), 4)
+        candidates = [
+            _candidate_payload_with_score(symbols[node_id], score=score, match="inferred")
+            for node_id, score in ranked[:_MAX_CANDIDATES]
+            if node_id in symbols
+        ]
+        if _requires_debug_target_confirmation(task, confidence, margin):
+            return TargetResolution(
+                status="ambiguous",
+                target_id="",
+                requested=None,
+                candidates=candidates[:4],
+                confidence=confidence,
+                score_margin=round(margin, 4),
+            )
         return TargetResolution(
             status="inferred",
             target_id=best_id,
             requested=None,
-            candidates=[
-                _candidate_payload_with_score(symbols[node_id], score=score, match="inferred")
-                for node_id, score in ranked[:_MAX_CANDIDATES]
-                if node_id in symbols
-            ],
+            candidates=candidates,
             confidence=confidence,
             score_margin=round(margin, 4),
         )
@@ -155,8 +178,10 @@ def _query_symbol_candidates(
 
 
 def _candidate_payload(row: Dict[str, Any], *, match: str) -> Dict[str, Any]:
+    graph_target_id = row["id"] if _is_graph_node_id(row["id"]) else None
     return {
         "id": row["id"],
+        "graph_target_id": graph_target_id,
         "name": row["name"],
         "path": row["path"],
         "kind": row["type"],
@@ -208,3 +233,14 @@ def _normalized_repo_relative_path(target: str) -> str | None:
     if normalized in {"", ".", ".."} or normalized.startswith("../"):
         return None
     return normalized.lower()
+
+
+def _requires_debug_target_confirmation(task: str, confidence: float, margin: float) -> bool:
+    tokens = {token.lower() for token in task.replace("_", " ").split()}
+    normalized_tokens = {token.strip(".,:;!?()[]{}'\"") for token in tokens}
+    is_debug_task = bool(normalized_tokens & _DEBUG_TASK_TERMS)
+    return is_debug_task and (confidence < 0.55 or margin <= 0.01)
+
+
+def _is_graph_node_id(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(("symbol::", "file::", "folder::"))
