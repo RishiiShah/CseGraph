@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -266,6 +267,11 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Limit refresh to a repo-local subtree. Defaults to indexed include roots.",
     )
+    refresh.add_argument(
+        "--changed-from-git",
+        action="store_true",
+        help="Refresh only files currently changed according to git status/diff.",
+    )
     _add_json(refresh)
 
     context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
@@ -425,13 +431,13 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="hooks",
         action="store_true",
         default=None,
-        help="Install all supported agent hooks (default: platform-scoped hooks).",
+        help="Install lightweight end-of-turn hooks for every supported agent.",
     )
     hooks_group.add_argument(
         "--no-hooks",
         dest="hooks",
         action="store_false",
-        help="Skip agent hooks.",
+        help="Skip the default lightweight end-of-turn agent hook.",
     )
     gitignore_group = install.add_mutually_exclusive_group()
     gitignore_group.add_argument(
@@ -888,8 +894,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
 
         repo = _repo_arg(args)
         db = _db_arg(args, repo)
+        changed_paths = _changed_paths_from_git(repo) if args.changed_from_git else None
         refresh_result = RefreshService(db).refresh(
             profile=args.profile,
+            changed_paths=changed_paths,
             exclude_patterns=getattr(args, "exclude", None),
             include_roots=getattr(args, "include_root", None),
         )
@@ -1371,6 +1379,32 @@ def _validate_cli_options(args: argparse.Namespace) -> None:
 
 def _repo_arg(args: argparse.Namespace) -> str:
     return str(Path(args.repo_opt or args.repo_arg or ".").resolve())
+
+
+def _changed_paths_from_git(repo: str) -> list[Path]:
+    repo_path = Path(repo).resolve()
+    changed: set[Path] = set()
+    for args in (
+        ["git", "diff", "--name-only", "-z", "HEAD"],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    ):
+        try:
+            result = subprocess.run(
+                args,
+                cwd=repo_path,
+                check=False,
+                capture_output=True,
+                timeout=10,
+                stdin=subprocess.DEVNULL,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            return []
+        if result.returncode != 0:
+            continue
+        for raw in result.stdout.split(b"\0"):
+            if raw:
+                changed.add(repo_path / raw.decode("utf-8", errors="replace"))
+    return sorted(changed)
 
 
 def _db_arg(args: argparse.Namespace, repo: str) -> str:

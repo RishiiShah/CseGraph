@@ -101,6 +101,7 @@ def test_cli_json_contracts(tmp_path):
     assert context["schema_version"] == "csegraph-context-v3"
     assert context["request"]["task"] == "Implement create_user with clean_name"
     assert context["target"]["id"] == "symbol::service.py::function::create_user"
+    assert context["target"]["graph_target_id"] == "symbol::service.py::function::create_user"
     assert context["request"]["detail_level"] == "auto"
     assert context["request"]["returned_detail_level"] == "minimal"
     assert context["sufficiency"]["sufficient"] is True
@@ -191,6 +192,34 @@ def test_cli_json_contracts(tmp_path):
     assert refreshed["command"] == "refresh"
     assert refreshed["changed_files"] == []
     assert refreshed["deleted_files"] == []
+
+
+def test_status_json_includes_local_context_audit(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    internal = repo / "internal"
+    internal.mkdir()
+    (internal / "architecture.md").write_text("# Internal\n", encoding="utf-8")
+    (internal / "credentials.json").write_text('{"token": "secret"}\n', encoding="utf-8")
+    (repo / ".gitignore").write_text("internal/\n.csegraphinclude\n", encoding="utf-8")
+    (repo / ".csegraphinclude").write_text("internal/*\n", encoding="utf-8")
+
+    run_cli("index", str(repo), "--json")
+
+    status = run_cli("status", str(repo), "--json")
+
+    assert status["command"] == "status"
+    assert status["local_context"]["configured"] is True
+    assert status["local_context"]["included"] == [
+        {"path": "internal/architecture.md", "pattern": "internal/*"}
+    ]
+    assert status["local_context"]["blocked"] == [
+        {
+            "path": "internal/credentials.json",
+            "pattern": "internal/*",
+            "reason": "sensitive_path",
+        }
+    ]
 
 
 def test_index_default_output_is_human_summary(tmp_path):
@@ -388,8 +417,10 @@ def test_install_dry_run_json_reports_auto_targets(tmp_path):
     assert result["server_command"] == str(cli.resolve())
     assert result["server_args"] == ["serve", "--repo", str(tmp_path.resolve())]
     assert result["verification"]["state"] == "skipped"
-    assert "each configured client's MCP/tools settings" in result["next_steps"][0]
-    assert "--platform auto" in result["next_steps"][2]
+    assert "registry register" in result["next_steps"][0]
+    assert "daemon start" in result["next_steps"][1]
+    assert "each configured client's MCP/tools settings" in result["next_steps"][3]
+    assert "--platform auto" in result["next_steps"][5]
     assert {target["platform"] for target in result["installed"]} == {
         "codex",
         "claude-code",
@@ -417,7 +448,8 @@ def test_install_cursor_dry_run_json_uses_cursor_config(tmp_path):
 
     assert result["installed"][0]["platform"] == "cursor"
     assert result["installed"][0]["path"].endswith(os.path.join(".cursor", "mcp.json"))
-    assert "Open cursor's MCP/tools settings" in result["next_steps"][0]
+    assert "registry register" in result["next_steps"][0]
+    assert "Open cursor's MCP/tools settings" in result["next_steps"][3]
 
 
 def test_doctor_auto_json_reports_project_platforms(tmp_path):
@@ -1141,6 +1173,32 @@ def _init_git_repo(repo: Path) -> None:
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.name", "Test"], capture_output=True, check=True
     )
+
+
+def test_refresh_changed_from_git_limits_work_to_dirty_files(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo)
+    _init_git_repo(repo)
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "baseline"],
+        capture_output=True,
+        check=True,
+    )
+    run_cli("index", str(repo), "--json")
+
+    (repo / "service.py").write_text(
+        "from helpers import clean_name\n\n"
+        "def create_user(name: str) -> dict:\n"
+        "    return {'name': clean_name(name), 'active': True}\n",
+        encoding="utf-8",
+    )
+
+    refreshed = run_cli("refresh", str(repo), "--changed-from-git", "--json")
+
+    assert refreshed["command"] == "refresh"
+    assert refreshed["changed_files"] == ["service.py"]
+    assert refreshed["deleted_files"] == []
 
 
 def test_detect_changes_json(tmp_path):

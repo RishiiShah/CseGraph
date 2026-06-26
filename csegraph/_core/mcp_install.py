@@ -120,7 +120,7 @@ _PLATFORM_INSTRUCTION_FILES = {
 }
 
 
-_RUNTIME_GITIGNORE_ENTRIES = (".csegraph/",)
+_RUNTIME_GITIGNORE_ENTRIES = (".csegraph/", ".csegraphinclude")
 
 
 def _csegraph_hook_command(command: str, args: Sequence[str]) -> str:
@@ -136,31 +136,25 @@ def _csegraph_hook_command(command: str, args: Sequence[str]) -> str:
 def _claude_hooks(command: str, repo: Path) -> dict[str, Any]:
     return {
         "hooks": {
-            "PostToolUse": [
+            "Stop": [
                 {
-                    "matcher": "Edit|Write",
                     "hooks": [
                         {
                             "type": "command",
                             "command": _csegraph_hook_command(
                                 command,
-                                ["refresh", str(repo), "--profile", "small"],
+                                [
+                                    "refresh",
+                                    str(repo),
+                                    "--profile",
+                                    "small",
+                                    "--changed-from-git",
+                                ],
                             ),
                         }
                     ],
                 }
-            ],
-            "PreToolUse": [
-                {
-                    "matcher": "Bash",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": _csegraph_hook_command(command, ["status", str(repo)]),
-                        }
-                    ],
-                }
-            ],
+            ]
         }
     }
 
@@ -168,35 +162,27 @@ def _claude_hooks(command: str, repo: Path) -> dict[str, Any]:
 def _codex_hooks(command: str, repo: Path) -> dict[str, Any]:
     return {
         "hooks": {
-            "PostToolUse": [
+            "Stop": [
                 {
-                    "matcher": "Edit|Write|apply_patch",
                     "hooks": [
                         {
                             "type": "command",
                             "command": _csegraph_hook_command(
                                 command,
-                                ["refresh", str(repo), "--profile", "small"],
+                                [
+                                    "refresh",
+                                    str(repo),
+                                    "--profile",
+                                    "small",
+                                    "--changed-from-git",
+                                ],
                             ),
                             "timeout": 120,
-                            "statusMessage": "Refreshing CseGraph index",
+                            "statusMessage": "Refreshing CseGraph index after the agent turn",
                         }
                     ],
                 }
-            ],
-            "PreToolUse": [
-                {
-                    "matcher": "Bash",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": _csegraph_hook_command(command, ["status", str(repo)]),
-                            "timeout": 30,
-                            "statusMessage": "Checking CseGraph index",
-                        }
-                    ],
-                }
-            ],
+            ]
         }
     }
 
@@ -748,19 +734,24 @@ def _gitignore_covers(entry: str, text: str) -> bool:
 
 
 def _install_next_steps(platform: str, repo: Path) -> list[str]:
+    watcher_steps = [
+        f"Register the repository once with `csegraph registry register {repo}`.",
+        "Run `csegraph daemon start` for debounced continuous freshness.",
+        "The default hook performs one safety refresh when an agent turn ends; use `--no-hooks` to disable it.",
+    ]
     if platform == "auto":
-        return [
+        return watcher_steps + [
             "Open each configured client's MCP/tools settings and enable or approve the csegraph server.",
             "Confirm the six CseGraph tools are visible: csegraph_index, csegraph_refresh, csegraph_minimal, csegraph_context, csegraph_graph, and csegraph_path.",
             f"Run `csegraph doctor {repo} --platform auto --require-observed-call --json` after each host has called a CseGraph tool.",
         ]
     if platform == "vscode":
-        return [
+        return watcher_steps + [
             "Reload VS Code after installing or enabling the CseGraph extension recommendation.",
             "Confirm the CseGraph status bar and commands are available in the workspace.",
             f"Run `csegraph status {repo}` if the extension reports a stale or missing index.",
         ]
-    return [
+    return watcher_steps + [
         f"Open {platform}'s MCP/tools settings and enable or approve the csegraph server.",
         "Confirm the six CseGraph tools are visible: csegraph_index, csegraph_refresh, csegraph_minimal, csegraph_context, csegraph_graph, and csegraph_path.",
         f"Run `csegraph doctor {repo} --platform {platform} --require-observed-call --json` after the host has called a CseGraph tool.",

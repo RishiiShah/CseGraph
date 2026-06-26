@@ -62,6 +62,7 @@ class TestInstallHooks:
             content = hook.read_text(encoding="utf-8")
             assert HOOK_MARKER in content
             assert "csegraph refresh" in content
+            assert "--changed-from-git" in content
 
     def test_skips_already_installed(self, tmp_path):
         repo = _init_git_repo(tmp_path)

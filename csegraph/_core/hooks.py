@@ -16,7 +16,7 @@ HOOK_SCRIPT = f"""\
 # Auto-refresh csegraph index after git operations.
 # Installed by: csegraph install --hooks
 if command -v csegraph >/dev/null 2>&1; then
-    csegraph refresh . --profile small 2>/dev/null &
+    csegraph refresh . --profile small --changed-from-git 2>/dev/null &
 fi
 """
 
@@ -97,7 +97,7 @@ def uninstall_hooks(repo: str | Path) -> HooksResult:
 # Auto-refresh csegraph index after git operations.
 # Installed by: csegraph install --hooks
 if command -v csegraph >/dev/null 2>&1; then
-    csegraph refresh . --profile small 2>/dev/null &
+    csegraph refresh . --profile small --changed-from-git 2>/dev/null &
 fi"""
 
     for name in HOOK_NAMES:

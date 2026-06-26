@@ -83,9 +83,11 @@ def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: P
     }
     assert result.installed[0].platform == "cursor"
     assert result.installed[0].action == "updated"
-    assert "Open cursor's MCP/tools settings" in result.next_steps[0]
-    assert "six CseGraph tools" in result.next_steps[1]
-    assert "--platform cursor" in result.next_steps[2]
+    assert "registry register" in result.next_steps[0]
+    assert "daemon start" in result.next_steps[1]
+    assert "Open cursor's MCP/tools settings" in result.next_steps[3]
+    assert "six CseGraph tools" in result.next_steps[4]
+    assert "--platform cursor" in result.next_steps[5]
 
 
 @pytest.mark.parametrize("host_os", ["darwin", "linux", "win32"])
@@ -132,17 +134,16 @@ def test_codex_hooks_use_windows_safe_launcher(tmp_path: Path, monkeypatch) -> N
     McpInstallService(repo).install(platform="codex", dry_run=False)
 
     hooks = _read_json(repo / ".codex" / "hooks.json")["hooks"]
-    refresh = hooks["PostToolUse"][0]["hooks"][0]["command"]
-    status = hooks["PreToolUse"][0]["hooks"][0]["command"]
+    refresh = hooks["Stop"][0]["hooks"][0]["command"]
     assert refresh.startswith("cmd /D /C ")
     assert "csegraph.exe" in refresh
     assert " refresh " in refresh
     assert str(repo.resolve()) in refresh
     assert "--profile small" in refresh
+    assert "--changed-from-git" in refresh
     assert "git rev-parse" not in refresh
-    assert status.startswith("cmd /D /C ")
-    assert " status " in status
-    assert str(repo.resolve()) in status
+    assert "PostToolUse" not in hooks
+    assert "PreToolUse" not in hooks
 
 
 def test_copilot_install_uses_vscode_servers_key(tmp_path: Path) -> None:
@@ -209,10 +210,10 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
         "command": command,
         "args": _serve_args(repo, "copilot"),
     }
-    codex_hooks = _read_json(repo / ".codex" / "hooks.json")
-    assert "PostToolUse" in codex_hooks["hooks"]
-    assert "PreToolUse" in codex_hooks["hooks"]
-    assert "hooks" in _read_json(repo / ".claude" / "settings.json")
+    codex_hooks = _read_json(repo / ".codex" / "hooks.json")["hooks"]
+    claude_hooks = _read_json(repo / ".claude" / "settings.json")["hooks"]
+    assert set(codex_hooks) == {"Stop"}
+    assert set(claude_hooks) == {"Stop"}
     assert {
         path.name
         for path in repo.glob("*.md")
@@ -234,10 +235,12 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
     assert ".agents/mcp_config.json" in gitignore
     assert ".vscode/mcp.json" in gitignore
     assert ".claude/settings.json" in gitignore
+    assert ".csegraphinclude" in gitignore
     assert "AGENTS.md" in gitignore
     assert result.skipped == []
-    assert "each configured client's MCP/tools settings" in result.next_steps[0]
-    assert "--platform auto" in result.next_steps[2]
+    assert "registry register" in result.next_steps[0]
+    assert "daemon start" in result.next_steps[1]
+    assert "--platform auto" in result.next_steps[5]
     assert {target.platform for target in result.installed} == {
         "codex",
         "claude-code",
@@ -500,16 +503,14 @@ def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:
     assert result.installed[0].platform == "codex"
     assert result.installed[0].scope == "project"
     assert not (home / ".codex" / "config.toml").exists()
-    hooks = _read_json(repo / ".codex" / "hooks.json")
-    assert (
-        hooks["hooks"]["PostToolUse"][0]["hooks"][0]["statusMessage"] == "Refreshing CseGraph index"
-    )
-    assert hooks["hooks"]["PreToolUse"][0]["hooks"][0]["statusMessage"] == "Checking CseGraph index"
+    hooks = _read_json(repo / ".codex" / "hooks.json")["hooks"]
+    assert set(hooks) == {"Stop"}
     assert (repo / "AGENTS.md").exists()
     assert (repo / "CODEX.md").exists()
     gitignore = (repo / ".gitignore").read_text(encoding="utf-8")
     assert ".codex/config.toml" in gitignore
     assert ".codex/hooks.json" in gitignore
+    assert ".csegraphinclude" in gitignore
     assert "AGENTS.md" in gitignore
     assert "CODEX.md" in gitignore
 
@@ -536,21 +537,26 @@ def test_codex_install_merges_existing_hooks_json(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    McpInstallService(repo, command="env/bin/csegraph").install(platform="codex", dry_run=False)
-    McpInstallService(repo, command="env/bin/csegraph").install(platform="codex", dry_run=False)
+    McpInstallService(repo, command="env/bin/csegraph").install(
+        platform="codex", hooks=True, dry_run=False
+    )
+    McpInstallService(repo, command="env/bin/csegraph").install(
+        platform="codex", hooks=True, dry_run=False
+    )
 
     hooks = _read_json(hooks_path)["hooks"]
     assert hooks["Stop"][0]["hooks"][0]["command"] == "echo done"
     assert any(group.get("matcher") == "Bash" for group in hooks["PostToolUse"])
     csegraph_refresh_groups = [
         group
-        for group in hooks["PostToolUse"]
-        if group.get("hooks", [{}])[0].get("statusMessage") == "Refreshing CseGraph index"
+        for group in hooks["Stop"]
+        if group.get("hooks", [{}])[0].get("statusMessage")
+        == "Refreshing CseGraph index after the agent turn"
     ]
     assert len(csegraph_refresh_groups) == 1
     command = csegraph_refresh_groups[0]["hooks"][0]["command"]
     assert "git rev-parse" not in command
-    assert f"{command_path} refresh {repo.resolve()} --profile small" in command
+    assert f"{command_path} refresh {repo.resolve()} --profile small --changed-from-git" in command
 
 
 def test_install_updates_gitignore_without_duplicating_covered_paths(tmp_path: Path) -> None:
@@ -660,8 +666,7 @@ def test_hooks_creates_claude_settings(tmp_path: Path) -> None:
 
     settings = json.loads((repo / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert "hooks" in settings
-    assert "PostToolUse" in settings["hooks"]
-    assert "PreToolUse" in settings["hooks"]
+    assert set(settings["hooks"]) == {"Stop"}
 
 
 def test_hooks_preserves_existing_claude_settings(tmp_path: Path) -> None:

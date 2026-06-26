@@ -32,14 +32,18 @@ relevant code, dependencies, imports, nearby tests, and selection reasons.
 ## Quick Start
 
 ```bash
-pipx install csegraph
+pip install csegraph                         # or: uv tool install csegraph
 cd /path/to/your/repository
-csegraph install --platform codex
-csegraph index
+csegraph install --platform auto             # configure supported MCP clients
+csegraph index                               # parse your codebase
 ```
 
-Replace `codex` with your coding tool, or use `--platform auto` to configure
-every supported MCP client. Restart the client after installation.
+One command sets up your coding agent integrations. `install` detects supported
+MCP clients, writes the correct platform config, adds local agent instructions
+and verifies the generated MCP launcher. Freshness uses one persistent,
+debounced watcher plus one lightweight safety refresh at the end of an agent
+turn—never a refresh or status command after every tool call. Restart your editor
+or coding tool after installing.
 
 Then ask your agent to use CseGraph, or query it directly:
 
@@ -53,78 +57,49 @@ The local index is stored at `.csegraph/index.db` and should not be committed.
 
 ## Install
 
-CseGraph requires Python 3.10 or newer. The recommended installation method is
-`pipx`, which makes the CLI globally available while keeping its dependencies
-isolated.
-
-### macOS
+CseGraph requires Python 3.10 or newer. Install it from PyPI:
 
 ```bash
-brew install pipx
-pipx ensurepath
+pip install csegraph
+```
+
+Prefer an isolated CLI tool install? Use one of these instead:
+
+```bash
+uv tool install csegraph
 pipx install csegraph
 ```
 
-Close and reopen your terminal after `pipx ensurepath`.
-
-### Ubuntu and Debian
-
-```bash
-sudo apt update
-sudo apt install pipx
-pipx ensurepath
-pipx install csegraph
-```
-
-### Fedora
-
-```bash
-sudo dnf install pipx
-pipx ensurepath
-pipx install csegraph
-```
-
-### Arch Linux
-
-```bash
-sudo pacman -S python-pipx
-pipx ensurepath
-pipx install csegraph
-```
-
-Close and reopen your terminal after `pipx ensurepath`.
-
-### Windows
-
-Install [Python 3.10 or newer](https://www.python.org/downloads/windows/), then
-open PowerShell:
+On Windows, install [Python 3.10 or newer](https://www.python.org/downloads/windows/),
+then use PowerShell:
 
 ```powershell
-py -m pip install --user pipx
-py -m pipx ensurepath
-py -m pipx install csegraph
+py -m pip install csegraph
 ```
 
-Close and reopen PowerShell after `ensurepath`.
+If your shell cannot find `csegraph` after a pip install, add Python's scripts
+directory to your `PATH`, use `python3 -m pip install --user csegraph` on
+macOS/Linux, or use `uv tool install csegraph`.
 
-### Verify
+To run without a persistent install:
+
+```bash
+uvx csegraph --help
+```
+
+Verify the install:
 
 ```bash
 csegraph --help
 ```
 
-The base package includes Python, JavaScript, and TypeScript grammars. To install
-additional grammars, replace `csegraph` in the install command with one of:
+The base package includes Python, JavaScript, and TypeScript grammars. Add more
+grammars or pin the current release like this:
 
 ```bash
-pipx install "csegraph[go,rust]"
-pipx install "csegraph[all]"
-```
-
-To pin the current release exactly:
-
-```bash
-pipx install csegraph==1.8.0
+pip install "csegraph[go,rust]"
+pip install "csegraph[all]"
+pip install csegraph==1.8.1
 ```
 
 ## Set Up Your Coding Agent
@@ -146,9 +121,12 @@ index:
 | VS Code project files | `csegraph install --platform vscode` |
 
 The installer configures the MCP server, writes platform-scoped agent
-instructions and supported lifecycle hooks, verifies the generated `csegraph
-serve --repo <repo> --platform <client>` MCP launcher, and adds generated local
-files to `.gitignore`. Each client gets its own platform tag, so a Cursor MCP
+instructions, installs a lightweight end-of-turn refresh hook, verifies the
+generated `csegraph serve --repo <repo> --platform <client>` MCP launcher, and
+adds generated local files to `.gitignore`. Use `csegraph daemon start` for
+continuous freshness and `--no-hooks` to disable the safety refresh. Hook
+refreshes are bounded to git-detected changed paths, so they avoid full-repo
+scans during agent turns. Each client gets its own platform tag, so a Cursor MCP
 call is not treated as Codex setup. Antigravity IDE writes user-global config
 only when explicitly selected. Preview the changes without writing files:
 
@@ -165,8 +143,9 @@ launcher path even when the folder is not on your terminal `PATH`.
 csegraph install --platform codex --dry-run
 ```
 
-Use `--no-hooks`, `--no-instructions`, `--no-gitignore`, or `--no-verify` when
-you want a narrower setup. Diagnose a platform with:
+Use `--hooks` to install hooks for every supported agent, or
+`--no-hooks`, `--no-instructions`, `--no-gitignore`, or `--no-verify` to
+customize setup. Diagnose a platform with:
 
 ```bash
 csegraph doctor --platform auto --json
@@ -185,9 +164,9 @@ that platform's MCP server.
 ## How It Works
 
 ```mermaid
-flowchart LR
+flowchart TD
     A["Your repository"] --> B["Tree-sitter indexer"]
-    B --> C["Local SQLite dependency graph"]
+    B --> C["Local SQLite<br/>dependency graph"]
     C --> D["Minimal routing card"]
     D --> E["Task-specific context"]
     E --> F["Coding agent"]
@@ -244,6 +223,7 @@ See the [CLI and MCP reference](docs/csegraph.md) for every command and flag.
 | MCP integration | Six focused tools for indexing, refreshing, routing, context, neighborhoods, and paths |
 | Local-first storage | Repository indexes stay in `.csegraph/index.db` |
 | Monorepo scoping | Repeatable `--include-root` options limit indexing to selected subtrees |
+| Local context includes | `.csegraphinclude` safely opts selected ignored code or internal docs into the local index |
 | Multiple profiles | `auto`, `small`, `medium`, and `large` retrieval profiles |
 | Graph export | HTML, tree, JSON, GraphML, and Obsidian output |
 | Editor support | MCP setup for major coding agents plus a VS Code extension |

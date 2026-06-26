@@ -6,7 +6,7 @@ available on your PATH.
 ## Setup
 
 ```bash
-pipx install csegraph
+pip install csegraph                         # or: uv tool install csegraph
 csegraph install --platform auto
 csegraph install --platform codex --dry-run --json
 csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
@@ -15,26 +15,27 @@ csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
 Current package release: `1.8.1`. To install it exactly:
 
 ```bash
-pipx install csegraph==1.8.1
+pip install csegraph==1.8.1
 ```
 
 The base package includes Python, JavaScript, and TypeScript grammars. Install
 individual extras such as `csegraph[go,rust]`, or use `csegraph[all]` for every
 optional Tree-sitter grammar. See the
 [platform-specific installation guide](https://github.com/RishiiShah/CseGraph#install)
-for macOS, Linux, and Windows.
+for `pip`, `uv`, `pipx`, macOS, Linux, and Windows.
 
 Global `--verbose` and `--quiet` flags control diagnostic logging. Put them
 before the subcommand, for example `csegraph --verbose watch .`.
 
 `install` configures MCP clients to launch the real CseGraph CLI MCP server as
 `csegraph serve --repo <absolute repo> --platform <client>`, writes
-platform-scoped agent guidance, installs supported refresh/status lifecycle
-hooks, verifies the generated MCP tool surface by default, and adds generated
-setup paths plus `.csegraph/` to `.gitignore`. Use `--no-instructions`,
-`--no-hooks`, `--no-gitignore`, or `--no-verify` for a narrower MCP-only setup.
-The legacy `--instructions` and `--hooks` flags are still accepted when you want
-to force all supported instruction or hook targets.
+platform-scoped agent guidance, installs one lightweight refresh hook at the end
+of an agent turn, verifies the generated MCP tool surface by default, and adds
+generated setup paths plus `.csegraph/` to `.gitignore`. Continuous freshness is
+watcher-first: register the repository and run `csegraph daemon start`. Hooks do
+not run refresh or status after each edit or shell command; the end-of-turn hook
+refreshes only git-detected changed paths. Use `--no-hooks` to disable the
+safety refresh; `--hooks` forces hook installation for every supported agent.
 
 Generated MCP configs are intended to be ready to use on macOS, Linux, and
 Windows. The installer resolves the native absolute CLI path, including Windows
@@ -51,9 +52,9 @@ to target one client. Install commands write repo-local client config by
 default, including `.codex/`, `.cursor/`, `.gemini/`, `.kiro/`, `.agents/`,
 `.vscode/`, and `.mcp.json`. `antigravity-ide` is explicit opt-in because it
 writes user-global Antigravity IDE MCP config under `~/.gemini/config/`.
-Codex hooks are written to `.codex/hooks.json` so they show up in Codex's Hooks
-view after the project config layer is trusted. Review generated local setup
-before sharing logs or issue reproductions, and do not commit it.
+Codex hooks are written to `.codex/hooks.json` unless `--no-hooks` is selected.
+Review generated local setup before sharing logs or issue reproductions, and do
+not commit it.
 
 Use `doctor` to distinguish generated config from real protocol and host use:
 
@@ -98,6 +99,8 @@ csegraph refresh .
 csegraph refresh . --postprocess minimal --json
 csegraph postprocess . --level full --json
 csegraph watch .
+csegraph registry register .
+csegraph daemon start
 csegraph status . --verbose
 ```
 
@@ -327,8 +330,23 @@ negation.
 
 Discovery order: `git ls-files` (staged and committed, submodules on by default),
 then `svn list -R` as a backup for SVN working copies, then a directory walk.
-Untracked git and SVN files are not indexed until their VCS tracks them. Use
-`.csegraphignore` to exclude index entries from agent context.
+Untracked and gitignored files are denied by default: CseGraph does not parse or
+store their contents. A local `.csegraphinclude` is an explicit per-path consent
+list that can opt selected ignored paths into this machine's index:
+
+```gitignore
+# .csegraphinclude
+internal/architecture/**
+notes/current-design.md
+```
+
+Included Markdown, reStructuredText, AsciiDoc, and plain-text files are indexed
+as document context. Common secret and private-key paths (`.env*`, credentials,
+`*.key`, `*.pem`, and similar) remain blocked even when a broad pattern matches.
+Files larger than 2 MiB and symlinks are also rejected. Use
+`.csegraphignore` for hard exclusions from agent context. If no
+`.csegraphinclude` exists, no ignored file is read. Removing a path from the
+consent list and refreshing removes it from the index.
 
 | Variable | Effect |
 |----------|--------|
