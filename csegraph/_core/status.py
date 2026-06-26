@@ -11,6 +11,7 @@ from csegraph._core.corpus_health import (
     collect_index_metrics,
     index_age_hours,
 )
+from csegraph._core.ignore import audit_explicit_includes
 from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.repo_state import git_head_state
 
@@ -104,6 +105,9 @@ class StatusService:
                 warnings=warnings,
                 parse_errors=parse_errors,
                 index_health=health,
+                local_context=(
+                    audit_explicit_includes(Path(repo_root)) if Path(repo_root).exists() else {}
+                ),
             )
         finally:
             conn.close()

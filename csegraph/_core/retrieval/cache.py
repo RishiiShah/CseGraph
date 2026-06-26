@@ -80,7 +80,7 @@ class SnapshotManager:
         symbols_light = {
             k: v
             for k, v in node_rows_light.items()
-            if v.get("kind") in ("class", "function", "method", "test")
+            if v.get("kind") in ("class", "function", "method", "test", "document")
         }
 
         summaries = load_summaries(index)

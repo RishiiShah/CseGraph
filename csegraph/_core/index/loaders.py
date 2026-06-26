@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from csegraph._core.index.repository import ProjectIndex
 
-SYMBOL_TYPES = ("class", "function", "method", "test")
+SYMBOL_TYPES = ("class", "function", "method", "test", "document")
 
 
 def load_nodes(

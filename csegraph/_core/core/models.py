@@ -404,6 +404,7 @@ class StatusResult:
     warnings: List[str] = field(default_factory=list)
     parse_errors: Dict[str, str] = field(default_factory=dict)
     index_health: Optional[IndexHealth] = None
+    local_context: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

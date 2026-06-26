@@ -368,7 +368,7 @@ def _find_dependent_files(
         JOIN nodes n ON n.id = e.source
         WHERE e.target IN ({placeholders})
           AND e.relation IN ('calls', 'imports', 'inherits')
-          AND n.type IN ('file', 'class', 'function', 'method', 'test')
+          AND n.type IN ('file', 'class', 'function', 'method', 'test', 'document')
           AND n.path IS NOT NULL
         LIMIT ?
         """,
@@ -574,7 +574,7 @@ def _load_symbol_lookup(index: ProjectIndex, batch: _WriteBatch) -> None:
     for row in index.conn.execute(
         """
         SELECT id, name, path, type FROM nodes
-        WHERE type IN ('class','function','method')
+        WHERE type IN ('class','function','method','document')
         """,
     ):
         batch.symbol_by_name[row["name"]].append(row["id"])

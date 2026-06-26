@@ -18,6 +18,7 @@ class LanguageRegistry:
         self._parsers: List[Parser] = []
         self._tokenizers: Dict[str, Tokenizer] = {}
         self._ext_to_parser: Dict[str, Parser] = {}
+        self._explicit_only_extensions: Set[str] = set()
 
     def register(self, parser: Parser, tokenizer: Tokenizer) -> None:
         self._parsers.append(parser)
@@ -25,6 +26,10 @@ class LanguageRegistry:
         for ext in parser.extensions:
             if ext not in self._ext_to_parser:
                 self._ext_to_parser[ext] = parser
+
+    def register_explicit(self, parser: Parser, tokenizer: Tokenizer) -> None:
+        self.register(parser, tokenizer)
+        self._explicit_only_extensions.update(parser.extensions)
 
     def for_extension(self, ext: str) -> Parser:
         try:
@@ -46,6 +51,10 @@ class LanguageRegistry:
             ext = os.path.splitext(rel_path)[1]
             parser = self._ext_to_parser.get(ext)
             if parser is None:
+                continue
+            if ext in self._explicit_only_extensions and not ignore.is_explicitly_included(
+                rel_path
+            ):
                 continue
             if parser.excludes_rel_path(rel_path):
                 continue
