@@ -207,7 +207,10 @@ def _apply_session_filter(result: dict[str, Any]) -> None:
         if not isinstance(items, list):
             continue
         result[key] = [
-            item for item in items if not (isinstance(item, dict) and item.get("tool") in called)
+            item
+            for item in items
+            if (isinstance(item, dict) and item.get("action") == "expand_context")
+            or not (isinstance(item, dict) and item.get("tool") in called)
         ]
     result["tools_already_called"] = _SESSION.snapshot()
 
@@ -617,6 +620,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 max_tokens=arguments.get("max_tokens"),
                 explain=arguments.get("explain", False),
                 detail_level=arguments.get("detail_level", "auto"),
+                task_kind=arguments.get("task_kind", "auto"),
             )
         )
 

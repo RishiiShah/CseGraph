@@ -638,6 +638,7 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
         "",
         f"Query: {request.get('task', payload.get('query', ''))}",
         f"Target: `{target.get('id', payload.get('target', ''))}`",
+        f"Task kind: `{request.get('task_kind', payload.get('intent', 'auto'))}`",
         f"Requested detail: `{request.get('detail_level', payload.get('detail_level', 'auto'))}`",
         f"Returned detail: `{request.get('returned_detail_level', payload.get('returned_detail_level', 'minimal'))}`",
         f"Total estimated tokens: {budgets.get('total_estimated_tokens', payload.get('total_estimated_tokens', 0))}",
@@ -658,6 +659,23 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
         for warning in warnings:
             lines.append(f"- {warning}")
         lines.append("")
+
+    edit_ready = (payload.get("sufficiency") or {}).get("edit_ready")
+    if edit_ready is not None:
+        lines.extend([f"Edit ready: {edit_ready}", ""])
+
+    _append_context_items(lines, "Edit Targets", payload.get("edit_targets"))
+
+    impact = payload.get("impact") or {}
+    if isinstance(impact, dict) and impact:
+        lines.extend(["## Impact", ""])
+        for category, items in impact.items():
+            lines.extend([f"### {str(category).replace('_', ' ').title()}", ""])
+            _append_context_item_values(lines, items)
+        lines.append("")
+
+    _append_context_items(lines, "Affected Tests", payload.get("affected_tests"))
+    _append_context_items(lines, "Missing Context", payload.get("missing_context"))
 
     recovery = (payload.get("sufficiency") or {}).get("recovery") or []
     if recovery:
@@ -720,6 +738,52 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
     for rank, node in enumerate(symbols, start=1):
         lines.extend(_render_node(rank, node))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _append_context_items(lines: List[str], title: str, items: Any) -> None:
+    if not items:
+        return
+    lines.extend([f"## {title}", ""])
+    _append_context_item_values(lines, items)
+    lines.append("")
+
+
+def _append_context_item_values(lines: List[str], items: Any) -> None:
+    values = items if isinstance(items, list) else [items]
+    for item in values:
+        if isinstance(item, dict):
+            lines.append(f"- `{_context_item_label(item)}`")
+            details = {
+                key: value
+                for key, value in item.items()
+                if key not in {"id", "name", "symbol", "source_text"} and value not in (None, "")
+            }
+            if details:
+                rendered = json.dumps(details, indent=2, sort_keys=True, default=str)
+                lines.extend(["", "  ```json", *[f"  {line}" for line in rendered.splitlines()], "  ```"])
+            source_text = item.get("source_text")
+            if source_text:
+                language = item.get("language") or ""
+                lines.extend(
+                    [
+                        "",
+                        f"  ```{language}",
+                        *[f"  {line}" for line in str(source_text).rstrip().splitlines()],
+                        "  ```",
+                    ]
+                )
+        else:
+            lines.append(f"- {item}")
+
+
+def _context_item_label(item: Dict[str, Any]) -> str:
+    return str(
+        item.get("id")
+        or item.get("name")
+        or item.get("symbol")
+        or item.get("path")
+        or "context"
+    )
 
 
 def _render_next_action(action: Dict[str, Any]) -> str:

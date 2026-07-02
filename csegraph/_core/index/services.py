@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import json
+import textwrap
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -13,7 +15,9 @@ from csegraph._core.core.models import IndexResult, RefreshResult
 from csegraph._core.discovery import is_discoverable_rel_path, iter_discoverable_rel_paths
 from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.cache import ExtractionCache
+from csegraph._core.index.migrations import migrate_schema
 from csegraph._core.index.repository import ProjectIndex, json_dumps
+from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 from csegraph._core.languages.treesitter.languages import LANGUAGE_SPECS, is_language_available
 from csegraph._core.languages.types import (
@@ -35,6 +39,39 @@ class _WriteBatch:
     symbol_by_name: Dict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
     node_to_file_node: Dict[str, str] = field(default_factory=dict)
     node_kind_by_id: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _ImportBinding:
+    import_name: str
+    local_name: str
+    imported_name: str
+    qualified_name: Optional[str]
+    binding_kind: str
+    resolved_file_id: Optional[str]
+    resolved_symbol_id: Optional[str]
+    resolution_status: str
+    start_line: int
+    end_line: int
+    source: str
+    metadata: Dict[str, object]
+
+
+@dataclass(frozen=True)
+class _TargetResolution:
+    target: Optional[str]
+    status: str
+    strategy: str
+    candidates: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _AssertionEvidence:
+    kind: str
+    expression: str
+    start_line: int
+    end_line: int
+    call_names: tuple[str, ...]
 
 
 class IndexService:
@@ -88,6 +125,7 @@ class IndexService:
 
             start = time.perf_counter()
             index.clear_graph()
+            _clear_impact_index(index)
             timings_ms["clear_graph"] = _elapsed_ms(start)
 
             start = time.perf_counter()
@@ -142,6 +180,7 @@ class RefreshService:
         index = ProjectIndex(self.db_path)
         timings_ms: Dict[str, float] = {}
         try:
+            _migrate_supported_schema(index)
             index.initialize_schema()
             metadata = index.metadata()
             repo_root = Path(metadata["root_dir"]).resolve()
@@ -263,15 +302,30 @@ class RefreshService:
                 )
 
             start = time.perf_counter()
+            impact_snapshot = _snapshot_refresh_impact(index, [*changed, *deleted])
+            old_symbol_ids = [str(row["symbol_id"]) for row in impact_snapshot]
+            pre_dependents: List[str] = []
+            pre_dependents_cap_hit = False
+            if old_symbol_ids and dependents_limit > 0:
+                pre_dependents, pre_dependents_cap_hit = _find_dependent_files(
+                    index,
+                    old_symbol_ids,
+                    set(changed) | set(deleted),
+                    dependents_limit,
+                )
+
             changed_symbols: List[str] = []
             for rel_path in deleted:
+                _delete_file_impact_payload(index, rel_path)
                 changed_symbols.extend(index.delete_file_payload(rel_path, remove_incoming=True))
             for rel_path in changed:
+                _delete_file_impact_payload(index, rel_path)
                 changed_symbols.extend(index.delete_file_payload(rel_path, remove_incoming=False))
             timings_ms["delete_old"] = _elapsed_ms(start)
 
             start = time.perf_counter()
             stats = _write_parsed_files(index, str(repo_root), parsed_changed)
+            _finalize_symbol_history(index, impact_snapshot)
             index.cleanup_orphan_edges()
             index.cleanup_orphan_folders()
             timings_ms["write_graph"] = _elapsed_ms(start)
@@ -283,15 +337,19 @@ class RefreshService:
             # --- P5-4: bounded dependent expansion ---
             start = time.perf_counter()
             dependents_expanded = 0
-            dependents_cap_hit = False
+            dependents_cap_hit = pre_dependents_cap_hit
             if changed_symbols and dependents_limit > 0:
-                dep_files, cap_hit = _find_dependent_files(
-                    index,
-                    changed_symbols,
-                    set(changed) | set(deleted),
-                    dependents_limit,
-                )
-                dependents_cap_hit = cap_hit
+                dep_files = list(pre_dependents)
+                remaining = max(0, dependents_limit - len(dep_files))
+                if remaining and not dependents_cap_hit:
+                    post_files, cap_hit = _find_dependent_files(
+                        index,
+                        changed_symbols,
+                        set(changed) | set(deleted) | set(dep_files),
+                        remaining,
+                    )
+                    dep_files.extend(post_files)
+                    dependents_cap_hit = cap_hit
                 if dep_files:
                     dep_parsed: List[ParsedFile] = []
                     for rel_path in dep_files:
@@ -306,6 +364,7 @@ class RefreshService:
                             continue
                     if dep_parsed:
                         for parsed in dep_parsed:
+                            _delete_file_impact_payload(index, parsed.rel_path)
                             index.delete_file_payload(parsed.rel_path, remove_incoming=False)
                         dep_stats = _write_parsed_files(index, str(repo_root), dep_parsed)
                         index.cleanup_orphan_edges()
@@ -347,6 +406,234 @@ class RefreshService:
             CACHE.clear(self.db_path)
 
 
+def _migrate_supported_schema(index: ProjectIndex) -> None:
+    metadata_exists = index.conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metadata'"
+    ).fetchone()
+    if not metadata_exists:
+        return
+    row = index.conn.execute(
+        "SELECT value FROM metadata WHERE key = 'schema_version'"
+    ).fetchone()
+    if row is None or row["value"] == SCHEMA_VERSION:
+        return
+    migrate_schema(index.conn, row["value"])
+    index.conn.commit()
+
+
+def _clear_impact_index(index: ProjectIndex) -> None:
+    for table_name in (
+        "test_assertions",
+        "edge_occurrences",
+        "import_bindings",
+        "symbol_history",
+    ):
+        index.conn.execute(f"DELETE FROM {table_name}")
+    index.conn.commit()
+
+
+def _snapshot_refresh_impact(
+    index: ProjectIndex,
+    rel_paths: Sequence[str],
+) -> List[Dict[str, object]]:
+    if not rel_paths:
+        return []
+    placeholders = ",".join("?" for _ in rel_paths)
+    snapshots = [
+        dict(row)
+        for row in index.conn.execute(
+            f"""
+            SELECT
+                id AS symbol_id, file_id, path, kind, name, signature,
+                source_hash, start_line, end_line, metadata
+            FROM symbols
+            WHERE path IN ({placeholders})
+            """,
+            tuple(rel_paths),
+        )
+    ]
+    if not snapshots:
+        return []
+
+    now = time.time()
+    history_rows = [
+        (
+            row["symbol_id"],
+            row["file_id"],
+            row["path"],
+            row["kind"],
+            row["name"],
+            row["signature"],
+            row["source_hash"],
+            row["start_line"],
+            row["end_line"],
+            row["metadata"],
+            now,
+        )
+        for row in snapshots
+    ]
+    index.conn.executemany(
+        """
+        INSERT INTO symbol_history(
+            symbol_id, file_id, path, kind, name, signature, source_hash,
+            start_line, end_line, state, replaced_by, metadata, recorded_at
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'superseded', NULL, ?, ?)
+        ON CONFLICT(symbol_id, source_hash) DO UPDATE SET
+            state = 'superseded',
+            replaced_by = NULL,
+            recorded_at = excluded.recorded_at
+        """,
+        history_rows,
+    )
+    _preserve_stale_impact_evidence(
+        index,
+        [str(row["symbol_id"]) for row in snapshots],
+    )
+    index.conn.commit()
+    return snapshots
+
+
+def _preserve_stale_impact_evidence(
+    index: ProjectIndex,
+    symbol_ids: Sequence[str],
+) -> None:
+    if not symbol_ids:
+        return
+    placeholders = ",".join("?" for _ in symbol_ids)
+    params = tuple(symbol_ids)
+    index.conn.execute(
+        f"""
+        UPDATE OR REPLACE edge_occurrences
+        SET is_stale = 1,
+            resolution_status = 'stale_target',
+            resolution_strategy = 'refresh_snapshot'
+        WHERE target IN ({placeholders})
+        """,
+        params,
+    )
+
+    rows = index.conn.execute(
+        f"""
+        SELECT
+            COALESCE(r.enclosing_symbol_id, r.source_file_id) AS occurrence_source,
+            r.target,
+            r.kind,
+            r.source_file_id,
+            r.enclosing_symbol_id,
+            r.name,
+            r.start_line,
+            r.end_line,
+            r.source AS source_text,
+            r.metadata
+        FROM symbol_references r
+        WHERE r.target IN ({placeholders})
+          AND r.kind IN ('calls', 'inherits', 'decorates', 'tested_by')
+        """,
+        params,
+    ).fetchall()
+    if not rows:
+        return
+    index.conn.executemany(
+        """
+        INSERT OR REPLACE INTO edge_occurrences(
+            source, target, relation, source_file_id, enclosing_symbol_id,
+            name, start_line, end_line, source_text, resolution_status,
+            resolution_strategy, candidate_targets, is_stale, metadata
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'stale_target',
+               'refresh_snapshot', ?, 1, ?)
+        """,
+        [
+            (
+                row["occurrence_source"],
+                row["target"],
+                row["kind"],
+                row["source_file_id"],
+                row["enclosing_symbol_id"],
+                row["name"],
+                row["start_line"],
+                row["end_line"],
+                row["source_text"],
+                json.dumps([row["target"]]),
+                json_dumps(
+                    {
+                        "stale_reason": "target_changed_or_deleted",
+                        "previous_metadata": row["metadata"],
+                    }
+                ),
+            )
+            for row in rows
+        ],
+    )
+
+
+def _delete_file_impact_payload(index: ProjectIndex, rel_path: str) -> None:
+    file_id = file_node_id(rel_path)
+    index.conn.execute("DELETE FROM import_bindings WHERE file_id = ?", (file_id,))
+    index.conn.execute("DELETE FROM test_assertions WHERE source_file_id = ?", (file_id,))
+    index.conn.execute(
+        "DELETE FROM edge_occurrences WHERE source_file_id = ? AND is_stale = 0",
+        (file_id,),
+    )
+
+
+def _finalize_symbol_history(
+    index: ProjectIndex,
+    snapshots: Sequence[Dict[str, object]],
+) -> None:
+    for snapshot in snapshots:
+        symbol_id = str(snapshot["symbol_id"])
+        source_hash = str(snapshot["source_hash"])
+        raw_start_line = snapshot.get("start_line")
+        raw_end_line = snapshot.get("end_line")
+        start_line = raw_start_line if isinstance(raw_start_line, int) else 0
+        end_line = raw_end_line if isinstance(raw_end_line, int) else start_line
+        current = index.conn.execute(
+            "SELECT source_hash FROM symbols WHERE id = ?",
+            (symbol_id,),
+        ).fetchone()
+        if current is not None:
+            if current["source_hash"] == source_hash:
+                index.conn.execute(
+                    """
+                    UPDATE symbol_history
+                    SET state = 'active', replaced_by = NULL
+                    WHERE symbol_id = ? AND source_hash = ?
+                    """,
+                    (symbol_id, source_hash),
+                )
+            continue
+
+        replacement = index.conn.execute(
+            """
+            SELECT id
+            FROM symbols
+            WHERE path = ? AND kind = ?
+              AND COALESCE(end_line, start_line, 0) >= ?
+              AND COALESCE(start_line, end_line, 0) <= ?
+            ORDER BY ABS(COALESCE(start_line, 0) - ?), id
+            LIMIT 1
+            """,
+            (
+                snapshot["path"],
+                snapshot["kind"],
+                max(0, start_line - 1),
+                end_line + 1,
+                start_line,
+            ),
+        ).fetchone()
+        index.conn.execute(
+            """
+            UPDATE symbol_history
+            SET state = 'tombstone', replaced_by = ?
+            WHERE symbol_id = ? AND source_hash = ?
+            """,
+            (replacement["id"] if replacement else None, symbol_id, source_hash),
+        )
+    index.conn.commit()
+
+
 def _find_dependent_files(
     index: ProjectIndex,
     changed_symbol_ids: List[str],
@@ -365,14 +652,31 @@ def _find_dependent_files(
         f"""
         SELECT DISTINCT n.path
         FROM edges e
-        JOIN nodes n ON n.id = e.source
-        WHERE e.target IN ({placeholders})
-          AND e.relation IN ('calls', 'imports', 'inherits')
+        JOIN nodes n ON n.id = CASE
+            WHEN e.target IN ({placeholders}) THEN e.source
+            WHEN e.source IN ({placeholders}) AND e.relation = 'tested_by' THEN e.target
+        END
+        WHERE (
+              (
+                e.target IN ({placeholders})
+                AND e.relation IN ('calls', 'imports', 'inherits', 'decorates')
+              )
+              OR (
+                e.source IN ({placeholders})
+                AND e.relation = 'tested_by'
+              )
+            )
           AND n.type IN ('file', 'class', 'function', 'method', 'test', 'document')
           AND n.path IS NOT NULL
         LIMIT ?
         """,
-        (*changed_symbol_ids, limit + 1),
+        (
+            *changed_symbol_ids,
+            *changed_symbol_ids,
+            *changed_symbol_ids,
+            *changed_symbol_ids,
+            limit + 1,
+        ),
     ).fetchall()
 
     dep_paths = []
@@ -592,6 +896,7 @@ def _insert_symbol_nodes(
 ) -> None:
     symbol_node_rows: List[tuple] = []
     symbol_rows: List[tuple] = []
+    history_rows: List[tuple] = []
     for parsed in parsed_files:
         tokenizer = registry.tokenizer_for(parsed.language)
         for symbol in parsed.symbols:
@@ -634,6 +939,21 @@ def _insert_symbol_nodes(
                     symbol.source_hash,
                     metadata,
                     1 if symbol.is_test else 0,
+                    now,
+                )
+            )
+            history_rows.append(
+                (
+                    symbol.node_id,
+                    file_node_id(parsed.rel_path),
+                    parsed.rel_path,
+                    symbol.kind,
+                    symbol.name,
+                    symbol.signature,
+                    symbol.source_hash,
+                    symbol.start_line,
+                    symbol.end_line,
+                    metadata,
                     now,
                 )
             )
@@ -710,6 +1030,29 @@ def _insert_symbol_nodes(
             """,
             symbol_rows,
         )
+    if history_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO symbol_history(
+                symbol_id, file_id, path, kind, name, signature, source_hash,
+                start_line, end_line, state, replaced_by, metadata, recorded_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?)
+            ON CONFLICT(symbol_id, source_hash) DO UPDATE SET
+                file_id = excluded.file_id,
+                path = excluded.path,
+                kind = excluded.kind,
+                name = excluded.name,
+                signature = excluded.signature,
+                start_line = excluded.start_line,
+                end_line = excluded.end_line,
+                state = 'active',
+                replaced_by = NULL,
+                metadata = excluded.metadata,
+                recorded_at = excluded.recorded_at
+            """,
+            history_rows,
+        )
 
 
 def _flush_summary_and_lexical_rows(index: ProjectIndex, batch: _WriteBatch) -> None:
@@ -751,7 +1094,10 @@ def _insert_edges(
     module_to_file_id = _module_to_file_id(index)
     edge_rows: List[tuple] = list(structural_edges)
     import_rows: List[tuple] = []
+    import_binding_rows: List[tuple] = []
     reference_rows: List[tuple] = []
+    occurrence_rows: List[tuple] = []
+    assertion_rows: List[tuple] = []
     for parsed in parsed_files:
         try:
             parser = registry.for_extension(Path(parsed.rel_path).suffix)
@@ -767,8 +1113,7 @@ def _insert_edges(
             )
             edge_rows.append(_edge(source, symbol.node_id, "contains"))
 
-        imported_file_ids: List[str] = []
-        import_aliases: Dict[str, str] = {}
+        bindings_by_local: Dict[str, List[_ImportBinding]] = defaultdict(list)
         import_records = _normalized_import_records(parsed)
         for import_record in import_records:
             import_name = import_record.name
@@ -789,10 +1134,52 @@ def _insert_edges(
                     json_dumps(import_record.metadata),
                 )
             )
+            bindings = _import_bindings_for(
+                import_record,
+                target_file_id,
+                batch,
+            )
+            for binding in bindings:
+                bindings_by_local[binding.local_name].append(binding)
+                import_binding_rows.append(
+                    (
+                        current_file_id,
+                        binding.import_name,
+                        binding.local_name,
+                        binding.imported_name,
+                        binding.qualified_name,
+                        binding.binding_kind,
+                        binding.resolved_file_id,
+                        binding.resolved_symbol_id,
+                        binding.resolution_status,
+                        binding.start_line,
+                        binding.end_line,
+                        binding.source,
+                        json_dumps(binding.metadata),
+                    )
+                )
+            import_status = "resolved" if target_file_id else "external"
+            occurrence_rows.append(
+                _edge_occurrence(
+                    current_file_id,
+                    target_file_id,
+                    "imports",
+                    current_file_id,
+                    None,
+                    import_name,
+                    import_record.start_line,
+                    import_record.end_line,
+                    import_record.source,
+                    _TargetResolution(
+                        target_file_id,
+                        import_status,
+                        "local_module" if target_file_id else "external_module",
+                        (target_file_id,) if target_file_id else (),
+                    ),
+                    import_record.metadata,
+                )
+            )
             if target_file_id:
-                if target_file_id not in imported_file_ids:
-                    imported_file_ids.append(target_file_id)
-                import_aliases.update(_import_aliases(import_record))
                 edge_rows.append(
                     _edge(
                         current_file_id,
@@ -813,45 +1200,86 @@ def _insert_edges(
             ("decorators", "decorates", "decorator", True),
         ]
         for symbol in parsed.symbols:
+            call_resolutions: Dict[str, _TargetResolution] = {}
             for attr, relation, meta_key, reverse in _SYMBOL_EDGE_SPECS:
                 for name in getattr(symbol, attr):
-                    target = _pick_call_target(
-                        import_aliases.get(name, name),
+                    resolution = _resolve_call_target(
+                        name,
                         current_file_id,
                         batch.symbol_by_name,
                         batch.node_to_file_node,
                         batch.node_kind_by_id,
-                        imported_file_ids,
+                        bindings_by_local,
                     )
+                    if relation == "calls":
+                        call_resolutions[name] = resolution
+                    references = _references_for(symbol, relation, name)
+                    target = resolution.target
                     if target and target != symbol.node_id:
                         src, tgt = (target, symbol.node_id) if reverse else (symbol.node_id, target)
-                        edge_rows.append(_edge(src, tgt, relation, {meta_key: name}))
-                        for reference in _references_for(symbol, relation, name):
-                            reference_rows.append(
-                                _reference(
-                                    current_file_id,
-                                    symbol.node_id,
-                                    target,
-                                    relation,
-                                    name,
-                                    reference.start_line,
-                                    reference.end_line,
-                                    reference.source,
-                                    reference.metadata,
-                                )
+                        first_reference = references[0]
+                        edge_rows.append(
+                            _edge(
+                                src,
+                                tgt,
+                                relation,
+                                {
+                                    meta_key: name,
+                                    "start_line": first_reference.start_line,
+                                    "end_line": first_reference.end_line,
+                                    "source": first_reference.source,
+                                    "resolution_strategy": resolution.strategy,
+                                },
                             )
+                        )
+                    for reference in references:
+                        evidence_metadata = {
+                            **reference.metadata,
+                            "resolution_status": resolution.status,
+                            "resolution_strategy": resolution.strategy,
+                            "candidate_targets": list(resolution.candidates),
+                        }
+                        reference_rows.append(
+                            _reference(
+                                current_file_id,
+                                symbol.node_id,
+                                target,
+                                relation,
+                                name,
+                                reference.start_line,
+                                reference.end_line,
+                                reference.source,
+                                evidence_metadata,
+                            )
+                        )
+                        occurrence_rows.append(
+                            _edge_occurrence(
+                                symbol.node_id,
+                                target,
+                                relation,
+                                current_file_id,
+                                symbol.node_id,
+                                name,
+                                reference.start_line,
+                                reference.end_line,
+                                reference.source,
+                                resolution,
+                                reference.metadata,
+                            )
+                        )
             if symbol.is_test:
                 for call in symbol.calls:
-                    target = _pick_call_target(
-                        import_aliases.get(call, call),
+                    resolution = call_resolutions.get(call) or _resolve_call_target(
+                        call,
                         current_file_id,
                         batch.symbol_by_name,
                         batch.node_to_file_node,
                         batch.node_kind_by_id,
-                        imported_file_ids,
+                        bindings_by_local,
                     )
+                    target = resolution.target
+                    references = _test_references_for(symbol, call)
                     if target and target != symbol.node_id:
-                        references = _test_references_for(symbol, call)
                         first_reference = references[0]
                         edge_rows.append(
                             _edge(
@@ -863,23 +1291,77 @@ def _insert_edges(
                                     "start_line": first_reference.start_line,
                                     "end_line": first_reference.end_line,
                                     "source": first_reference.source,
+                                    "resolution_strategy": resolution.strategy,
                                 },
                             )
                         )
-                        for reference in references:
-                            reference_rows.append(
-                                _reference(
-                                    current_file_id,
-                                    symbol.node_id,
-                                    target,
-                                    "tested_by",
-                                    call,
-                                    reference.start_line,
-                                    reference.end_line,
-                                    reference.source,
-                                    reference.metadata,
-                                )
+                    for reference in references:
+                        evidence_metadata = {
+                            **reference.metadata,
+                            "resolution_status": resolution.status,
+                            "resolution_strategy": resolution.strategy,
+                            "candidate_targets": list(resolution.candidates),
+                        }
+                        reference_rows.append(
+                            _reference(
+                                current_file_id,
+                                symbol.node_id,
+                                target,
+                                "tested_by",
+                                call,
+                                reference.start_line,
+                                reference.end_line,
+                                reference.source,
+                                evidence_metadata,
                             )
+                        )
+                        occurrence_rows.append(
+                            _edge_occurrence(
+                                symbol.node_id,
+                                target,
+                                "tested_by",
+                                current_file_id,
+                                symbol.node_id,
+                                call,
+                                reference.start_line,
+                                reference.end_line,
+                                reference.source,
+                                resolution,
+                                reference.metadata,
+                            )
+                        )
+
+                for assertion in _test_assertion_evidence(symbol):
+                    if not assertion.call_names:
+                        assertion_rows.append(
+                            _test_assertion_row(
+                                symbol,
+                                current_file_id,
+                                assertion,
+                                None,
+                                _TargetResolution(None, "unresolved", "no_call"),
+                                None,
+                            )
+                        )
+                    for call_name in assertion.call_names:
+                        resolution = call_resolutions.get(call_name) or _resolve_call_target(
+                            call_name,
+                            current_file_id,
+                            batch.symbol_by_name,
+                            batch.node_to_file_node,
+                            batch.node_kind_by_id,
+                            bindings_by_local,
+                        )
+                        assertion_rows.append(
+                            _test_assertion_row(
+                                symbol,
+                                current_file_id,
+                                assertion,
+                                resolution.target,
+                                resolution,
+                                call_name,
+                            )
+                        )
 
     if edge_rows:
         index.conn.executemany(
@@ -907,6 +1389,18 @@ def _insert_edges(
             """,
             import_rows,
         )
+    if import_binding_rows:
+        index.conn.executemany(
+            """
+            INSERT OR REPLACE INTO import_bindings(
+                file_id, import_name, local_name, imported_name, qualified_name,
+                binding_kind, resolved_file_id, resolved_symbol_id, resolution_status,
+                start_line, end_line, source, metadata
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            import_binding_rows,
+        )
     if reference_rows:
         index.conn.executemany(
             """
@@ -917,6 +1411,30 @@ def _insert_edges(
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             reference_rows,
+        )
+    if occurrence_rows:
+        index.conn.executemany(
+            """
+            INSERT OR REPLACE INTO edge_occurrences(
+                source, target, relation, source_file_id, enclosing_symbol_id,
+                name, start_line, end_line, source_text, resolution_status,
+                resolution_strategy, candidate_targets, is_stale, metadata
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            occurrence_rows,
+        )
+    if assertion_rows:
+        index.conn.executemany(
+            """
+            INSERT OR REPLACE INTO test_assertions(
+                test_symbol_id, source_file_id, target_symbol_id, assertion_kind,
+                expression, start_line, end_line, resolution_status,
+                candidate_targets, metadata
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            assertion_rows,
         )
 
 
@@ -934,24 +1452,92 @@ def _normalized_import_records(parsed: ParsedFile) -> List[ParsedImport]:
     ]
 
 
-def _import_aliases(import_record: ParsedImport) -> Dict[str, str]:
-    aliases: Dict[str, str] = {}
-    raw_aliases = import_record.metadata.get("aliases")
-    if isinstance(raw_aliases, dict):
-        for local, target in raw_aliases.items():
-            if isinstance(local, str) and isinstance(target, str) and target != "*":
-                aliases[local] = _symbol_name_from_import_target(target)
+def _import_bindings_for(
+    import_record: ParsedImport,
+    resolved_file_id: Optional[str],
+    batch: _WriteBatch,
+) -> List[_ImportBinding]:
+    metadata = import_record.metadata
+    raw_bindings = metadata.get("imports")
+    binding_specs: List[Dict[str, object]] = []
+    if isinstance(raw_bindings, list):
+        binding_specs.extend(item for item in raw_bindings if isinstance(item, dict))
 
-    raw_imports = import_record.metadata.get("imports")
-    if isinstance(raw_imports, list):
-        for item in raw_imports:
-            if not isinstance(item, dict):
-                continue
-            local = item.get("local")
-            target = item.get("qualified") or item.get("name")
-            if isinstance(local, str) and isinstance(target, str) and target != "*":
-                aliases[local] = _symbol_name_from_import_target(target)
-    return aliases
+    if not binding_specs:
+        imported_name = str(
+            metadata.get("imported_name") or _symbol_name_from_import_target(import_record.name)
+        )
+        local_name = str(metadata.get("local_name") or imported_name)
+        binding_specs.append(
+            {
+                "name": imported_name,
+                "local": local_name,
+                "qualified": metadata.get("module") or import_record.name,
+            }
+        )
+
+    bindings: List[_ImportBinding] = []
+    for spec in binding_specs:
+        imported_name = str(spec.get("name") or metadata.get("imported_name") or "")
+        local_name = str(spec.get("local") or imported_name)
+        qualified_name = spec.get("qualified")
+        if not isinstance(qualified_name, str):
+            module = metadata.get("module")
+            if isinstance(module, str) and imported_name not in {"", "*", "default"}:
+                qualified_name = f"{module}.{imported_name}"
+            elif isinstance(module, str):
+                qualified_name = module
+            else:
+                qualified_name = None
+
+        if imported_name == "*" or metadata.get("namespace") == local_name:
+            binding_kind = "namespace"
+        elif imported_name == "default":
+            binding_kind = "default"
+        elif metadata.get("style") in {"import", "require"}:
+            binding_kind = "module"
+        else:
+            binding_kind = "named"
+
+        candidates = _candidates_in_file(
+            imported_name,
+            resolved_file_id,
+            batch.symbol_by_name,
+            batch.node_to_file_node,
+        )
+        if len(candidates) == 1:
+            resolved_symbol_id = candidates[0]
+            status = "resolved"
+        elif len(candidates) > 1:
+            resolved_symbol_id = None
+            status = "ambiguous"
+        elif resolved_file_id:
+            resolved_symbol_id = None
+            status = "file_resolved"
+        else:
+            resolved_symbol_id = None
+            status = "external"
+
+        bindings.append(
+            _ImportBinding(
+                import_name=import_record.name,
+                local_name=local_name,
+                imported_name=imported_name,
+                qualified_name=qualified_name,
+                binding_kind=binding_kind,
+                resolved_file_id=resolved_file_id,
+                resolved_symbol_id=resolved_symbol_id,
+                resolution_status=status,
+                start_line=import_record.start_line,
+                end_line=import_record.end_line,
+                source=import_record.source,
+                metadata={
+                    "candidate_targets": candidates,
+                    "type_only": bool(spec.get("type_only") or metadata.get("type_only")),
+                },
+            )
+        )
+    return bindings
 
 
 def _symbol_name_from_import_target(target: str) -> str:
@@ -1003,7 +1589,7 @@ def _test_references_for(symbol: ParsedSymbol, name: str) -> List[ParsedReferenc
 def _reference(
     source_file_id: str,
     enclosing_symbol_id: str,
-    target: str,
+    target: Optional[str],
     kind: str,
     name: str,
     start_line: int,
@@ -1022,6 +1608,107 @@ def _reference(
         source,
         json_dumps(metadata),
     )
+
+
+def _edge_occurrence(
+    source: str,
+    target: Optional[str],
+    relation: str,
+    source_file_id: str,
+    enclosing_symbol_id: Optional[str],
+    name: str,
+    start_line: int,
+    end_line: int,
+    source_text: str,
+    resolution: _TargetResolution,
+    metadata: Optional[Dict[str, object]] = None,
+) -> tuple:
+    return (
+        source,
+        target,
+        relation,
+        source_file_id,
+        enclosing_symbol_id,
+        name,
+        start_line,
+        end_line,
+        source_text,
+        resolution.status,
+        resolution.strategy,
+        json.dumps(list(resolution.candidates), sort_keys=True),
+        0,
+        json_dumps(metadata),
+    )
+
+
+def _test_assertion_row(
+    symbol: ParsedSymbol,
+    current_file_id: str,
+    assertion: _AssertionEvidence,
+    target: Optional[str],
+    resolution: _TargetResolution,
+    call_name: Optional[str],
+) -> tuple:
+    return (
+        symbol.node_id,
+        current_file_id,
+        target,
+        assertion.kind,
+        assertion.expression,
+        assertion.start_line,
+        assertion.end_line,
+        resolution.status,
+        json.dumps(list(resolution.candidates), sort_keys=True),
+        json_dumps(
+            {
+                "call_name": call_name,
+                "resolution_strategy": resolution.strategy,
+            }
+        ),
+    )
+
+
+def _test_assertion_evidence(symbol: ParsedSymbol) -> List[_AssertionEvidence]:
+    if not symbol.source.strip():
+        return []
+    source = textwrap.dedent(symbol.source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    evidence: List[_AssertionEvidence] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assert):
+            continue
+        calls = sorted(
+            {
+                call_name
+                for child in ast.walk(node.test)
+                if isinstance(child, ast.Call)
+                for call_name in [_python_call_name(child.func)]
+                if call_name
+            }
+        )
+        expression = ast.get_source_segment(source, node) or "assert"
+        evidence.append(
+            _AssertionEvidence(
+                kind="assert",
+                expression=expression.strip(),
+                start_line=symbol.start_line + node.lineno - 1,
+                end_line=symbol.start_line + getattr(node, "end_lineno", node.lineno) - 1,
+                call_names=tuple(calls),
+            )
+        )
+    return sorted(evidence, key=lambda item: (item.start_line, item.end_line, item.expression))
+
+
+def _python_call_name(node: ast.expr) -> Optional[str]:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
 
 
 def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> List[ParsedFile]:
@@ -1169,29 +1856,81 @@ def _pick_call_target(
     node_kind_by_id: Dict[str, str],
     preferred_file_ids: Sequence[str] | None = None,
 ) -> Optional[str]:
-    candidates = symbol_by_name.get(symbol, [])
-    if not candidates:
-        return None
-    for node_id in candidates:
-        if node_to_file_node.get(node_id) == current_file_id:
-            return node_id
-    preferred_rank = {file_id: index for index, file_id in enumerate(preferred_file_ids or [])}
-    imported_candidates = [
-        node_id for node_id in candidates if node_to_file_node.get(node_id) in preferred_rank
+    del node_kind_by_id
+    candidates = sorted(set(symbol_by_name.get(symbol, [])))
+    local = [
+        node_id for node_id in candidates if node_to_file_node.get(node_id) == current_file_id
     ]
-    if imported_candidates:
-        return min(
-            imported_candidates,
-            key=lambda node_id: (
-                preferred_rank[node_to_file_node[node_id]],
-                node_kind_by_id.get(node_id) != "function",
-                node_id,
-            ),
+    if len(local) == 1:
+        return local[0]
+
+    preferred = set(preferred_file_ids or ())
+    explicitly_imported = [
+        node_id for node_id in candidates if node_to_file_node.get(node_id) in preferred
+    ]
+    if len(explicitly_imported) == 1:
+        return explicitly_imported[0]
+    return None
+
+
+def _resolve_call_target(
+    symbol: str,
+    current_file_id: str,
+    symbol_by_name: Dict[str, List[str]],
+    node_to_file_node: Dict[str, str],
+    node_kind_by_id: Dict[str, str],
+    bindings_by_local: Dict[str, List[_ImportBinding]],
+) -> _TargetResolution:
+    del node_kind_by_id
+    candidates = sorted(set(symbol_by_name.get(symbol, [])))
+    local = tuple(
+        node_id
+        for node_id in candidates
+        if node_to_file_node.get(node_id) == current_file_id
+    )
+    if len(local) == 1:
+        return _TargetResolution(local[0], "resolved", "same_file", local)
+    if len(local) > 1:
+        return _TargetResolution(None, "ambiguous", "same_file", local)
+
+    bound_candidates: List[str] = []
+    for binding in bindings_by_local.get(symbol, []):
+        if binding.resolved_symbol_id:
+            bound_candidates.append(binding.resolved_symbol_id)
+            continue
+        bound_candidates.extend(
+            _candidates_in_file(
+                binding.imported_name,
+                binding.resolved_file_id,
+                symbol_by_name,
+                node_to_file_node,
+            )
         )
-    for node_id in candidates:
-        if node_kind_by_id.get(node_id) == "function":
-            return node_id
-    return candidates[0]
+    bound = tuple(sorted(set(bound_candidates)))
+    if len(bound) == 1:
+        return _TargetResolution(bound[0], "resolved", "explicit_import", bound)
+    if len(bound) > 1:
+        return _TargetResolution(None, "ambiguous", "explicit_import", bound)
+
+    status = "ambiguous" if len(candidates) > 1 else "unresolved"
+    return _TargetResolution(None, status, "unbound_name", tuple(candidates))
+
+
+def _candidates_in_file(
+    symbol: str,
+    file_id: Optional[str],
+    symbol_by_name: Dict[str, List[str]],
+    node_to_file_node: Dict[str, str],
+) -> List[str]:
+    if not file_id or symbol in {"", "*", "default"}:
+        return []
+    return sorted(
+        {
+            node_id
+            for node_id in symbol_by_name.get(symbol, [])
+            if node_to_file_node.get(node_id) == file_id
+        }
+    )
 
 
 def _edge(

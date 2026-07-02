@@ -30,3 +30,11 @@ def test_agent_workflow_benchmark_respects_tool_budget(tmp_path):
         assert stats["tool_calls"] <= stats["max_tool_calls"]
         assert stats["within_turn_budget"] is True
         assert stats["total_estimated_tokens"] > 0
+        assert "edit_ready" in stats
+        assert "tool_calls_to_edit_ready" in stats
+        assert "tokens_to_edit_ready" in stats
+        assert "missing_context_count" in stats
+
+        if stats["edit_ready"]:
+            assert 1 <= stats["tool_calls_to_edit_ready"] <= stats["tool_calls"]
+            assert 0 < stats["tokens_to_edit_ready"] <= stats["total_estimated_tokens"]

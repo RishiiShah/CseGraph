@@ -106,7 +106,7 @@ class TestSessionFilterOnContext:
             if isinstance(action, dict)
         )
 
-    def test_actions_without_tool_field_are_preserved(self, tmp_path: Path):
+    def test_expand_context_action_is_preserved_for_detail_escalation(self, tmp_path: Path):
         repo, db = _indexed_repo(tmp_path)
 
         _handle_tool(

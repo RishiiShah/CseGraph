@@ -73,6 +73,59 @@ def test_cli_profile_choices_accept_auto():
     assert args.profile == "auto"
 
 
+@pytest.mark.parametrize(
+    "task_kind",
+    ("auto", "edit", "understand", "review", "test-impact"),
+)
+def test_context_cli_accepts_task_kind_choices(task_kind):
+    parser = cli_main._build_parser()
+
+    args = parser.parse_args(["context", "Fix checkout", "--task-kind", task_kind])
+
+    assert args.task_kind == task_kind
+
+
+def test_context_cli_task_kind_defaults_to_auto():
+    parser = cli_main._build_parser()
+
+    args = parser.parse_args(["context", "Explain checkout"])
+
+    assert args.task_kind == "auto"
+
+
+def test_context_cli_passes_task_kind_to_retrieval(monkeypatch, tmp_path):
+    from csegraph._core.retrieval import context as context_module
+
+    captured = {}
+
+    class StubContextService:
+        def __init__(self, db_path):
+            captured["db_path"] = db_path
+
+        def build_context(self, **kwargs):
+            captured.update(kwargs)
+            return {"command": "context"}
+
+    monkeypatch.setattr(context_module, "ContextService", StubContextService)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    args = cli_main._build_parser().parse_args(
+        [
+            "context",
+            "Review checkout",
+            "--repo",
+            str(repo),
+            "--task-kind",
+            "review",
+        ]
+    )
+
+    cli_main._dispatch(args)
+
+    assert captured["task_kind"] == "review"
+    assert captured["task"] == "Review checkout"
+
+
 def test_cli_json_contracts(tmp_path):
     repo = tmp_path / "repo"
     _write_repo(repo)
@@ -103,8 +156,20 @@ def test_cli_json_contracts(tmp_path):
     assert context["target"]["id"] == "symbol::service.py::function::create_user"
     assert context["target"]["graph_target_id"] == "symbol::service.py::function::create_user"
     assert context["request"]["detail_level"] == "auto"
-    assert context["request"]["returned_detail_level"] == "minimal"
+    assert context["request"]["returned_detail_level"] == "standard"
+    assert context["request"]["task_kind"] == "auto"
+    assert context["intent"] in {
+        "edit",
+        "understand",
+        "review",
+        "test-impact",
+    }
+    assert isinstance(context["edit_targets"], list)
+    assert isinstance(context["impact"], dict)
+    assert isinstance(context["affected_tests"], list)
+    assert isinstance(context["missing_context"], list)
     assert context["sufficiency"]["sufficient"] is True
+    assert isinstance(context["sufficiency"]["edit_ready"], bool)
     assert "target_node_id" not in context
     assert "context_nodes" not in context
     assert "nodes" not in context
@@ -131,9 +196,10 @@ def test_cli_json_contracts(tmp_path):
     assert all("explanation" not in node for node in context["symbols"])
     assert context["token_usage"]["used_tokens"] >= 1
     assert context["token_usage"]["saved_tokens"] >= 0
-    assert "source_text" not in target_node
+    assert "def create_user(" in target_node["source_text"]
     assert target_node["estimated_tokens"] >= 1
-    assert any(action["action"] == "expand_context" for action in context["next_actions"])
+    assert context["sufficiency"]["edit_ready"] is True
+    assert context["next_actions"]
 
     standard_context = run_cli(
         "context",
@@ -882,6 +948,66 @@ def test_context_cli_explain_and_markdown_format(tmp_path):
         "`inspect_graph`; tool `csegraph_graph`; node `symbol::service.py::function::create_user`"
         in proc.stdout
     )
+
+
+def test_context_markdown_preserves_impact_sections():
+    rendered = cli_main.render_context_markdown(
+        {
+            "request": {
+                "task": "Remove checkout discounts",
+                "task_kind": "edit",
+                "detail_level": "standard",
+                "returned_detail_level": "standard",
+            },
+            "target": {"id": "symbol::checkout.py::function::checkout"},
+            "budgets": {"total_estimated_tokens": 120},
+            "sufficiency": {
+                "sufficient": False,
+                "edit_ready": False,
+                "recovery": [],
+            },
+            "warnings": [],
+            "edit_targets": [
+                {
+                    "id": "symbol::checkout.py::function::checkout",
+                    "path": "checkout.py",
+                    "reason": "requested edit target",
+                }
+            ],
+            "impact": {
+                "dependencies": [
+                    {
+                        "id": "symbol::pricing.py::function::discount",
+                        "relation": "calls",
+                    }
+                ]
+            },
+            "affected_tests": [
+                {
+                    "id": "symbol::test_checkout.py::function::test_discount",
+                    "reason": "asserts discounted total",
+                }
+            ],
+            "missing_context": [
+                {
+                    "kind": "source",
+                    "reason": "edit target source omitted by budget",
+                }
+            ],
+            "symbols": [],
+        }
+    )
+
+    assert "Task kind: `edit`" in rendered
+    assert "Edit ready: False" in rendered
+    assert "## Edit Targets" in rendered
+    assert "symbol::checkout.py::function::checkout" in rendered
+    assert "## Impact" in rendered
+    assert "symbol::pricing.py::function::discount" in rendered
+    assert "## Affected Tests" in rendered
+    assert "symbol::test_checkout.py::function::test_discount" in rendered
+    assert "## Missing Context" in rendered
+    assert "edit target source omitted by budget" in rendered
 
 
 def test_context_cli_minimal_markdown_shows_expand_context(tmp_path):

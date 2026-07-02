@@ -86,6 +86,22 @@ class TestToolListing:
         assert detail_level["enum"] == ["auto", "minimal", "standard", "full"]
         assert detail_level["default"] == "auto"
 
+    def test_context_tool_declares_task_kind_and_edit_ready_contract(self):
+        context_tool = next(tool for tool in _TOOLS if tool.name == "csegraph_context")
+        task_kind = context_tool.inputSchema["properties"]["task_kind"]
+
+        assert task_kind["enum"] == [
+            "auto",
+            "edit",
+            "understand",
+            "review",
+            "test-impact",
+        ]
+        assert task_kind["default"] == "auto"
+        assert "edit-ready" in context_tool.description
+        assert "sufficiency.edit_ready=false" in context_tool.description
+        assert "missing_context" in context_tool.description
+
     def test_profile_tools_accept_auto(self):
         by_name = {tool.name: tool for tool in _TOOLS}
         for name in ("csegraph_index", "csegraph_refresh", "csegraph_context"):
@@ -184,6 +200,66 @@ class TestHandleTool:
         assert ctx["request"]["task"] == "How does greet work?"
         assert ctx["request"]["detail_level"] == "auto"
         assert ctx["request"]["returned_detail_level"] in {"minimal", "standard"}
+        assert ctx["request"]["task_kind"] == "auto"
+        assert ctx["intent"] in {
+            "edit",
+            "understand",
+            "review",
+            "test-impact",
+        }
+        assert isinstance(ctx["edit_targets"], list)
+        assert isinstance(ctx["impact"], dict)
+        assert isinstance(ctx["affected_tests"], list)
+        assert isinstance(ctx["missing_context"], list)
+        assert isinstance(ctx["sufficiency"]["edit_ready"], bool)
+
+    def test_context_task_kind_and_impact_fields_pass_through(self, monkeypatch, tmp_path):
+        from csegraph._core.retrieval import context as context_module
+
+        captured = {}
+        impact_payload = {
+            "intent": "review",
+            "edit_targets": [{"id": "symbol::checkout.py::function::checkout"}],
+            "impact": {
+                "affected_tests": [
+                    {"id": "symbol::test_checkout.py::function::test_discount"}
+                ]
+            },
+            "affected_tests": [
+                {"id": "symbol::test_checkout.py::function::test_discount"}
+            ],
+            "missing_context": [{"kind": "source", "reason": "source unavailable"}],
+            "sufficiency": {"sufficient": False, "edit_ready": False},
+        }
+
+        class StubContextService:
+            def __init__(self, db_path):
+                captured["db_path"] = db_path
+
+            def build_context(self, **kwargs):
+                captured.update(kwargs)
+                return impact_payload
+
+        monkeypatch.setattr(context_module, "ContextService", StubContextService)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        result = _handle_tool(
+            "csegraph_context",
+            {
+                "task": "Review checkout",
+                "task_kind": "review",
+                "repo": str(repo),
+            },
+        )
+
+        assert captured["task_kind"] == "review"
+        assert result["intent"] == "review"
+        assert result["edit_targets"] == impact_payload["edit_targets"]
+        assert result["impact"] == impact_payload["impact"]
+        assert result["affected_tests"] == impact_payload["affected_tests"]
+        assert result["missing_context"] == impact_payload["missing_context"]
+        assert result["sufficiency"]["edit_ready"] is False
 
     def test_handle_tool_records_host_platform(self, tmp_path):
         repo = _make_repo(tmp_path)

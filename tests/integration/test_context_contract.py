@@ -102,20 +102,29 @@ def test_context_json_contract_is_canonical_only(tmp_path):
     assert payload["target"]["graph_target_id"] == "symbol::service.py::function::create_user"
     assert payload["target"]["display"] == "create_user"
     assert payload["request"]["detail_level"] == "auto"
-    assert payload["request"]["returned_detail_level"] == "minimal"
+    assert payload["request"]["returned_detail_level"] == "standard"
+    assert payload["request"]["task_kind"] == "auto"
+    assert payload["intent"] in {"edit", "understand", "review", "test-impact"}
+    assert isinstance(payload["edit_targets"], list)
+    assert isinstance(payload["impact"], dict)
+    assert isinstance(payload["affected_tests"], list)
+    assert isinstance(payload["missing_context"], list)
     assert payload["budgets"]["total_estimated_tokens"] >= 1
     assert payload["token_usage"]["estimator"] == "chars/4 proxy"
     assert payload["token_usage"]["used_tokens"] >= 1
     assert payload["token_usage"]["baseline_tokens"] >= 1
     assert payload["token_usage"]["saved_tokens"] >= 0
     assert payload["sufficiency"]["sufficient"] is True
+    assert payload["sufficiency"]["edit_ready"] is True
+    assert payload["edit_targets"]
+    assert payload["missing_context"] == []
     assert payload["sufficiency"]["verdict"] == "sufficient"
     assert payload["sufficiency"]["applicable_metrics"]
     assert "semantic_overlap_relaxed" in payload["sufficiency"]["thresholds"]
     assert payload["sufficiency"]["failure_reasons"] == []
     assert payload["sufficiency"]["recovery"] == []
+    assert isinstance(payload["sufficiency"]["edit_ready"], bool)
     assert payload["next_actions"]
-    assert any(action["action"] == "expand_context" for action in payload["next_actions"])
     assert payload["warnings"] == []
 
     assert payload["symbols"][0]["id"] == "symbol::service.py::function::create_user"
@@ -134,8 +143,13 @@ def test_context_json_contract_is_canonical_only(tmp_path):
         assert all(
             "confidence_tier" in d and "score_contribution" in d for d in node["reason_details"]
         )
-        assert "source_text" not in node
         assert "explanation" not in node
+
+    edit_target_ids = {item["id"] for item in payload["edit_targets"]}
+    assert any(
+        node["id"] in edit_target_ids and node.get("source_text")
+        for node in payload["symbols"]
+    )
 
 
 def test_context_json_contract_explanation_is_explain_only(tmp_path):

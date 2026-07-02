@@ -137,7 +137,7 @@ def test_cross_file_method_linkage(tmp_path):
     assert row["parent_id"] == "symbol::class_def.py::class::MyClass"
 
 
-def test_lexical_heuristics_prefer_function():
+def test_ambiguous_nonlocal_call_does_not_pick_by_kind():
     symbol_by_name = {"greet": ["opaque-method-id", "opaque-function-id"]}
     node_to_file_node = {
         "opaque-method-id": "file::app.py",
@@ -147,7 +147,7 @@ def test_lexical_heuristics_prefer_function():
         "opaque-method-id": "method",
         "opaque-function-id": "function",
     }
-    # Non-local call picking function kind over method
+    # A non-local call without an import binding must remain unresolved.
     target = _pick_call_target(
         "greet",
         "file::other.py",
@@ -155,7 +155,7 @@ def test_lexical_heuristics_prefer_function():
         node_to_file_node,
         node_kind_by_id,
     )
-    assert target == "opaque-function-id"
+    assert target is None
 
 
 def test_graph_fallback_views_do_not_parse_opaque_ids():

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "csegraph-sqlite-v7"
-SCHEMA_USER_VERSION = 7
+SCHEMA_VERSION = "csegraph-sqlite-v8"
+SCHEMA_USER_VERSION = 8
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
@@ -114,6 +114,85 @@ CREATE TABLE IF NOT EXISTS imports (
     UNIQUE(file_id, import_name, start_line, end_line, source)
 );
 
+CREATE TABLE IF NOT EXISTS import_bindings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id TEXT NOT NULL,
+    import_name TEXT NOT NULL,
+    local_name TEXT NOT NULL,
+    imported_name TEXT NOT NULL,
+    qualified_name TEXT,
+    binding_kind TEXT NOT NULL DEFAULT 'named',
+    resolved_file_id TEXT,
+    resolved_symbol_id TEXT,
+    resolution_status TEXT NOT NULL DEFAULT 'unresolved',
+    start_line INTEGER,
+    end_line INTEGER,
+    source TEXT NOT NULL,
+    metadata TEXT,
+    UNIQUE(
+        file_id, import_name, local_name, imported_name,
+        start_line, end_line, source
+    )
+);
+
+CREATE TABLE IF NOT EXISTS edge_occurrences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    target TEXT,
+    relation TEXT NOT NULL,
+    source_file_id TEXT NOT NULL,
+    enclosing_symbol_id TEXT,
+    name TEXT NOT NULL,
+    start_line INTEGER,
+    end_line INTEGER,
+    source_text TEXT,
+    resolution_status TEXT NOT NULL DEFAULT 'resolved',
+    resolution_strategy TEXT,
+    candidate_targets TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    metadata TEXT,
+    UNIQUE(
+        source, target, relation, source_file_id, enclosing_symbol_id,
+        name, start_line, end_line, source_text, resolution_status, is_stale
+    )
+);
+
+CREATE TABLE IF NOT EXISTS test_assertions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_symbol_id TEXT NOT NULL,
+    source_file_id TEXT NOT NULL,
+    target_symbol_id TEXT,
+    assertion_kind TEXT NOT NULL,
+    expression TEXT NOT NULL,
+    start_line INTEGER,
+    end_line INTEGER,
+    resolution_status TEXT NOT NULL DEFAULT 'unresolved',
+    candidate_targets TEXT,
+    metadata TEXT,
+    UNIQUE(
+        test_symbol_id, target_symbol_id, assertion_kind,
+        expression, start_line, end_line
+    )
+);
+
+CREATE TABLE IF NOT EXISTS symbol_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    signature TEXT,
+    source_hash TEXT NOT NULL,
+    start_line INTEGER,
+    end_line INTEGER,
+    state TEXT NOT NULL DEFAULT 'active',
+    replaced_by TEXT,
+    metadata TEXT,
+    recorded_at REAL NOT NULL,
+    UNIQUE(symbol_id, source_hash)
+);
+
 CREATE TABLE IF NOT EXISTS summaries (
     node_id TEXT PRIMARY KEY,
     source_hash TEXT NOT NULL,
@@ -185,6 +264,28 @@ CREATE INDEX IF NOT EXISTS idx_symbol_references_symbol ON symbol_references(enc
 CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
 CREATE INDEX IF NOT EXISTS idx_imports_path ON imports(path);
 CREATE INDEX IF NOT EXISTS idx_imports_resolved_file ON imports(resolved_file_id);
+CREATE INDEX IF NOT EXISTS idx_import_bindings_file_local
+    ON import_bindings(file_id, local_name);
+CREATE INDEX IF NOT EXISTS idx_import_bindings_resolved_file
+    ON import_bindings(resolved_file_id);
+CREATE INDEX IF NOT EXISTS idx_import_bindings_resolved_symbol
+    ON import_bindings(resolved_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_source_relation
+    ON edge_occurrences(source, relation);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_target_relation
+    ON edge_occurrences(target, relation);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_file
+    ON edge_occurrences(source_file_id);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_stale
+    ON edge_occurrences(is_stale, target) WHERE is_stale = 1;
+CREATE INDEX IF NOT EXISTS idx_test_assertions_test
+    ON test_assertions(test_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_test_assertions_target
+    ON test_assertions(target_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_symbol_history_symbol
+    ON symbol_history(symbol_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_symbol_history_path_state
+    ON symbol_history(path, state);
 """
 
 METADATA_UPSERT = """

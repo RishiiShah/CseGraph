@@ -274,7 +274,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_json(refresh)
 
-    context = subparsers.add_parser("context", help="Retrieve graph-backed context.")
+    context = subparsers.add_parser(
+        "context", help="Retrieve task-specific, impact-aware context."
+    )
     context.add_argument("task_arg", nargs="?", help="Natural-language task.")
     context.add_argument(
         "--repo", default=None, help="Repository root containing the default .csegraph index."
@@ -316,7 +318,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--detail-level",
         choices=("auto", "minimal", "standard", "full"),
         default="auto",
-        help="Context detail level: auto starts minimal if sufficient, minimal is compact routing, standard is working context, full includes all explanations.",
+        help="Context detail level: auto promotes edit tasks to edit-ready context when needed, minimal is compact routing, standard is working context, full includes all explanations.",
+    )
+    context.add_argument(
+        "--task-kind",
+        choices=("auto", "edit", "understand", "review", "test-impact"),
+        default="auto",
+        help="Task intent used to plan context and impact; auto infers intent from the task.",
     )
     _add_json(context)
 
@@ -928,6 +936,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             explain=args.explain,
             config_path=args.config,
             detail_level=args.detail_level,
+            task_kind=args.task_kind,
         )
     if args.command == "path":
         from csegraph._core.graph.queries import GraphQueryService

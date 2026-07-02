@@ -127,6 +127,11 @@ def _migrate_legacy_to_current(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS schema_meta")
 
 
+def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
+    """Add impact evidence tables without rewriting the v7 graph."""
+    conn.executescript(SCHEMA_DDL)
+
+
 def _copy_schema_meta(conn: sqlite3.Connection) -> None:
     if not _table_exists(conn, "schema_meta"):
         return
@@ -220,5 +225,12 @@ SCHEMA_MIGRATIONS = {
         "csegraph-sqlite-v2",
         "csegraph-sqlite-v3",
         "csegraph-sqlite-v4",
+        "csegraph-sqlite-v5",
+        "csegraph-sqlite-v6",
     )
 }
+SCHEMA_MIGRATIONS["csegraph-sqlite-v7"] = SchemaMigration(
+    "csegraph-sqlite-v7",
+    SCHEMA_VERSION,
+    _migrate_v7_to_v8,
+)

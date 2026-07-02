@@ -84,6 +84,7 @@ class AsyncContextService:
         explain: bool = False,
         config_path: Optional[str] = None,
         detail_level: str = "auto",
+        task_kind: str = "auto",
     ) -> ContextResult:
         return await asyncio.to_thread(
             self._sync.build_context,
@@ -95,6 +96,7 @@ class AsyncContextService:
             explain=explain,
             config_path=config_path,
             detail_level=detail_level,
+            task_kind=task_kind,
         )
 
 

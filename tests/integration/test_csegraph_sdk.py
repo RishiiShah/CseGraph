@@ -88,6 +88,10 @@ def test_project_index_schema_is_idempotent(tmp_path):
     assert "relationships" in tables
     assert "imports" in tables
     assert "symbol_references" in tables
+    assert "import_bindings" in tables
+    assert "edge_occurrences" in tables
+    assert "test_assertions" in tables
+    assert "symbol_history" in tables
 
     with sqlite3.connect(db_path) as conn:
         version = conn.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
@@ -99,7 +103,7 @@ def test_project_index_schema_is_idempotent(tmp_path):
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(retrieval_runs)")}
 
     assert version[0] == SCHEMA_VERSION
-    assert user_version == 7
+    assert user_version == 8
     assert "project_id" not in node_columns
     assert {"source", "target", "relation", "metadata", "confidence", "confidence_tier"}.issubset(
         edge_columns
@@ -509,7 +513,7 @@ def test_context_include_source_never_stays_compact(tmp_path):
     assert context.nodes
     assert all(node.source_text is None for node in context.nodes)
     assert all(node.estimated_tokens >= 1 for node in context.nodes)
-    assert context.total_estimated_tokens == sum(node.estimated_tokens for node in context.nodes)
+    assert context.total_estimated_tokens >= sum(node.estimated_tokens for node in context.nodes)
 
 
 def test_context_max_tokens_limits_source_materialization(tmp_path):

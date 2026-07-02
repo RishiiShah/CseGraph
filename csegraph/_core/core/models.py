@@ -136,6 +136,7 @@ class SufficiencyResult:
     thresholds: Dict[str, float] = field(default_factory=dict)
     failure_reasons: List[Dict[str, Any]] = field(default_factory=list)
     recovery: List[Dict[str, Any]] = field(default_factory=list)
+    edit_ready: bool = False
 
 
 @dataclass
@@ -167,6 +168,12 @@ class ContextResult:
     target_candidates: List[Dict[str, Any]] = field(default_factory=list)
     target_confidence: Optional[float] = None
     target_score_margin: Optional[float] = None
+    task_kind: str = "auto"
+    intent: str = "understand"
+    edit_targets: List[Dict[str, Any]] = field(default_factory=list)
+    impact: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    affected_tests: List[Dict[str, Any]] = field(default_factory=list)
+    missing_context: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

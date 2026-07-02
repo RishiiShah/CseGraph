@@ -127,6 +127,7 @@ artifacts before handoff.
 csegraph context "fix auth token refresh" --target refresh_token --json
 csegraph context "explain the index pipeline" --detail-level standard --format markdown
 csegraph context "debug parser misses" --include-source always --max-tokens 6000 --explain --json
+csegraph context "replace checkout pricing and remove discounts" --task-kind edit --json
 csegraph inspect ContextService.build_context --depth 1 --relations calls,imports --json
 csegraph path IndexService.index ContextService.build_context --relations calls,imports --json
 ```
@@ -134,6 +135,7 @@ csegraph path IndexService.index ContextService.build_context --relations calls,
 Context flags:
 
 - `--detail-level auto|minimal|standard|full`
+- `--task-kind auto|edit|understand|review|test-impact`
 - `--include-source auto|always|never`
 - `--target NODE_OR_SYMBOL_OR_PATH`
 - `--max-tokens N`
@@ -381,6 +383,7 @@ context = ContextService(".csegraph/index.db").build_context(
     task="fix auth token refresh bug",
     target="refresh_token",
     profile="medium",
+    task_kind="edit",
 )
 
 graph = GraphQueryService(".csegraph/index.db").neighborhood(
@@ -426,7 +429,19 @@ Context responses include:
 
 - `schema_version = "csegraph-context-v3"`.
 - `request.detail_level` and `request.returned_detail_level`; `auto` may return minimal or standard.
+- `request.task_kind` and inferred `intent`; edit-oriented requests are promoted when
+  source would otherwise be omitted.
 - `target` with the resolved id, kind, path, line range, and ambiguity candidates.
+- `edit_targets` with the symbols selected as likely change locations.
+- `impact` grouped into `edit_targets`, `dependencies`, `dependents`, and
+  `affected_tests`.
+- `affected_tests` with test symbols whose calls or assertions cover the changed behavior.
+  Linked assertions include their source location and, unless source is disabled,
+  the assertion expression.
+- `missing_context` with exact source or evidence still required before an edit is safe.
+- historical targets for renamed or deleted symbols, including stale callers,
+  affected tests, a replacement symbol when one can be resolved conservatively,
+  and an exact recovery action.
 - ranked `symbols` with paths, line ranges, reason tags, summaries, and estimated tokens.
 - `relationships` for selected calls, callers, imports, inheritance, decorators, and tests.
   Relationships may include bounded `occurrences` with path, line range,
@@ -444,7 +459,8 @@ Context responses include:
   `token_budget`.
 - optional `explanation` in full responses or when `--explain` is requested.
 - `next_actions` with deterministic suggestions.
-- sufficiency metrics and thresholds.
+- sufficiency metrics and thresholds, including `edit_ready`. For `edit` and
+  `test-impact`, edit readiness requires source for a likely edit target.
 
 All detail levels return the same v3 top-level structure. They differ in which
 symbol fields are populated and whether the response is a routing card or

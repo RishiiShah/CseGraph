@@ -37,7 +37,11 @@ AGENT_WORKFLOW_SPECS: tuple[AgentWorkflowSpec, ...] = (
             ("csegraph_minimal", {}),
             (
                 "csegraph_context",
-                {"detail_level": "auto", "include_source": "auto"},
+                {
+                    "detail_level": "auto",
+                    "include_source": "auto",
+                    "task_kind": "edit",
+                },
             ),
         ),
     ),
@@ -47,7 +51,14 @@ AGENT_WORKFLOW_SPECS: tuple[AgentWorkflowSpec, ...] = (
         max_tool_calls=3,
         steps=(
             ("csegraph_minimal", {}),
-            ("csegraph_context", {"detail_level": "auto", "include_source": "never"}),
+            (
+                "csegraph_context",
+                {
+                    "detail_level": "auto",
+                    "include_source": "never",
+                    "task_kind": "review",
+                },
+            ),
             ("csegraph_graph", {"depth": 1, "detail_level": "minimal"}),
         ),
     ),
@@ -57,7 +68,14 @@ AGENT_WORKFLOW_SPECS: tuple[AgentWorkflowSpec, ...] = (
         max_tool_calls=3,
         steps=(
             ("csegraph_minimal", {}),
-            ("csegraph_context", {"detail_level": "standard", "include_source": "auto"}),
+            (
+                "csegraph_context",
+                {
+                    "detail_level": "standard",
+                    "include_source": "auto",
+                    "task_kind": "test-impact",
+                },
+            ),
         ),
     ),
 )
@@ -91,6 +109,10 @@ def run_agent_workflow_benchmarks(
         workflow_bytes = 0
         tool_calls = 0
         graph_node: str | None = None
+        edit_ready = False
+        tool_calls_to_edit_ready: int | None = None
+        tokens_to_edit_ready: int | None = None
+        missing_context_count = 0
 
         for tool_name, step_args in spec.steps:
             if tool_calls >= spec.max_tool_calls:
@@ -134,6 +156,17 @@ def run_agent_workflow_benchmarks(
 
             if tool_name == "csegraph_context":
                 graph_node = _pick_graph_target(payload)
+                sufficiency = payload.get("sufficiency")
+                edit_ready = bool(
+                    isinstance(sufficiency, dict) and sufficiency.get("edit_ready") is True
+                )
+                missing_context = payload.get("missing_context")
+                missing_context_count = (
+                    len(missing_context) if isinstance(missing_context, list) else 0
+                )
+                if edit_ready and tool_calls_to_edit_ready is None:
+                    tool_calls_to_edit_ready = tool_calls
+                    tokens_to_edit_ready = workflow_tokens
 
             steps.append(
                 BenchmarkStep(
@@ -146,11 +179,20 @@ def run_agent_workflow_benchmarks(
                         "sufficient": (payload.get("sufficiency") or {}).get("sufficient")
                         if isinstance(payload.get("sufficiency"), dict)
                         else None,
+                        "edit_ready": edit_ready if tool_name == "csegraph_context" else None,
+                        "missing_context_count": missing_context_count
+                        if tool_name == "csegraph_context"
+                        else None,
                     },
                 )
             )
 
-            if tool_name == "csegraph_context" and spec.id == "debug-issue" and graph_node:
+            if (
+                tool_name == "csegraph_context"
+                and spec.id == "debug-issue"
+                and graph_node
+                and not edit_ready
+            ):
                 graph_args = {
                     **base_args,
                     "node": graph_node,
@@ -199,6 +241,10 @@ def run_agent_workflow_benchmarks(
                     "total_estimated_tokens": workflow_tokens,
                     "total_mcp_response_bytes": workflow_bytes,
                     "within_turn_budget": tool_calls <= spec.max_tool_calls,
+                    "edit_ready": edit_ready,
+                    "tool_calls_to_edit_ready": tool_calls_to_edit_ready,
+                    "tokens_to_edit_ready": tokens_to_edit_ready,
+                    "missing_context_count": missing_context_count,
                 },
             )
         )

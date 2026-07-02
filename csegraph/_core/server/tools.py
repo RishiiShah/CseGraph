@@ -104,10 +104,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="csegraph_context",
         description=(
-            "Retrieve task-specific context from a csegraph index. "
-            "Combines FTS5 lexical search, graph expansion, and sufficiency scoring "
-            "to return compact or detailed code context for a task. Returned path "
-            "fields are repo-relative to repo_root."
+            "Retrieve task-specific, impact-aware context. Edit tasks return edit-ready "
+            "target source, dependencies, dependents, and affected tests when available. "
+            "Otherwise sufficiency.edit_ready=false and missing_context explain why. "
+            "Paths are repo-relative to repo_root."
         ),
         inputSchema={
             "type": "object",
@@ -149,7 +149,13 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["auto", "minimal", "standard", "full"],
                     "default": "auto",
-                    "description": "Context detail level: auto returns minimal if sufficient else standard; minimal returns compact symbols and relationships, standard adds selected symbol slices, relationship occurrences, and import preludes, full adds explanations.",
+                    "description": "auto promotes edit tasks when needed; minimal is routing metadata, standard is edit-ready source and impact evidence, full adds explanations.",
+                },
+                "task_kind": {
+                    "type": "string",
+                    "enum": ["auto", "edit", "understand", "review", "test-impact"],
+                    "default": "auto",
+                    "description": "Task intent for context and impact planning; auto infers it.",
                 },
                 "max_bytes": {
                     "type": "integer",

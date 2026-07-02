@@ -43,6 +43,8 @@ from csegraph._core.text.entities import extract_query_entities
 from csegraph._core.text.source_reader import read_source_lines
 
 DETAIL_LEVELS = {"auto", "minimal", "standard", "full"}
+TASK_KINDS = {"auto", "edit", "understand", "review", "test-impact"}
+EDIT_INTENTS = {"edit", "test-impact"}
 MINIMAL_NODE_LIMIT = 5
 MINIMAL_SUMMARY_CHAR_LIMIT = 240
 DIRECT_CALL_ALWAYS_LIMIT = 2
@@ -72,9 +74,12 @@ class ContextService:
         explain: bool = False,
         config_path: Optional[str] = None,
         detail_level: str = "auto",
+        task_kind: str = "auto",
     ) -> ContextResult:
         include_source = _validate_include_source(include_source)
         detail_level = _validate_detail_level(detail_level)
+        task_kind = _validate_task_kind(task_kind)
+        intent = _infer_task_kind(task) if task_kind == "auto" else task_kind
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError("max_tokens must be a positive integer when provided.")
         timings: Dict[str, float] = {}
@@ -107,6 +112,37 @@ class ContextService:
                 target, task, symbols, summaries, index, repo_root=repo_root
             )
             timings["target_resolution"] = _elapsed_ms(t0)
+            requested_label = resolution.requested or target or ""
+            resolved_row = symbols.get(resolution.target_id, {})
+            resolved_exactly = bool(
+                resolution.status == "resolved"
+                and requested_label
+                and (
+                    resolution.target_id == requested_label
+                    or str(resolved_row.get("name") or "").lower()
+                    == requested_label.lower()
+                    or str(resolved_row.get("file_path") or "").lower()
+                    == requested_label.lower()
+                )
+            )
+            if requested_label and not resolved_exactly:
+                historical = _historical_context_result(
+                    index=index,
+                    db_path=self.db_path,
+                    repo_root=repo_root,
+                    profile=config.name,
+                    query=task,
+                    requested=requested_label,
+                    detail_level=detail_level,
+                    task_kind=task_kind,
+                    intent=intent,
+                    include_source=include_source,
+                    symbols=symbols,
+                    outgoing=outgoing,
+                    timings=timings,
+                )
+                if historical is not None:
+                    return historical
             if resolution.status == "ambiguous":
                 return _ambiguous_context_result(
                     db_path=self.db_path,
@@ -114,12 +150,15 @@ class ContextService:
                     profile=config.name,
                     query=task,
                     detail_level=detail_level,
+                    task_kind=task_kind,
+                    intent=intent,
                     resolution=resolution,
                     timings=timings,
                 )
             if resolution.status == "unresolved":
-                label = resolution.requested or target or ""
-                raise ValueError(f"Target '{label}' did not match any indexed symbol.")
+                raise ValueError(
+                    f"Target '{requested_label}' did not match any indexed symbol."
+                )
             target_id = resolution.target_id
             if target_id and target_id not in symbols:
                 target_node = index.conn.execute(
@@ -179,6 +218,18 @@ class ContextService:
                 incoming,
                 config.context_budget,
             )
+            impact_plan = _plan_impact(
+                target_id,
+                symbols,
+                outgoing,
+                incoming,
+            )
+            context_ids = _prioritize_impact_context_ids(
+                context_ids,
+                impact_plan,
+                symbols,
+                config.context_budget,
+            )
             dependency_budget = _dependency_budget(config)
             metrics = compute_metrics(
                 task,
@@ -227,7 +278,19 @@ class ContextService:
             )
 
             t0 = time.perf_counter()
-            returned_detail_level = _initial_detail_level(detail_level, task, resolution)
+            returned_detail_level = _initial_detail_level(
+                detail_level,
+                task,
+                resolution,
+                intent,
+            )
+            required_source_ids = _required_edit_source_ids(
+                intent,
+                task,
+                target_id,
+                impact_plan,
+                symbols,
+            )
             nodes, metrics, sufficient = _build_detail_pass(
                 detail_level=returned_detail_level,
                 target_id=target_id,
@@ -246,6 +309,7 @@ class ContextService:
                 include_source=include_source,
                 explain=explain or returned_detail_level == "full",
                 max_tokens=max_tokens,
+                required_source_ids=required_source_ids,
                 snapshot=snapshot,
                 index=index,
             )
@@ -276,6 +340,7 @@ class ContextService:
                     include_source=include_source,
                     explain=explain,
                     max_tokens=max_tokens,
+                    required_source_ids=required_source_ids,
                     snapshot=snapshot,
                     index=index,
                 )
@@ -299,6 +364,27 @@ class ContextService:
                 returned_detail_level=returned_detail_level,
                 source_policy=include_source,
             )
+            edit_targets, impact, affected_tests = _materialize_impact(
+                index=index,
+                target_id=target_id,
+                plan=impact_plan,
+                symbols=symbols,
+                nodes=nodes,
+                relationships=relationships,
+                include_assertion_text=include_source != "never",
+            )
+            missing_context = _missing_edit_context(
+                intent=intent,
+                target_id=target_id,
+                required_source_ids=required_source_ids,
+                nodes=nodes,
+                symbols=symbols,
+                returned_detail_level=returned_detail_level,
+                source_policy=include_source,
+            )
+            edit_ready = intent in EDIT_INTENTS and not missing_context
+            if intent in EDIT_INTENTS and not edit_ready:
+                sufficient = False
             node_tokens = sum(node.estimated_tokens for node in nodes)
             prelude_tokens = sum(
                 _estimate_tokens(prelude.text) for prelude in import_preludes if prelude.text
@@ -349,6 +435,17 @@ class ContextService:
             )
             if target_trust_failure is not None:
                 failure_reasons.append(target_trust_failure)
+            if intent in EDIT_INTENTS and not edit_ready:
+                failure_reasons.append(
+                    {
+                        "metric": "edit_ready",
+                        "actual": 0.0,
+                        "threshold": 1.0,
+                        "suggested_next_action": (
+                            "Retrieve the entries listed in missing_context before editing."
+                        ),
+                    }
+                )
 
             return ContextResult(
                 command="context",
@@ -384,6 +481,7 @@ class ContextService:
                         failure_reasons=failure_reasons,
                         target_candidates=resolution.candidates,
                     ),
+                    edit_ready=edit_ready,
                 ),
                 total_estimated_tokens=estimated_tokens,
                 nodes=nodes,
@@ -394,11 +492,22 @@ class ContextService:
                 target_input=target,
                 source_policy=include_source,
                 raw_code_nodes=sorted(final_raw_nodes),
-                next_actions=_next_actions(returned_detail_level, target_id),
+                next_actions=_next_actions(
+                    returned_detail_level,
+                    target_id,
+                    task=task,
+                    intent=intent,
+                ),
                 warnings=_warnings(sufficient),
                 run_id=run_id,
                 confidence_breakdown=confidence_counts,
                 timings_ms=timings,
+                task_kind=task_kind,
+                intent=intent,
+                edit_targets=edit_targets,
+                impact=impact,
+                affected_tests=affected_tests,
+                missing_context=missing_context,
             )
         finally:
             index.close()
@@ -949,6 +1058,8 @@ def _ambiguous_context_result(
     profile: str,
     query: str,
     detail_level: str,
+    task_kind: str,
+    intent: str,
     resolution: TargetResolution,
     timings: Dict[str, float],
 ) -> ContextResult:
@@ -976,6 +1087,7 @@ def _ambiguous_context_result(
                 model_confidence=0.0,
             ),
             thresholds={},
+            edit_ready=False,
         ),
         total_estimated_tokens=0,
         nodes=[],
@@ -999,7 +1111,670 @@ def _ambiguous_context_result(
         ],
         confidence_breakdown={},
         timings_ms=timings,
+        task_kind=task_kind,
+        intent=intent,
+        impact={
+            "dependencies": [],
+            "dependents": [],
+            "affected_tests": [],
+        },
+        missing_context=[
+            {
+                "kind": "target_resolution",
+                "target": label,
+                "reason": "ambiguous_target",
+                "candidates": candidates,
+            }
+        ],
     )
+
+
+def _historical_context_result(
+    *,
+    index: ProjectIndex,
+    db_path: str,
+    repo_root: str,
+    profile: str,
+    query: str,
+    requested: str,
+    detail_level: str,
+    task_kind: str,
+    intent: str,
+    include_source: str,
+    symbols: Dict[str, Dict[str, Any]],
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    timings: Dict[str, float],
+) -> Optional[ContextResult]:
+    rows = index.conn.execute(
+        """
+        SELECT
+            symbol_id, path, kind, name, signature, start_line, end_line,
+            state, replaced_by, recorded_at
+        FROM symbol_history
+        WHERE state = 'tombstone'
+          AND (
+              symbol_id = ?
+              OR LOWER(name) = LOWER(?)
+              OR LOWER(path) = LOWER(?)
+          )
+        ORDER BY recorded_at DESC, symbol_id
+        """,
+        (requested, requested, requested),
+    ).fetchall()
+    latest_by_symbol: Dict[str, Any] = {}
+    for row in rows:
+        latest_by_symbol.setdefault(str(row["symbol_id"]), row)
+    matches = list(latest_by_symbol.values())
+    if not matches:
+        return None
+    if len(matches) > 1:
+        candidates = [
+            {
+                "id": row["symbol_id"],
+                "kind": row["kind"],
+                "name": row["name"],
+                "path": row["path"],
+                "match": "historical_name",
+                "state": row["state"],
+                "replaced_by": row["replaced_by"],
+            }
+            for row in matches[:8]
+        ]
+        return _ambiguous_context_result(
+            db_path=db_path,
+            repo_root=repo_root,
+            profile=profile,
+            query=query,
+            detail_level=detail_level,
+            task_kind=task_kind,
+            intent=intent,
+            resolution=TargetResolution(
+                status="ambiguous",
+                target_id="",
+                requested=requested,
+                candidates=candidates,
+            ),
+            timings=timings,
+        )
+
+    historical = matches[0]
+    historical_id = str(historical["symbol_id"])
+    occurrence_rows = index.conn.execute(
+        """
+        SELECT
+            source, source_file_id, enclosing_symbol_id, relation, name,
+            start_line, end_line, source_text, resolution_status
+        FROM edge_occurrences
+        WHERE target = ? AND is_stale = 1
+        ORDER BY source_file_id, start_line, end_line, id
+        """,
+        (historical_id,),
+    ).fetchall()
+    dependents: List[Dict[str, Any]] = []
+    affected_test_items: List[Dict[str, Any]] = []
+    assertion_plan: List[Dict[str, Any]] = []
+    seen_dependents: set[str] = set()
+    seen_tests: set[str] = set()
+    for row in occurrence_rows:
+        dependent_id = str(row["enclosing_symbol_id"] or row["source"] or "")
+        if not dependent_id or dependent_id in seen_dependents or dependent_id in seen_tests:
+            continue
+        symbol = symbols.get(dependent_id, {})
+        evidence: Dict[str, Any] = {
+            "path": symbol.get("file_path") or _file_path_for_id(row["source_file_id"]),
+            "line_range": _line_range(row["start_line"], row["end_line"]),
+            "resolution_status": row["resolution_status"],
+        }
+        if include_source != "never" and row["source_text"]:
+            evidence["snippet"] = _truncate_occurrence_snippet(str(row["source_text"]))
+        descriptor = {
+            "id": dependent_id,
+            "name": symbol.get("name", dependent_id),
+            "kind": symbol.get("kind"),
+            "path": symbol.get("file_path") or evidence["path"],
+            "line_range": _line_range(
+                symbol.get("start_line"),
+                symbol.get("end_line"),
+            ),
+            "relation": row["relation"],
+            "distance": 1,
+            "affected_via": historical_id,
+            "source_node_id": dependent_id,
+            "source_included": False,
+            "evidence": [evidence],
+        }
+        if _is_test_symbol_row(symbol):
+            seen_tests.add(dependent_id)
+            affected_test_items.append(descriptor)
+            assertion_plan.append(
+                {
+                    "node_id": dependent_id,
+                    "anchor_id": historical_id,
+                }
+            )
+        else:
+            seen_dependents.add(dependent_id)
+            dependents.append(descriptor)
+
+    for dependent in dependents:
+        dependent_id = str(dependent["id"])
+        for edge in outgoing.get(dependent_id, []):
+            if edge.get("relation") != "tested_by":
+                continue
+            test_id = str(edge.get("target") or edge.get("target_id") or "")
+            if test_id not in symbols or test_id in seen_tests:
+                continue
+            seen_tests.add(test_id)
+            assertion_plan.append(
+                {
+                    "node_id": test_id,
+                    "anchor_id": dependent_id,
+                }
+            )
+            test_symbol = symbols[test_id]
+            affected_test_items.append(
+                {
+                    "id": test_id,
+                    "name": test_symbol.get("name", test_id),
+                    "kind": test_symbol.get("kind"),
+                    "path": test_symbol.get("file_path"),
+                    "line_range": _line_range(
+                        test_symbol.get("start_line"),
+                        test_symbol.get("end_line"),
+                    ),
+                    "relation": "tested_by",
+                    "distance": 2,
+                    "affected_via": dependent_id,
+                    "source_node_id": test_id,
+                    "source_included": False,
+                }
+            )
+    assertions_by_test = _load_affected_test_assertions(
+        index,
+        assertion_plan,
+        include_text=include_source != "never",
+    )
+    for test in affected_test_items:
+        assertions = assertions_by_test.get(str(test["id"]))
+        if assertions:
+            test["assertions"] = assertions
+
+    replacement = historical["replaced_by"]
+    historical_target = {
+        "id": historical_id,
+        "name": historical["name"],
+        "kind": historical["kind"],
+        "path": historical["path"],
+        "line_range": _line_range(historical["start_line"], historical["end_line"]),
+        "relation": "historical_target",
+        "distance": 0,
+        "state": historical["state"],
+        "replaced_by": replacement,
+        "source_node_id": historical_id,
+        "source_included": False,
+    }
+    missing_context = [
+        {
+            "kind": "historical_symbol",
+            "node_id": historical_id,
+            "name": historical["name"],
+            "path": historical["path"],
+            "reason": "symbol_renamed" if replacement else "symbol_deleted",
+            "required_for": "edit_target",
+            "replaced_by": replacement,
+        }
+    ]
+    recovery_target = str(replacement or (dependents[0]["id"] if dependents else ""))
+    next_actions: List[Dict[str, Any]] = []
+    if recovery_target:
+        next_actions.append(
+            {
+                "action": "expand_context",
+                "tool": "csegraph_context",
+                "arguments": {
+                    "task": query,
+                    "target": recovery_target,
+                    "detail_level": "standard",
+                    "task_kind": intent,
+                },
+                "reason": (
+                    "Retrieve the replacement symbol."
+                    if replacement
+                    else "Retrieve the broken caller as the current edit target."
+                ),
+            }
+        )
+    corpus_bytes, corpus_tokens = _indexed_corpus_token_baseline(index)
+    return ContextResult(
+        command="context",
+        db_path=db_path,
+        repo_root=repo_root,
+        profile=profile,
+        query=query,
+        target=historical_id,
+        target_input=requested,
+        target_resolution="historical",
+        target_confidence=1.0,
+        detail_level=detail_level,
+        returned_detail_level="minimal",
+        sufficiency=SufficiencyResult(
+            sufficient=False,
+            metrics=SufficiencyMetrics(
+                dependency_completeness=0.0,
+                entity_coverage=0.0,
+                semantic_overlap=0.0,
+                model_confidence=0.0,
+            ),
+            failure_reasons=[
+                {
+                    "metric": "edit_ready",
+                    "actual": 0.0,
+                    "threshold": 1.0,
+                    "suggested_next_action": (
+                        "Retrieve the replacement or a broken caller before editing."
+                    ),
+                }
+            ],
+            recovery=next_actions,
+            edit_ready=False,
+        ),
+        total_estimated_tokens=_estimate_tokens(
+            json.dumps(
+                {
+                    "edit_targets": [historical_target],
+                    "dependents": dependents,
+                    "affected_tests": affected_test_items,
+                    "missing_context": missing_context,
+                },
+                sort_keys=True,
+            )
+        ),
+        nodes=[],
+        indexed_corpus_bytes=corpus_bytes,
+        indexed_corpus_estimated_tokens=corpus_tokens,
+        next_actions=next_actions,
+        warnings=[
+            (
+                f"Historical symbol '{historical['name']}' was renamed to '{replacement}'."
+                if replacement
+                else f"Historical symbol '{historical['name']}' was deleted."
+            )
+        ],
+        timings_ms=timings,
+        task_kind=task_kind,
+        intent=intent,
+        edit_targets=[historical_target],
+        impact={
+            "edit_targets": [historical_target],
+            "dependencies": [],
+            "dependents": dependents,
+            "affected_tests": affected_test_items,
+        },
+        affected_tests=affected_test_items,
+        missing_context=missing_context,
+    )
+
+
+def _file_path_for_id(file_id: Any) -> str:
+    value = str(file_id or "")
+    return value[len("file::") :] if value.startswith("file::") else value
+
+
+def _plan_impact(
+    target_id: str,
+    symbols: Dict[str, Dict[str, Any]],
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    dependencies = _walk_call_impact(
+        target_id,
+        symbols,
+        outgoing,
+        incoming,
+        direction="dependencies",
+    )
+    dependents = _walk_call_impact(
+        target_id,
+        symbols,
+        outgoing,
+        incoming,
+        direction="dependents",
+    )
+    affected_tests: List[Dict[str, Any]] = []
+    seen_tests: set[str] = set()
+    impacted = [target_id, *[item["node_id"] for item in dependencies]]
+    impacted.extend(item["node_id"] for item in dependents)
+    for anchor_id in impacted:
+        for edge in sorted(
+            outgoing.get(anchor_id, []),
+            key=lambda item: str(item.get("target") or item.get("target_id") or ""),
+        ):
+            if edge.get("relation") != "tested_by":
+                continue
+            test_id = str(edge.get("target") or edge.get("target_id") or "")
+            if test_id not in symbols or test_id in seen_tests:
+                continue
+            seen_tests.add(test_id)
+            affected_tests.append(
+                {
+                    "node_id": test_id,
+                    "anchor_id": anchor_id,
+                    "relation": "tested_by",
+                    "distance": 1 if anchor_id == target_id else 2,
+                }
+            )
+
+        # Older indexes may have the call edge but no tested_by edge.
+        for edge in sorted(
+            incoming.get(anchor_id, []),
+            key=lambda item: str(item.get("source") or item.get("source_id") or ""),
+        ):
+            if edge.get("relation") != "calls":
+                continue
+            test_id = str(edge.get("source") or edge.get("source_id") or "")
+            if (
+                test_id not in symbols
+                or test_id in seen_tests
+                or not _is_test_symbol_row(symbols[test_id])
+            ):
+                continue
+            seen_tests.add(test_id)
+            affected_tests.append(
+                {
+                    "node_id": test_id,
+                    "anchor_id": anchor_id,
+                    "relation": "calls",
+                    "distance": 1 if anchor_id == target_id else 2,
+                }
+            )
+    return {
+        "dependencies": dependencies,
+        "dependents": dependents,
+        "affected_tests": affected_tests,
+    }
+
+
+def _walk_call_impact(
+    target_id: str,
+    symbols: Dict[str, Dict[str, Any]],
+    outgoing: Dict[str, List[Dict[str, Any]]],
+    incoming: Dict[str, List[Dict[str, Any]]],
+    *,
+    direction: str,
+    max_depth: int = 2,
+    limit: int = 32,
+) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    seen = {target_id}
+    frontier = [target_id]
+    for distance in range(1, max_depth + 1):
+        next_frontier: List[str] = []
+        for anchor_id in frontier:
+            edges = outgoing.get(anchor_id, []) if direction == "dependencies" else incoming.get(
+                anchor_id, []
+            )
+            endpoint = "target" if direction == "dependencies" else "source"
+            for edge in sorted(
+                edges,
+                key=lambda item: str(
+                    item.get(endpoint) or item.get(f"{endpoint}_id") or ""
+                ),
+            ):
+                if edge.get("relation") != "calls":
+                    continue
+                node_id = str(edge.get(endpoint) or edge.get(f"{endpoint}_id") or "")
+                if node_id not in symbols or node_id in seen:
+                    continue
+                seen.add(node_id)
+                next_frontier.append(node_id)
+                source_id = anchor_id if direction == "dependencies" else node_id
+                target = node_id if direction == "dependencies" else anchor_id
+                items.append(
+                    {
+                        "node_id": node_id,
+                        "anchor_id": anchor_id,
+                        "source_id": source_id,
+                        "target_id": target,
+                        "relation": "calls",
+                        "distance": distance,
+                    }
+                )
+                if len(items) >= limit:
+                    return items
+        frontier = next_frontier
+        if not frontier:
+            break
+    return items
+
+
+def _prioritize_impact_context_ids(
+    context_ids: Sequence[str],
+    plan: Dict[str, List[Dict[str, Any]]],
+    symbols: Dict[str, Dict[str, Any]],
+    budget: int,
+) -> List[str]:
+    dependencies = plan["dependencies"]
+    dependents = plan["dependents"]
+    priority = [
+        *[item["node_id"] for item in dependencies if item["distance"] == 1],
+        *[item["node_id"] for item in dependents if item["distance"] == 1],
+        *[item["node_id"] for item in plan["affected_tests"]],
+        *[item["node_id"] for item in dependencies if item["distance"] > 1],
+        *[item["node_id"] for item in dependents if item["distance"] > 1],
+    ]
+    target_ids = [
+        node_id
+        for node_id, row in symbols.items()
+        if row.get("kind") == "file" and node_id in context_ids[:1]
+    ]
+    ordered = [*target_ids, *context_ids[:1], *priority, *context_ids]
+    selected: List[str] = []
+    seen: set[str] = set()
+    for node_id in ordered:
+        if node_id in symbols and node_id not in seen:
+            selected.append(node_id)
+            seen.add(node_id)
+        if len(selected) >= max(1, int(budget)):
+            break
+    return selected
+
+
+def _required_edit_source_ids(
+    intent: str,
+    task: str,
+    target_id: str,
+    plan: Dict[str, List[Dict[str, Any]]],
+    symbols: Dict[str, Dict[str, Any]],
+) -> set[str]:
+    if intent not in EDIT_INTENTS:
+        return set()
+    required = {target_id}
+    required.update(item["node_id"] for item in plan["affected_tests"])
+    task_tokens = _task_tokens(task)
+    for item in plan["dependencies"]:
+        node_id = item["node_id"]
+        row = symbols.get(node_id, {})
+        searchable = f"{row.get('name', '')} {row.get('file_path', '')}".lower()
+        if task_tokens & _task_tokens(searchable):
+            required.add(node_id)
+    return required
+
+
+def _materialize_impact(
+    *,
+    index: ProjectIndex,
+    target_id: str,
+    plan: Dict[str, List[Dict[str, Any]]],
+    symbols: Dict[str, Dict[str, Any]],
+    nodes: Sequence[ContextNode],
+    relationships: Sequence[ContextRelationship],
+    include_assertion_text: bool,
+) -> tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]], List[Dict[str, Any]]]:
+    node_by_id = {node.id: node for node in nodes}
+    assertions_by_test = _load_affected_test_assertions(
+        index,
+        plan["affected_tests"],
+        include_text=include_assertion_text,
+    )
+    relationship_by_key = {
+        (relationship.source, relationship.relation, relationship.target): relationship
+        for relationship in relationships
+    }
+
+    def descriptor(item: Dict[str, Any]) -> Dict[str, Any]:
+        node_id = item["node_id"]
+        row = symbols.get(node_id, {})
+        node = node_by_id.get(node_id)
+        source_id = str(item.get("source_id") or item.get("anchor_id") or "")
+        target = str(item.get("target_id") or node_id)
+        relationship = relationship_by_key.get(
+            (source_id, str(item.get("relation") or ""), target)
+        )
+        occurrences = []
+        if relationship is not None:
+            occurrences = [
+                {
+                    "path": occurrence.path,
+                    "line_range": occurrence.line_range,
+                    **({"snippet": occurrence.snippet} if occurrence.snippet else {}),
+                }
+                for occurrence in relationship.occurrences
+            ]
+        payload: Dict[str, Any] = {
+            "id": node_id,
+            "name": row.get("name", node_id),
+            "kind": row.get("kind"),
+            "path": row.get("file_path"),
+            "line_range": _line_range(row.get("start_line"), row.get("end_line")),
+            "relation": item.get("relation"),
+            "distance": item.get("distance", 0),
+            "source_node_id": node_id,
+            "source_included": bool(node is not None and node.source_text is not None),
+        }
+        if item.get("anchor_id"):
+            payload["affected_via"] = item["anchor_id"]
+        if occurrences:
+            payload["evidence"] = occurrences
+        assertions = assertions_by_test.get(node_id)
+        if assertions:
+            payload["assertions"] = assertions
+        return payload
+
+    target_item = {
+        "node_id": target_id,
+        "relation": "target",
+        "distance": 0,
+    }
+    edit_targets = [descriptor(target_item)]
+    dependencies = [descriptor(item) for item in plan["dependencies"]]
+    dependents = [descriptor(item) for item in plan["dependents"]]
+    affected_tests = [descriptor(item) for item in plan["affected_tests"]]
+    impact = {
+        "edit_targets": edit_targets,
+        "dependencies": dependencies,
+        "dependents": dependents,
+        "affected_tests": affected_tests,
+    }
+    return edit_targets, impact, affected_tests
+
+
+def _load_affected_test_assertions(
+    index: ProjectIndex,
+    affected_tests: Sequence[Dict[str, Any]],
+    *,
+    include_text: bool,
+) -> Dict[str, List[Dict[str, Any]]]:
+    anchors_by_test: Dict[str, set[str]] = {}
+    for item in affected_tests:
+        test_id = str(item.get("node_id") or "")
+        anchor_id = str(item.get("anchor_id") or "")
+        if test_id and anchor_id:
+            anchors_by_test.setdefault(test_id, set()).add(anchor_id)
+    if not anchors_by_test:
+        return {}
+
+    placeholders = ",".join("?" for _ in anchors_by_test)
+    rows = index.conn.execute(
+        f"""
+        SELECT
+            test_symbol_id, target_symbol_id, assertion_kind, expression,
+            start_line, end_line, resolution_status, candidate_targets
+        FROM test_assertions
+        WHERE test_symbol_id IN ({placeholders})
+        ORDER BY test_symbol_id, start_line, end_line, id
+        """,
+        tuple(sorted(anchors_by_test)),
+    ).fetchall()
+    evidence: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        test_id = str(row["test_symbol_id"])
+        target_symbol_id = str(row["target_symbol_id"] or "")
+        if target_symbol_id and target_symbol_id not in anchors_by_test[test_id]:
+            continue
+        assertion_payload: Dict[str, Any] = {
+            "kind": row["assertion_kind"],
+            "line_range": _line_range(row["start_line"], row["end_line"]),
+            "target_symbol_id": target_symbol_id or None,
+            "resolution_status": row["resolution_status"],
+        }
+        if include_text:
+            assertion_payload["expression"] = row["expression"]
+        try:
+            candidates = json.loads(row["candidate_targets"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            candidates = []
+        if isinstance(candidates, list) and candidates:
+            assertion_payload["candidate_targets"] = candidates
+        evidence.setdefault(test_id, []).append(assertion_payload)
+    return evidence
+
+
+def _missing_edit_context(
+    *,
+    intent: str,
+    target_id: str,
+    required_source_ids: set[str],
+    nodes: Sequence[ContextNode],
+    symbols: Dict[str, Dict[str, Any]],
+    returned_detail_level: str,
+    source_policy: str,
+) -> List[Dict[str, Any]]:
+    if intent not in EDIT_INTENTS:
+        return []
+    node_by_id = {node.id: node for node in nodes}
+    missing: List[Dict[str, Any]] = []
+    for node_id in sorted(required_source_ids, key=lambda value: (value != target_id, value)):
+        node = node_by_id.get(node_id)
+        if node is not None and node.source_text is not None:
+            continue
+        row = symbols.get(node_id, {})
+        if node is None:
+            reason = "node_not_returned"
+        elif node.source_omitted_reason:
+            reason = node.source_omitted_reason
+        elif returned_detail_level == "minimal":
+            reason = "minimal_detail"
+        elif source_policy == "never":
+            reason = "source_policy_never"
+        else:
+            reason = "source_unavailable"
+        missing.append(
+            {
+                "kind": "source",
+                "node_id": node_id,
+                "name": row.get("name", node_id),
+                "path": row.get("file_path"),
+                "reason": reason,
+                "required_for": (
+                    "edit_target"
+                    if node_id == target_id
+                    else "affected_test"
+                    if _is_test_symbol_row(row)
+                    else "task_relevant_dependency"
+                ),
+            }
+        )
+    return missing
 
 
 def _select_context_ids(
@@ -1432,13 +2207,52 @@ def _validate_detail_level(value: str) -> str:
     return value
 
 
+def _validate_task_kind(value: str) -> str:
+    if value not in TASK_KINDS:
+        choices = ", ".join(sorted(TASK_KINDS))
+        raise ValueError(f"task_kind must be one of: {choices}")
+    return value
+
+
+def _infer_task_kind(task: str) -> str:
+    tokens = _task_tokens(task)
+    test_tokens = {"test", "tests", "testing", "coverage", "assertion", "assertions"}
+    impact_tokens = {"affect", "affected", "impact", "update", "change", "changes", "failing"}
+    if tokens & test_tokens and tokens & impact_tokens:
+        return "test-impact"
+    if tokens & {"review", "audit", "inspect", "critique"}:
+        return "review"
+    if tokens & {
+        "add",
+        "change",
+        "changes",
+        "delete",
+        "fix",
+        "implement",
+        "migrate",
+        "modify",
+        "refactor",
+        "remove",
+        "rename",
+        "replace",
+        "update",
+        "use",
+    }:
+        return "edit"
+    return "understand"
+
+
 def _initial_detail_level(
     requested_detail_level: str,
     task: str,
     resolution: TargetResolution,
+    intent: Optional[str] = None,
 ) -> str:
     if requested_detail_level != "auto":
         return requested_detail_level
+    resolved_intent = intent or _infer_task_kind(task)
+    if resolved_intent in EDIT_INTENTS:
+        return "standard"
     task_tokens = _task_tokens(task)
     debugging = bool(
         task_tokens
@@ -1495,12 +2309,13 @@ def _source_candidate_ids_for_detail(
     symbols: Dict[str, Dict[str, Any]],
     raw_nodes: Sequence[str],
     source_neighbor_budget: int,
+    required_source_ids: set[str],
 ) -> set[str]:
     if returned_detail_level == "minimal":
         return set()
     if returned_detail_level == "full":
         return set(context_ids)
-    return _source_candidate_ids(
+    selected = _source_candidate_ids(
         include_source,
         target_id,
         context_ids,
@@ -1509,6 +2324,9 @@ def _source_candidate_ids_for_detail(
         raw_nodes,
         source_neighbor_budget,
     )
+    if include_source != "never":
+        selected.update(required_source_ids)
+    return selected & set(context_ids)
 
 
 def _source_candidate_ids(
@@ -1549,13 +2367,23 @@ def _source_candidate_ids(
 def _next_actions(
     returned_detail_level: str,
     target_id: str,
+    *,
+    task: str,
+    intent: str,
 ) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     if returned_detail_level == "minimal":
         actions.append(
             {
                 "action": "expand_context",
+                "tool": "csegraph_context",
                 "detail_level": "standard",
+                "arguments": {
+                    "task": task,
+                    "target": target_id,
+                    "detail_level": "standard",
+                    "task_kind": intent,
+                },
                 "reason": "Request working context with selected source before editing.",
             }
         )
@@ -1866,6 +2694,7 @@ def _build_detail_pass(
     include_source: str,
     explain: bool,
     max_tokens: Optional[int],
+    required_source_ids: set[str],
     source_neighbor_budget: int,
     task: str,
     config: Any,
@@ -1898,6 +2727,7 @@ def _build_detail_pass(
         symbols,
         raw_nodes,
         source_neighbor_budget,
+        required_source_ids,
     )
     nodes = _assemble_context_nodes(
         repo_root=repo_root,

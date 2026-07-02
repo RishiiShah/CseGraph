@@ -7,6 +7,11 @@
     "target",
     "symbols",
     "relationships",
+    "intent",
+    "edit_targets",
+    "impact",
+    "affected_tests",
+    "missing_context",
     "import_preludes",
     "sufficiency",
     "budgets",
@@ -35,6 +40,7 @@
     "thresholds",
     "failure_reasons",
     "recovery",
+    "edit_ready",
     "verdict",
     "applicable_metrics"
   ]

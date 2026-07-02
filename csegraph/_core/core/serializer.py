@@ -39,7 +39,11 @@ def to_dict(value: Any) -> Any:
 def _context_result_to_dict(result: Any) -> Dict[str, Any]:
     target_node = next((node for node in result.nodes if node.id == result.target), None)
     symbol_ids = {node.id for node in result.nodes}
-    graph_target_id = result.target if _is_graph_node_id(result.target) else None
+    graph_target_id = (
+        result.target
+        if _is_graph_node_id(result.target) and result.target_resolution != "historical"
+        else None
+    )
     payload = {
         "command": result.command,
         "schema_version": CONTEXT_OUTPUT_SCHEMA_VERSION,
@@ -51,6 +55,7 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
             "detail_level": result.detail_level,
             "returned_detail_level": result.returned_detail_level,
             "source_policy": getattr(result, "source_policy", "auto"),
+            "task_kind": getattr(result, "task_kind", "auto"),
             "db_path": result.db_path,
         },
         "target": {
@@ -70,6 +75,11 @@ def _context_result_to_dict(result: Any) -> Dict[str, Any]:
             _relationship_to_dict(relationship, symbol_ids)
             for relationship in getattr(result, "relationships", [])
         ],
+        "intent": getattr(result, "intent", "understand"),
+        "edit_targets": to_dict(getattr(result, "edit_targets", [])),
+        "impact": to_dict(getattr(result, "impact", {})),
+        "affected_tests": to_dict(getattr(result, "affected_tests", [])),
+        "missing_context": to_dict(getattr(result, "missing_context", [])),
         "import_preludes": to_dict(getattr(result, "import_preludes", [])),
         "confidence_breakdown": to_dict(getattr(result, "confidence_breakdown", {})),
         "sufficiency": _sufficiency_to_dict(result.sufficiency),
