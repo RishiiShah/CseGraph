@@ -78,9 +78,9 @@ TOOLS: list[Tool] = [
     Tool(
         name="csegraph_minimal",
         description=(
-            "Call this FIRST. Returns a ~150-token routing card: graph summary, top-degree key "
-            "entities, detected task intent, and next-tool suggestions tailored to the task. "
-            "Use this before invoking heavier tools so the agent knows which one to call."
+            "Optional repository health and orientation card. Use csegraph_context directly "
+            "for ordinary coding tasks; use this tool only when you need index health or "
+            "high-level entry points."
         ),
         inputSchema={
             "type": "object",
@@ -104,10 +104,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="csegraph_context",
         description=(
-            "Retrieve task-specific, impact-aware context. Edit tasks return edit-ready "
-            "target source, dependencies, dependents, and affected tests when available. "
-            "Otherwise sufficiency.edit_ready=false and missing_context explain why. "
-            "Paths are repo-relative to repo_root."
+            "Primary one-call adaptive, edit-ready code retrieval. Returns an exact-budget "
+            "compact slice by default, using lexical search first and graph ranking only when needed. "
+            "Use response_mode=diagnostic for selection evidence or legacy-v3 for the old shape; "
+            "legacy-v3 reports sufficiency.edit_ready=false and missing_context when incomplete."
         ),
         inputSchema={
             "type": "object",
@@ -136,19 +136,51 @@ TOOLS: list[Tool] = [
                     "default": "auto",
                     "description": "Control symbol source_text materialization. `never` keeps relationship occurrence path/line metadata and import-only preludes, but strips relationship occurrence snippets. File nodes never return whole-file source.",
                 },
+                "token_budget": {
+                    "type": "integer",
+                    "minimum": 256,
+                    "maximum": 16384,
+                    "default": 800,
+                    "description": "Exact token ceiling for the complete compact response.",
+                },
+                "encoding": {
+                    "type": "string",
+                    "enum": ["o200k_base", "cl100k_base"],
+                    "default": "o200k_base",
+                    "description": "Tokenizer encoding used to enforce token_budget.",
+                },
+                "response_mode": {
+                    "type": "string",
+                    "enum": ["compact", "diagnostic", "legacy-v3"],
+                    "default": "compact",
+                    "description": "Compact adaptive output, diagnostic adaptive output, or the legacy v3 contract.",
+                },
+                "engine": {
+                    "type": "string",
+                    "enum": ["adaptive", "legacy"],
+                    "default": "adaptive",
+                    "description": "Retrieval engine. Adaptive is the CseGraph 2.0 default.",
+                },
+                "cursor": {
+                    "type": "string",
+                    "description": "Optional prior compact-response cursor; supplied continuations omit already emitted slices.",
+                },
                 "max_tokens": {
                     "type": "integer",
-                    "description": "Approximate max tokens for returned context. `max_tokens` is a soft budgeting hint used during retrieval to decide how much source material to include; it does not guarantee the serialized response size.",
+                    "deprecated": True,
+                    "description": "Legacy-v3 source-material hint. Use token_budget for compact responses.",
                 },
                 "explain": {
                     "type": "boolean",
                     "default": False,
+                    "deprecated": True,
                     "description": "Include human-readable explanations for selection.",
                 },
                 "detail_level": {
                     "type": "string",
                     "enum": ["auto", "minimal", "standard", "full"],
                     "default": "auto",
+                    "deprecated": True,
                     "description": "auto promotes edit tasks when needed; minimal is routing metadata, standard is edit-ready source and impact evidence, full adds explanations.",
                 },
                 "task_kind": {

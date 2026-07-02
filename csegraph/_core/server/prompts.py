@@ -208,27 +208,24 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
         )
     elif name == "csegraph-minimal":
         text = prompt_text(
-            "Get a compact routing card (~150 tokens) before invoking heavier tools.",
+            "Get an optional compact repository-health and orientation card.",
             [
                 "If `repo` is missing, ask the user for the absolute repository path.",
-                "Call `csegraph_minimal` with the repo and the user's task (if any).",
-                "If the routing card includes a stale-index warning, call `csegraph_refresh` before proceeding.",
-                "Read the `next_tool_suggestions` array. Call exactly one suggested tool — do not invoke tools not in the suggestions.",
-                "If suggestions are empty or the routing card says the graph is sufficient, stop — no further tool calls needed.",
+                "Call `csegraph_minimal` only when index health or high-level entry points are needed.",
+                "For task-specific code, call `csegraph_context` directly instead.",
             ],
             args,
         )
     elif name == "csegraph-context":
         text = prompt_text(
-            "Retrieve task-specific context, starting minimal and escalating only when needed.",
+            "Retrieve an exact-budget task-specific code slice in one call.",
             [
-                "Step 1: Call `csegraph_minimal` first to get the routing card (skip if already called this session).",
-                "Step 2: Call `csegraph_context` with detail_level=auto. Auto returns minimal if sufficient, standard otherwise.",
-                "Step 3: Use returned `symbols`, `relationships[].occurrences`, and `import_preludes` first; they describe the symbol neighborhood and callsites without whole-file reads.",
-                "Step 4 (only if needed): If request.returned_detail_level=minimal and you need symbol source slices, re-call with detail_level=standard and a focused target.",
-                "Step 5 (only if needed): If a broader topology question remains after relationships, call `csegraph_graph` for one key symbol with depth=1.",
-                "Stop after at most 3 tool calls total. Use the returned sufficiency metrics to decide whether more context is needed.",
-                "Do NOT call `csegraph_graph` or `csegraph_path` unless the task specifically requires structural/dependency information.",
+                "Call `csegraph_context` directly with the repo, task, and target when known.",
+                "Use the returned `slices` before opening files or searching the repository.",
+                "If status is `ambiguous`, retry once with a returned candidate ID.",
+                "If `next` recommends graph or path, make that one focused structural call.",
+                "Do not call `csegraph_minimal` first unless the user explicitly asks for orientation or index health.",
+                "Stop after one call for ordinary tasks and two calls for structural escalation.",
             ],
             args,
         )
@@ -237,13 +234,11 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
             "Debug a reported issue using graph-backed context instead of repo-wide search.",
             [
                 "If `repo` is missing, ask for the absolute repository path.",
-                "Step 1: Call `csegraph_minimal` with task set to the issue description.",
-                "If the routing card warns the index is stale, call `csegraph_refresh` (counts toward the 3-call limit).",
-                "Step 2: Call `csegraph_context` with task=description, target if provided, detail_level=auto.",
-                "Step 3: Inspect `symbols`, `relationships[].occurrences`, and `import_preludes` before opening files.",
-                "Step 4 (only if needed): Call `csegraph_graph` on the failing symbol with depth=1 and detail_level=minimal.",
+                "Call `csegraph_context` with task=description and the failing target when known.",
+                "Inspect the returned target, callers, tests, and dependency slices before opening files.",
+                "Only if `next` requests it, call `csegraph_graph` on the failing symbol at depth 1.",
                 "Do not use broad grep or read whole files unless context is insufficient after these steps.",
-                "Stop after at most 3 csegraph MCP tool calls.",
+                "Stop after at most 2 csegraph MCP tool calls.",
             ],
             args,
         )
@@ -256,11 +251,10 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
                 "Optional (human terminal, not MCP): run `csegraph analyze --base-ref "
                 + repr(base)
                 + "` for risk-ranked diagnostics.",
-                "Step 1: Call `csegraph_refresh` so the index matches working tree.",
-                "Step 2: Call `csegraph_minimal` with the review task.",
-                "Step 3: Call `csegraph_context` with detail_level=auto and targets from the change list or task.",
-                "Use `symbols`, `relationships[].occurrences`, and `import_preludes` before reading changed files.",
-                "Stop after at most 3 csegraph MCP tool calls.",
+                "Call `csegraph_context` with the review task and highest-risk target; it refreshes changed files automatically.",
+                "Use returned target, caller, dependency, and test slices before reading changed files.",
+                "Only make a focused graph call if the response recommends structural escalation.",
+                "Stop after at most 2 csegraph MCP tool calls.",
             ],
             args,
         )
@@ -269,13 +263,12 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
             "Assess merge/PR readiness with minimal context cost.",
             [
                 "If `repo` is missing, ask for the absolute repository path.",
-                "Step 1: Call `csegraph_minimal` with the merge/PR task summary.",
-                "Step 2: Call `csegraph_context` with detail_level=auto on the highest-risk areas mentioned.",
-                "Step 3: Use context `relationships[].occurrences` and `import_preludes` to understand local dependency direction.",
-                "Step 4 (only if needed): Call `csegraph_graph` with depth=1 on one critical symbol.",
-                "Report: sufficiency metrics, stale-index warnings, and whether more context is needed.",
+                "Call `csegraph_context` on the highest-risk area named in the merge/PR summary.",
+                "Use the compact caller, dependency, and test slices to assess local risk.",
+                "Only if `next` recommends it, call `csegraph_graph` with depth=1 on one critical symbol.",
+                "Report response status, freshness, budget use, and whether structural context remains.",
                 "Use only the six core csegraph MCP tools; run `csegraph analyze` via CLI if the user asks for diagnostics.",
-                "Stop after at most 3 csegraph MCP tool calls.",
+                "Stop after at most 2 csegraph MCP tool calls.",
             ],
             args,
         )

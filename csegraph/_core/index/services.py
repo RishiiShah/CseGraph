@@ -138,6 +138,7 @@ class IndexService:
                 for parsed in parsed_files
                 if parsed.parse_status != "ok"
             }
+            index.bump_index_revision()
             timings_ms["parse_errors"] = _elapsed_ms(start)
             return IndexResult(
                 command="index",
@@ -378,6 +379,7 @@ class RefreshService:
                 for parsed in parsed_changed
                 if parsed.parse_status != "ok"
             }
+            index.bump_index_revision()
             return RefreshResult(
                 command="refresh",
                 db_path=self.db_path,

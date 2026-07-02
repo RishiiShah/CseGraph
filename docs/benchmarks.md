@@ -1,5 +1,25 @@
 # Agent Context Benchmarks
 
+## CseGraph 2.0 adaptive methodology
+
+The release baseline is no longer a full-corpus read. The deterministic
+comparison uses `rg --json`, exact-name/path ranking, bounded 80-line selective
+reads, one-hop import following, and the same exact `o200k_base` response budget
+as CseGraph. Pull-request CI runs the 20-task pinned corpus in
+`benchmarks/adaptive/pr_tasks.json`; nightly and release jobs expand the same
+schema with pinned cross-repository and agent patch/test trials.
+
+```bash
+env/bin/python tools/run_adaptive_retrieval_benchmark.py \
+  --corpus benchmarks/adaptive/pr_tasks.json \
+  --output benchmark_results/adaptive_retrieval.json
+```
+
+Release gates cover exact budget compliance, target resolution, required-slice
+recall and precision, median tokens, p95 latency, tool calls, cache behavior,
+and stale-context failures. Historical full-corpus comparisons remain below
+for reproducibility only and are not used as evidence for 2.0 product claims.
+
 ## Native MCP Cross-Repo Results (CseGraph 1.8.0)
 
 | Profile | Naive chars/4 tokens | MCP chars/4 tokens | chars/4 reduction | Naive OpenAI proxy tokens | MCP OpenAI proxy tokens | OpenAI proxy reduction | Avg MCP latency | Avg Phase B |

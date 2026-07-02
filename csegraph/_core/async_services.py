@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
 from csegraph._core.core.models import (
+    ContextRequest,
+    ContextResponse,
     ContextResult,
     GraphResult,
     IndexResult,
@@ -73,6 +75,9 @@ class AsyncContextService:
     def __init__(self, db_path: str | Path):
         self._sync = ContextService(db_path)
         self.db_path = self._sync.db_path
+
+    async def retrieve(self, request: ContextRequest) -> ContextResponse:
+        return await asyncio.to_thread(self._sync.retrieve, request)
 
     async def build_context(
         self,

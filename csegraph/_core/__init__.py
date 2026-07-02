@@ -7,7 +7,7 @@ eval, resolver, embedding, report, and low-level diagnostic services remain
 private implementation modules for repo-local maintainer tooling.
 """
 
-__version__ = "1.8.1"
+__version__ = "2.0.0"
 
 from csegraph._core.async_services import (
     AsyncContextService,
@@ -19,7 +19,12 @@ from csegraph._core.config.profiles import PROFILES, ProfileConfig, get_profile,
 from csegraph._core.core.models import (
     ContextNode,
     ContextRelationship,
+    ContextRequest,
+    ContextResponse,
     ContextResult,
+    ContextSlice,
+    ContextStatus,
+    ContextTarget,
     DaemonEntry,
     DaemonResult,
     ExportResult,
@@ -78,6 +83,11 @@ __all__ = [
     "AsyncRefreshService",
     "BaseParser",
     "ContextNode",
+    "ContextRequest",
+    "ContextResponse",
+    "ContextSlice",
+    "ContextStatus",
+    "ContextTarget",
     "ContextRelationship",
     "ContextResult",
     "ContextService",

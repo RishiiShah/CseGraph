@@ -627,6 +627,8 @@ def render_path_summary(payload: Dict[str, Any]) -> str:
 
 
 def render_context_markdown(payload: Dict[str, Any]) -> str:
+    if payload.get("schema_version") == "csegraph-context-v4":
+        return _render_adaptive_context_markdown(payload)
     request = payload.get("request") or {}
     raw_target = payload.get("target")
     target = raw_target if isinstance(raw_target, dict) else {}
@@ -737,6 +739,62 @@ def render_context_markdown(payload: Dict[str, Any]) -> str:
 
     for rank, node in enumerate(symbols, start=1):
         lines.extend(_render_node(rank, node))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_adaptive_context_markdown(payload: Dict[str, Any]) -> str:
+    target = payload.get("target") or {}
+    usage = payload.get("usage") or {}
+    freshness = payload.get("freshness") or {}
+    lines: List[str] = [
+        "# csegraph context",
+        "",
+        f"Status: `{payload.get('status', '')}`",
+        f"Intent: `{payload.get('intent', '')}`",
+        f"Target: `{target.get('id', '')}`",
+        f"Tokens: {usage.get('tokens', 0)} / {usage.get('budget', 0)} "
+        f"(`{usage.get('encoding', '')}`)",
+        f"Freshness: `{freshness.get('state', '')}` "
+        f"(revision {freshness.get('revision', 0)})",
+        "",
+    ]
+    for warning in payload.get("warnings") or []:
+        lines.append(f"WARNING: {warning}")
+    if payload.get("warnings"):
+        lines.append("")
+
+    for item in payload.get("candidates") or []:
+        line_range = _line_range_text(item.get("lines"))
+        lines.append(
+            f"- Candidate `{item.get('id', '')}` at `{item.get('path', '')}{line_range}`"
+        )
+    if payload.get("candidates"):
+        lines.append("")
+
+    for item in payload.get("slices") or []:
+        line_range = _line_range_text(item.get("lines"))
+        lines.extend(
+            [
+                f"## {str(item.get('role', 'context')).title()}: `{item.get('symbol', '')}`",
+                "",
+                f"`{item.get('path', '')}{line_range}`",
+                "",
+                "```",
+                str(item.get("code", "")).rstrip(),
+                "```",
+                "",
+            ]
+        )
+    next_action = payload.get("next")
+    if isinstance(next_action, dict):
+        lines.extend(
+            [
+                "## Next",
+                "",
+                f"- `{next_action.get('tool', '')}` — {next_action.get('reason', '')}",
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 

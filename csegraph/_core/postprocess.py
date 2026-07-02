@@ -95,6 +95,8 @@ class PostprocessService:
                 modularity = result.modularity
                 timings["community_detection_ms"] = _elapsed_ms(start)
 
+            if not (skip_fts and skip_resolvers and skip_communities):
+                index.bump_index_revision()
             return PostprocessResult(
                 command="postprocess",
                 db_path=self.db_path,

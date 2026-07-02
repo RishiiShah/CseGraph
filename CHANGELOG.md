@@ -6,6 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 2.0.0 - 2026-07-02
+
+### Added
+
+- Added adaptive one-call context retrieval with exact `o200k_base` whole-response
+  token budgets, compact code slices, ambiguity handling, and focused structural
+  continuations.
+- Added bounded automatic index bootstrapping and freshness coordination with
+  incremental refresh, cross-process refresh leases, and stale-context refusal.
+- Added revision-keyed shared retrieval-plan caching and continuation cursors.
+- Added a strong `rg` plus selective-read benchmark baseline and a versioned
+  20-task pull-request corpus.
+- Added public `ContextRequest`, `ContextResponse`, `ContextSlice`,
+  `ContextTarget`, and `ContextStatus` SDK types.
+
+### Changed
+
+- Made `csegraph_context` the primary MCP entry point and made
+  `csegraph_minimal` optional for health and orientation.
+- Changed the default MCP and CLI context response to
+  `csegraph-context-v4`; explicit `legacy-v3` mode remains available.
+- Changed context retrieval to hydrate bounded SQL candidates instead of
+  copying the complete graph snapshot.
+- Promoted `tiktoken` to a runtime dependency.
+- Upgraded the index schema to v9 with monotonic retrieval revisions.
+
 ## 1.8.1 - 2026-06-24
 
 ### Added

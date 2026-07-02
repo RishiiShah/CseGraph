@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csegraph"
-version = "1.8.1"
+version = "2.0.0"
 description = "Repository context engine for coding agents with CLI, MCP server, and Python facade."
 readme = "README.md"
 authors = [
@@ -34,6 +34,7 @@ dependencies = [
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
     "tree-sitter-javascript>=0.23",
+    "tiktoken>=0.13,<1",
 ]
 
 [project.optional-dependencies]

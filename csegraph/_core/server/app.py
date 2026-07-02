@@ -90,7 +90,11 @@ def _handle_tool(
         intent = result.get("task_intent")
         if intent:
             _SESSION.inferred_intent = intent
-    if isinstance(result, dict):
+    compact_context = (
+        isinstance(result, dict)
+        and result.get("schema_version") == "csegraph-context-v4"
+    )
+    if isinstance(result, dict) and not compact_context:
         _apply_trust_metadata(
             result,
             tool=name,
@@ -102,6 +106,25 @@ def _handle_tool(
         _apply_session_token_usage(result)
         effective_max = provided_max if isinstance(provided_max, int) and provided_max > 0 else None
         _apply_byte_cap(result, effective_max)
+    elif compact_context:
+        diagnostic = result.get("diagnostic")
+        if isinstance(diagnostic, dict):
+            diagnostic["trust"] = {
+                "server": "csegraph",
+                "tool": name,
+                "platform": host_platform or "unknown",
+                "repo": str(arguments.get("repo") or bound_repo or ""),
+            }
+            diagnostic["session"] = _SESSION.token_snapshot()
+            _rebudget_compact_context(
+                result,
+                max_bytes=provided_max if isinstance(provided_max, int) else None,
+            )
+        usage = result.get("usage")
+        _SESSION.record_token_usage(
+            response_tokens=int((usage or {}).get("tokens") or 0),
+            context_usage=None,
+        )
     _record_tool_call(
         arguments.get("repo") or bound_repo,
         name,
@@ -109,6 +132,53 @@ def _handle_tool(
         host_platform=host_platform,
     )
     return result
+
+
+def _rebudget_compact_context(
+    result: dict[str, Any],
+    *,
+    max_bytes: int | None,
+) -> None:
+    from csegraph._core.retrieval.token_budget import count_payload_tokens
+
+    usage = result.get("usage")
+    if not isinstance(usage, dict):
+        return
+    encoding = str(usage.get("encoding") or "o200k_base")
+    budget = int(usage.get("budget") or 800)
+
+    def converge() -> int:
+        usage["tokens"] = 0
+        for _ in range(8):
+            tokens = count_payload_tokens(result, encoding)
+            if usage.get("tokens") == tokens:
+                return tokens
+            usage["tokens"] = tokens
+        return int(usage["tokens"])
+
+    while True:
+        tokens = converge()
+        bytes_ok = max_bytes is None or _encoded_size(result) <= max_bytes
+        if tokens <= budget and bytes_ok:
+            return
+        diagnostic = result.get("diagnostic")
+        if not isinstance(diagnostic, dict):
+            return
+        relationships = diagnostic.get("relationships")
+        if isinstance(relationships, list) and relationships:
+            relationships.pop()
+            continue
+        candidates = diagnostic.get("ranked_candidates")
+        if isinstance(candidates, list) and candidates:
+            candidates.pop()
+            continue
+        if "session" in diagnostic:
+            diagnostic.pop("session", None)
+            continue
+        if "trust" in diagnostic:
+            diagnostic.pop("trust", None)
+            continue
+        return
 
 
 def _apply_trust_metadata(
@@ -607,12 +677,21 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         )
 
     if name == "csegraph_context":
+        from csegraph._core.core.models import ContextRequest
         from csegraph._core.retrieval.context import ContextService
 
         repo = arguments["repo"]
         db = _db_path(repo, arguments.get("db"))
-        return to_dict(
-            ContextService(db).build_context(
+        response_mode = arguments.get("response_mode")
+        legacy_keys = {"detail_level", "max_tokens", "explain"}
+        implicit_legacy = response_mode is None and bool(legacy_keys & arguments.keys())
+        use_legacy = (
+            arguments.get("engine") == "legacy"
+            or response_mode == "legacy-v3"
+            or implicit_legacy
+        )
+        if use_legacy:
+            payload = to_dict(ContextService(db).build_context(
                 task=arguments["task"],
                 target=arguments.get("target"),
                 profile=arguments.get("profile", "auto"),
@@ -621,6 +700,28 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 explain=arguments.get("explain", False),
                 detail_level=arguments.get("detail_level", "auto"),
                 task_kind=arguments.get("task_kind", "auto"),
+            ))
+            if implicit_legacy:
+                payload.setdefault("warnings", []).append(
+                    "Legacy context arguments selected the legacy-v3 response. "
+                    "Use token_budget and response_mode=compact for adaptive retrieval."
+                )
+            return payload
+        return to_dict(
+            ContextService(db).retrieve(
+                ContextRequest(
+                    repo=repo,
+                    task=arguments["task"],
+                    target=arguments.get("target"),
+                    task_kind=arguments.get("task_kind", "auto"),
+                    token_budget=arguments.get("token_budget", 800),
+                    encoding=arguments.get("encoding", "o200k_base"),
+                    include_source=arguments.get("include_source", "auto"),
+                    response_mode=response_mode or "compact",
+                    engine="adaptive",
+                    cursor=arguments.get("cursor"),
+                    max_bytes=arguments.get("max_bytes"),
+                )
             )
         )
 
@@ -666,8 +767,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
 _SERVER_INSTRUCTIONS = (
     "CseGraph is a local-first code context engine. Use only the advertised "
-    "csegraph_* MCP tools. Start with csegraph_minimal, follow one suggested "
-    "next tool, and avoid broad repo reads when CseGraph can supply the slice. "
+    "csegraph_* MCP tools. Call csegraph_context directly for ordinary coding "
+    "tasks. Use csegraph_minimal only for index health or repository orientation, "
+    "and use graph/path only when compact context recommends structural escalation. "
     "Do not query .csegraph/index.db directly; it is a private implementation "
     "detail behind the MCP tools."
 )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from csegraph._core.cse.metrics import SufficiencyMetrics
@@ -174,6 +175,66 @@ class ContextResult:
     impact: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     affected_tests: List[Dict[str, Any]] = field(default_factory=list)
     missing_context: List[Dict[str, Any]] = field(default_factory=list)
+
+
+class ContextStatus(str, Enum):
+    READY = "ready"
+    AMBIGUOUS = "ambiguous"
+    INSUFFICIENT = "insufficient"
+    INDEX_REQUIRED = "index_required"
+    REFRESH_REQUIRED = "refresh_required"
+
+
+@dataclass(frozen=True)
+class ContextRequest:
+    task: str
+    repo: Optional[str] = None
+    target: Optional[str] = None
+    task_kind: str = "auto"
+    token_budget: int = 800
+    encoding: str = "o200k_base"
+    include_source: str = "auto"
+    response_mode: str = "compact"
+    engine: str = "adaptive"
+    cursor: Optional[str] = None
+    max_bytes: Optional[int] = None
+
+
+@dataclass
+class ContextTarget:
+    id: str
+    name: str
+    kind: str
+    path: str
+    lines: Optional[List[int]]
+    confidence: float
+
+
+@dataclass
+class ContextSlice:
+    path: str
+    lines: Optional[List[int]]
+    symbol: str
+    role: str
+    code: str
+    id: Optional[str] = None
+
+
+@dataclass
+class ContextResponse:
+    schema_version: str
+    status: ContextStatus
+    intent: str
+    target: Optional[ContextTarget]
+    slices: List[ContextSlice]
+    freshness: Dict[str, Any]
+    usage: Dict[str, Any]
+    cursor: Optional[str] = None
+    candidates: List[Dict[str, Any]] = field(default_factory=list)
+    missing: List[Dict[str, Any]] = field(default_factory=list)
+    next: Optional[Dict[str, Any]] = None
+    warnings: List[str] = field(default_factory=list)
+    diagnostic: Optional[Dict[str, Any]] = None
 
 
 @dataclass

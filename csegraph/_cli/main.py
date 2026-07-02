@@ -300,7 +300,35 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-tokens",
         type=int,
         default=None,
-        help="Approximate max tokens for returned context nodes.",
+        help="Legacy-v3 source-material budget. Use --budget for adaptive retrieval.",
+    )
+    context.add_argument(
+        "--budget",
+        type=int,
+        default=800,
+        help="Exact whole-response token budget for adaptive retrieval (default: 800).",
+    )
+    context.add_argument(
+        "--encoding",
+        choices=("o200k_base", "cl100k_base"),
+        default="o200k_base",
+        help="Tokenizer used to enforce --budget (default: o200k_base).",
+    )
+    context.add_argument(
+        "--diagnostic",
+        action="store_true",
+        help="Include adaptive planning and ranking diagnostics within the same budget.",
+    )
+    context.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Use the legacy-v3 context response.",
+    )
+    context.add_argument(
+        "--engine",
+        choices=("adaptive", "legacy"),
+        default="adaptive",
+        help="Retrieval engine (default: adaptive).",
     )
     context.add_argument(
         "--format",
@@ -921,13 +949,37 @@ def _dispatch(args: argparse.Namespace) -> Any:
         attach_postprocess_metadata(refresh_result, db, pp_level, pp_result, skipped_reason)
         return refresh_result
     if args.command == "context":
+        from csegraph._core.core.models import ContextRequest
         from csegraph._core.retrieval.context import ContextService
 
         repo_path = Path(args.repo or ".").resolve()
         task = args.task or args.task_arg
         if not task:
             raise ValueError('context requires a task. Example: csegraph context "Fix auth"')
-        return ContextService(_db_arg(args, str(repo_path))).build_context(
+        service = ContextService(_db_arg(args, str(repo_path)))
+        use_legacy = bool(
+            args.legacy
+            or args.engine == "legacy"
+            or args.max_tokens is not None
+            or args.explain
+            or args.detail_level != "auto"
+            or args.config is not None
+        )
+        if not use_legacy:
+            return service.retrieve(
+                ContextRequest(
+                    repo=str(repo_path),
+                    task=task,
+                    target=args.target,
+                    task_kind=args.task_kind,
+                    token_budget=args.budget,
+                    encoding=args.encoding,
+                    include_source=args.include_source,
+                    response_mode="diagnostic" if args.diagnostic else "compact",
+                    engine="adaptive",
+                )
+            )
+        return service.build_context(
             task=task,
             target=args.target,
             profile=args.profile,
@@ -1382,6 +1434,15 @@ def _validate_cli_options(args: argparse.Namespace) -> None:
     ):
         raise CsegraphCLIError(
             "--json cannot be combined with --format markdown",
+            error_code="invalid_cli_options",
+        )
+    if (
+        getattr(args, "command", None) == "context"
+        and getattr(args, "diagnostic", False)
+        and getattr(args, "legacy", False)
+    ):
+        raise CsegraphCLIError(
+            "--diagnostic cannot be combined with --legacy",
             error_code="invalid_cli_options",
         )
 

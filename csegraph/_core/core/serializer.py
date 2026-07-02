@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import fields, is_dataclass
+from enum import Enum
 from typing import Any, Dict
 
 CONTEXT_OUTPUT_SCHEMA_VERSION = "csegraph-context-v3"
@@ -12,11 +13,14 @@ def to_dict(value: Any) -> Any:
     from csegraph._core.core.models import (
         ContextNode,
         ContextRelationship,
+        ContextResponse,
         ContextResult,
         ImportPrelude,
         RelationshipOccurrence,
     )
 
+    if isinstance(value, ContextResponse):
+        return _adaptive_context_to_dict(value)
     if isinstance(value, ContextResult):
         return _context_result_to_dict(value)
     if isinstance(value, ContextNode):
@@ -27,6 +31,8 @@ def to_dict(value: Any) -> Any:
         return _relationship_to_dict(value, set())
     if isinstance(value, RelationshipOccurrence):
         return _relationship_occurrence_to_dict(value)
+    if isinstance(value, Enum):
+        return value.value
     if is_dataclass(value):
         return {field.name: to_dict(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, list):
@@ -34,6 +40,27 @@ def to_dict(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: to_dict(item) for key, item in value.items()}
     return value
+
+
+def _adaptive_context_to_dict(result: Any) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "schema_version": result.schema_version,
+        "status": to_dict(result.status),
+        "intent": result.intent,
+        "target": to_dict(result.target) if result.target is not None else None,
+        "slices": to_dict(result.slices),
+        "freshness": to_dict(result.freshness),
+        "usage": to_dict(result.usage),
+    }
+    for key in ("cursor", "next", "diagnostic"):
+        value = getattr(result, key)
+        if value is not None:
+            payload[key] = to_dict(value)
+    for key in ("candidates", "missing", "warnings"):
+        value = getattr(result, key)
+        if value:
+            payload[key] = to_dict(value)
+    return payload
 
 
 def _context_result_to_dict(result: Any) -> Dict[str, Any]:

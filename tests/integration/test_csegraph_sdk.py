@@ -103,7 +103,7 @@ def test_project_index_schema_is_idempotent(tmp_path):
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(retrieval_runs)")}
 
     assert version[0] == SCHEMA_VERSION
-    assert user_version == 8
+    assert user_version == 9
     assert "project_id" not in node_columns
     assert {"source", "target", "relation", "metadata", "confidence", "confidence_tier"}.issubset(
         edge_columns

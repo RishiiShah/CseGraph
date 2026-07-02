@@ -3,7 +3,7 @@
 ## The Core Principle
 **CseGraph should degrade gracefully into an excellent indexed search tool on easy tasks, then reveal its graph advantage only when the task becomes structurally difficult.**
 
-The current iteration of CseGraph exposes too much machinery by default, paying the full graph overhead (latency and token bloat) even for trivial tasks on small repositories. The next generation of CseGraph must shift from being specialized graph infrastructure to an adaptive search engine that beats optimal `rg` (ripgrep) workflows across all scales.
+The current iteration of CseGraph exposes too much machinery by default, paying the full graph overhead (latency and token bloat) even for trivial tasks on small repositories. The next generation of CseGraph must shift from being specialized graph infrastructure to an adaptive search engine that competes with a strong, reproducible `rg` plus selective-read workflow across all scales.
 
 ## Strategic Roadmap
 

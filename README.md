@@ -167,17 +167,19 @@ that platform's MCP server.
 flowchart TD
     A["Your repository"] --> B["Tree-sitter indexer"]
     B --> C["Local SQLite<br/>dependency graph"]
-    C --> D["Minimal routing card"]
-    D --> E["Task-specific context"]
-    E --> F["Coding agent"]
+    C --> D["Adaptive lexical retrieval"]
+    D --> E["Graph reranking when needed"]
+    E --> F["Exact-budget code slices"]
+    F --> G["Coding agent"]
 ```
 
 1. `csegraph index` parses supported source files into symbols, imports, calls,
    inheritance relationships, and test links.
-2. The `csegraph_minimal` MCP tool identifies the most relevant entities and
-   recommends the next graph operation.
-3. The `csegraph_context` MCP tool packages the smallest useful slice for the
-   current task. The CLI exposes the same workflow through `csegraph context`.
+2. The `csegraph_context` MCP tool performs indexed lexical retrieval first,
+   uses graph relationships only when ambiguity or impact requires them, and
+   packages the result under an exact whole-response token budget.
+3. The optional `csegraph_minimal` tool reports index health and repository
+   entry points without being required before ordinary context retrieval.
 4. `csegraph refresh` updates changed and deleted files without rebuilding
    everything.
 
@@ -250,30 +252,31 @@ every available grammar.
 |---|---|
 | `csegraph_index` | Build a repository graph |
 | `csegraph_refresh` | Refresh changed and deleted files |
-| `csegraph_minimal` | Return a compact routing card and next-tool suggestions |
-| `csegraph_context` | Retrieve task-specific code context |
+| `csegraph_minimal` | Optional index-health and repository-orientation card |
+| `csegraph_context` | Retrieve exact-budget adaptive code slices in one call |
 | `csegraph_graph` | Inspect a graph neighborhood |
 | `csegraph_path` | Find the shortest path between two nodes |
 
-Agents should call `csegraph_minimal` first, follow one suggested tool, and use
-`csegraph_context` for the task-specific slice.
+Agents should call `csegraph_context` directly for task-specific code. Use
+`csegraph_minimal` only for health or orientation, and use graph/path only when
+the compact response recommends structural escalation.
 
 ## Benchmarks
 
-The native MCP benchmark runs 100 architectural queries against each of 10
-open-source repositories through the same stdio path used by coding agents.
+CseGraph 2.0 is evaluated against a strong, reproducible `rg` plus selective
+read baseline rather than a full-repository-read strawman. The baseline ranks
+JSON ripgrep matches, reads bounded 80-line windows, follows imports once, and
+uses the same exact token budget as adaptive retrieval.
 
-| Profile | Full-corpus baseline | MCP response volume | Reduction |
-|---|---:|---:|---:|
-| `auto` | 4.20B proxy tokens | 14.97M proxy tokens | **280.7x** |
-| `small` | 4.20B proxy tokens | 18.17M proxy tokens | **231.3x** |
-| `medium` | 4.20B proxy tokens | 18.10M proxy tokens | **232.1x** |
-| `large` | 4.20B proxy tokens | 18.46M proxy tokens | **227.6x** |
+```bash
+env/bin/python tools/run_adaptive_retrieval_benchmark.py \
+  --corpus benchmarks/adaptive/pr_tasks.json \
+  --fail-on-gates
+```
 
-These figures compare graph responses with reading the complete source corpus;
-results vary by repository size and query. See
-[Agent Context Benchmarks](docs/benchmarks.md) for per-repository results,
-latency, methodology, and limitations.
+The report measures target resolution, required-slice recall and precision,
+whole-response tokens, latency, tool calls, cache state, and freshness. See
+[Agent Context Benchmarks](docs/benchmarks.md) for methodology and release gates.
 
 ## VS Code
 

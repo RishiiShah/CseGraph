@@ -1,4 +1,4 @@
-"""csegraph v1.8.1 SDK.
+"""csegraph v2.0.0 SDK.
 
 Thin public facade over the context-engine API. Private engine, CLI,
 diagnostic, and maintainer services live under internal namespaces and are not
@@ -18,8 +18,13 @@ from csegraph._core import (
     BaseParser,
     ContextNode,
     ContextRelationship,
+    ContextRequest,
+    ContextResponse,
     ContextResult,
     ContextService,
+    ContextSlice,
+    ContextStatus,
+    ContextTarget,
     DefaultTokenizer,
     GraphEdgeView,
     GraphNodeView,
@@ -56,7 +61,7 @@ from csegraph._core import (
     to_dict,
 )
 
-__version__ = "1.8.1"
+__version__ = "2.0.0"
 
 __all__ = [
     "__version__",
@@ -66,6 +71,11 @@ __all__ = [
     "AsyncRefreshService",
     "BaseParser",
     "ContextNode",
+    "ContextRequest",
+    "ContextResponse",
+    "ContextSlice",
+    "ContextStatus",
+    "ContextTarget",
     "ContextRelationship",
     "ContextResult",
     "ContextService",

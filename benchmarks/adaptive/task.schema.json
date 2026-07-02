@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csegraph.dev/schemas/adaptive-benchmark-task-v1.json",
+  "title": "CseGraph adaptive benchmark corpus",
+  "type": "object",
+  "required": ["schema_version", "tasks"],
+  "properties": {
+    "schema_version": {
+      "const": "csegraph-adaptive-benchmark-v1"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "repo", "commit", "category", "task"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "repo": {"type": "string", "minLength": 1},
+          "commit": {"type": "string", "minLength": 7},
+          "category": {
+            "enum": ["definition", "ambiguous", "cross-file", "debug", "refactor"]
+          },
+          "task": {"type": "string", "minLength": 1},
+          "target": {"type": ["string", "null"]},
+          "expected_locations": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "permitted_files": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "setup_command": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "test_command": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "hidden_checks": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

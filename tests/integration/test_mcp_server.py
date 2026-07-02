@@ -158,7 +158,7 @@ class TestHandlePrompt:
         assert message.role == "user"
         assert message.content.type == "text"
         assert "csegraph_context" in message.content.text
-        assert "detail_level=auto" in message.content.text
+        assert "exact-budget" in message.content.text
         assert "/repo" in message.content.text
         assert "fix auth refresh" in message.content.text
         assert "refresh_token" in message.content.text
@@ -193,6 +193,7 @@ class TestHandleTool:
                 "repo": str(repo),
                 "target": "greet",
                 "db": db,
+                "response_mode": "legacy-v3",
             },
         )
         assert "symbols" in ctx
@@ -250,6 +251,7 @@ class TestHandleTool:
                 "task": "Review checkout",
                 "task_kind": "review",
                 "repo": str(repo),
+                "response_mode": "legacy-v3",
             },
         )
 
@@ -314,6 +316,7 @@ class TestHandleTool:
                 "target": "greet",
                 "db": db,
                 "profile": "small",
+                "response_mode": "legacy-v3",
             },
             host_platform="codex",
         )
@@ -346,6 +349,7 @@ class TestHandleTool:
                 "repo": str(repo),
                 "target": "greet",
                 "db": db,
+                "response_mode": "legacy-v3",
             },
         )
 
@@ -365,6 +369,7 @@ class TestHandleTool:
                 "db": db,
                 "profile": "small",
                 "detail_level": "standard",
+                "response_mode": "legacy-v3",
             },
         )
 
@@ -605,16 +610,16 @@ class TestPromptWorkflows:
     def test_context_prompt_enforces_escalation_pattern(self):
         result = _handle_prompt("csegraph-context", {"repo": "/repo", "task": "fix bug"})
         text = result.messages[0].content.text
-        assert "Step 1" in text
-        assert "csegraph_minimal" in text
-        assert "detail_level=auto" in text
-        assert "3 tool calls total" in text
+        assert "csegraph_context" in text
+        assert "one call" in text
+        assert "two calls" in text
+        assert "Do not call `csegraph_minimal` first" in text
 
     def test_minimal_prompt_respects_suggestions(self):
         result = _handle_prompt("csegraph-minimal", {"repo": "/repo"})
         text = result.messages[0].content.text
-        assert "next_tool_suggestions" in text
-        assert "stale-index warning" in text
+        assert "index health" in text
+        assert "csegraph_context" in text
 
     def test_detect_changes_prompt_is_not_agent_facing(self):
         with pytest.raises(ValueError, match="Unknown prompt"):

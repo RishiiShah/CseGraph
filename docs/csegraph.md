@@ -167,8 +167,8 @@ MCP exposes six tools only:
 |---|---|---|
 | `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db`, `postprocess_level` |
 | `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db`, `postprocess_level` |
-| `csegraph_minimal` | Compact routing card: summary, top-degree entities, and task-routed next-tool suggestions. | `repo`, `task`, `db` |
-| `csegraph_context` | Retrieve compact task-specific context. | `repo`, `task`, `target`, `profile`, `detail_level`, `include_source`, `max_tokens`, `max_bytes`, `explain`, `db` |
+| `csegraph_minimal` | Optional health/orientation card with summary and top-degree entities. | `repo`, `task`, `db` |
+| `csegraph_context` | Primary exact-budget adaptive code retrieval; diagnostic and legacy-v3 modes are available. | `repo`, `task`, `target`, `task_kind`, `token_budget`, `encoding`, `response_mode`, `engine`, `cursor`, `include_source`, `max_bytes`, `db` |
 | `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
 | `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS uses relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
 
@@ -194,12 +194,16 @@ The LSP server speaks JSON-RPC over stdio for editor integrations. It advertises
 document symbols for files already present in the SQLite index, so run
 `csegraph index` or `csegraph refresh` before launching an editor client.
 
-`csegraph_context` supports both `max_tokens`, a soft budgeting hint used during
-retrieval to decide how much source material to include, and `max_bytes`, a hard
-ceiling enforced on the serialized JSON response. When `max_bytes` is exceeded,
-the server drops symbol `source_text`, then `explanation`, then
-`import_preludes`, `relationships[].occurrences[].snippet`, `relationships`, and finally
-`symbols` from the tail. File nodes never materialize whole-file source text.
+`csegraph_context` defaults to the adaptive `csegraph-context-v4` response.
+`token_budget` is an exact ceiling over the complete serialized response using
+`encoding=o200k_base` by default. Compact output contains a resolved target,
+whole-symbol `slices`, freshness, usage, and an optional focused `next` action.
+Use `response_mode=diagnostic` for ranking evidence or
+`response_mode=legacy-v3` for the prior symbols/relationships contract.
+
+Legacy-v3 continues to support `max_tokens`, a soft source-material hint, and
+`max_bytes`, a hard serialized-size ceiling. File nodes never materialize
+whole-file source text.
 
 ### Response Annotations
 

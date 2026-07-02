@@ -1,0 +1,205 @@
+{
+  "schema_version": "csegraph-adaptive-benchmark-v1",
+  "tasks": [
+    {
+      "id": "micrograd-relu",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain the Value relu activation",
+      "target": "relu",
+      "expected_locations": ["micrograd/engine.py"],
+      "permitted_files": ["micrograd/engine.py"]
+    },
+    {
+      "id": "micrograd-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "debug",
+      "task": "Fix the Value backward traversal",
+      "target": "backward",
+      "expected_locations": ["micrograd/engine.py"],
+      "permitted_files": ["micrograd/engine.py"]
+    },
+    {
+      "id": "micrograd-neuron",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "cross-file",
+      "task": "Update Neuron.__call__ and find its activation dependency",
+      "target": "Neuron.__call__",
+      "expected_locations": ["micrograd/nn.py", "micrograd/engine.py"],
+      "permitted_files": ["micrograd/nn.py", "micrograd/engine.py"]
+    },
+    {
+      "id": "micrograd-mlp",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Find the MLP network composition",
+      "target": "MLP",
+      "expected_locations": ["micrograd/nn.py"],
+      "permitted_files": ["micrograd/nn.py"]
+    },
+    {
+      "id": "nanogpt-attention",
+      "repo": "sandbox/nanoGPT",
+      "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "category": "definition",
+      "task": "Explain the CausalSelfAttention forward implementation",
+      "target": "symbol::model.py::method::CausalSelfAttention.forward",
+      "expected_locations": ["model.py"],
+      "permitted_files": ["model.py"]
+    },
+    {
+      "id": "nanogpt-layernorm",
+      "repo": "sandbox/nanoGPT",
+      "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "category": "definition",
+      "task": "Find the custom LayerNorm behavior",
+      "target": "LayerNorm",
+      "expected_locations": ["model.py"],
+      "permitted_files": ["model.py"]
+    },
+    {
+      "id": "nanogpt-config",
+      "repo": "sandbox/nanoGPT",
+      "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "category": "refactor",
+      "task": "Refactor GPTConfig and inspect its consumers",
+      "target": "GPTConfig",
+      "expected_locations": ["model.py"],
+      "permitted_files": ["model.py", "train.py"]
+    },
+    {
+      "id": "nanogpt-block",
+      "repo": "sandbox/nanoGPT",
+      "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "category": "cross-file",
+      "task": "Update Block and its attention and MLP dependencies",
+      "target": "Block",
+      "expected_locations": ["model.py"],
+      "permitted_files": ["model.py"]
+    },
+    {
+      "id": "flask-after-request",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain after_this_request",
+      "target": "after_this_request",
+      "expected_locations": ["src/flask/ctx.py"],
+      "permitted_files": ["src/flask/ctx.py"]
+    },
+    {
+      "id": "flask-has-request-context",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "cross-file",
+      "task": "Update has_request_context and inspect request context dependencies",
+      "target": "has_request_context",
+      "expected_locations": ["src/flask/ctx.py"],
+      "permitted_files": ["src/flask/ctx.py", "src/flask/globals.py"]
+    },
+    {
+      "id": "flask-timedelta",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Find how Flask normalizes timedelta configuration values",
+      "target": "symbol::src/flask/app.py::function::_make_timedelta",
+      "expected_locations": ["src/flask/app.py"],
+      "permitted_files": ["src/flask/app.py"]
+    },
+    {
+      "id": "pytest-console-main",
+      "repo": "sandbox/pytest",
+      "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9",
+      "category": "definition",
+      "task": "Explain the pytest console_main entry point",
+      "target": "console_main",
+      "expected_locations": ["src/_pytest/config/__init__.py"],
+      "permitted_files": ["src/_pytest/config/__init__.py"]
+    },
+    {
+      "id": "pytest-get-config",
+      "repo": "sandbox/pytest",
+      "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9",
+      "category": "cross-file",
+      "task": "Update get_config and locate plugin manager dependencies",
+      "target": "get_config",
+      "expected_locations": ["src/_pytest/config/__init__.py"],
+      "permitted_files": ["src/_pytest/config/__init__.py"]
+    },
+    {
+      "id": "pytest-get-scope-node",
+      "repo": "sandbox/pytest",
+      "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9",
+      "category": "definition",
+      "task": "Find fixture scope node resolution",
+      "target": "get_scope_node",
+      "expected_locations": ["src/_pytest/fixtures.py"],
+      "permitted_files": ["src/_pytest/fixtures.py"]
+    },
+    {
+      "id": "django-normalize-prefetch",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain normalize_prefetch_lookups",
+      "target": "normalize_prefetch_lookups",
+      "expected_locations": ["django/db/models/query.py"],
+      "permitted_files": ["django/db/models/query.py"]
+    },
+    {
+      "id": "django-related-populators",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "cross-file",
+      "task": "Update get_related_populators and inspect its related-object dependencies",
+      "target": "get_related_populators",
+      "expected_locations": ["django/db/models/query.py"],
+      "permitted_files": ["django/db/models/query.py"]
+    },
+    {
+      "id": "django-reset-urlconf",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "refactor",
+      "task": "Refactor reset_urlconf and identify request handling dependencies",
+      "target": "reset_urlconf",
+      "expected_locations": ["django/core/handlers/base.py"],
+      "permitted_files": ["django/core/handlers/base.py"]
+    },
+    {
+      "id": "fastapi-request-response",
+      "repo": "sandbox/fastapi",
+      "commit": "702fea83bb3ef0b558104835d7936af49650fb2d",
+      "category": "definition",
+      "task": "Explain FastAPI request_response",
+      "target": "request_response",
+      "expected_locations": ["fastapi/routing.py"],
+      "permitted_files": ["fastapi/routing.py"]
+    },
+    {
+      "id": "fastapi-endpoint-context",
+      "repo": "sandbox/fastapi",
+      "commit": "702fea83bb3ef0b558104835d7936af49650fb2d",
+      "category": "debug",
+      "task": "Fix endpoint context extraction",
+      "target": "_extract_endpoint_context",
+      "expected_locations": ["fastapi/routing.py"],
+      "permitted_files": ["fastapi/routing.py"]
+    },
+    {
+      "id": "fastapi-response-args",
+      "repo": "sandbox/fastapi",
+      "commit": "702fea83bb3ef0b558104835d7936af49650fb2d",
+      "category": "cross-file",
+      "task": "Update response argument construction and inspect callers",
+      "target": "_build_response_args",
+      "expected_locations": ["fastapi/routing.py"],
+      "permitted_files": ["fastapi/routing.py"]
+    }
+  ]
+}

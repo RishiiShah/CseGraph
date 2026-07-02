@@ -14,6 +14,8 @@ from csegraph._core.core.ids import file_node_id
 from csegraph._core.core.models import (
     ContextNode,
     ContextRelationship,
+    ContextRequest,
+    ContextResponse,
     ContextResult,
     ImportPrelude,
     RelationshipOccurrence,
@@ -63,6 +65,11 @@ RETURNED_NODE_LIMIT_BY_PROFILE = {"large": 80}
 class ContextService:
     def __init__(self, db_path: str | Path):
         self.db_path = str(Path(db_path))
+
+    def retrieve(self, request: ContextRequest) -> ContextResponse:
+        from csegraph._core.retrieval.adaptive import AdaptiveContextService
+
+        return AdaptiveContextService(self.db_path).retrieve(request)
 
     def build_context(
         self,

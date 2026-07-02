@@ -66,14 +66,13 @@ or grep scans.
 
 ## Workflow
 
-1. Call `csegraph_minimal` first to get a routing card with key entities and
-   next-tool suggestions.
-2. Follow the `next_tool_suggestions` — call exactly one suggested tool.
-3. Use `csegraph_context` with `detail_level=auto` for task-specific context.
-4. Escalate to `csegraph_graph` or `csegraph_path` only for structural
-   dependency questions.
-5. Never make more than 3 csegraph MCP tool calls in a single turn.
-6. If the routing card warns about a stale index, call `csegraph_refresh` first.
+1. Call `csegraph_context` directly with the task and target when known.
+2. Use the returned compact `slices` before opening files or running text search.
+3. Use `csegraph_minimal` only for explicit index-health or orientation requests.
+4. Escalate to `csegraph_graph` or `csegraph_path` only when `next` recommends
+   a focused structural operation.
+5. Resolve ordinary tasks in one CseGraph call and structural tasks in at most two.
+6. If context returns `refresh_required`, call `csegraph_refresh` before retrying.
 
 ## MCP enablement
 

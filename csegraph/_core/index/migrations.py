@@ -79,6 +79,10 @@ _RETRIEVAL_RUN_COLUMN_DEFINITIONS = {
     "semantic_overlap": "semantic_overlap REAL NOT NULL DEFAULT 0",
     "model_confidence": "model_confidence REAL NOT NULL DEFAULT 0",
     "sufficient": "sufficient INTEGER NOT NULL DEFAULT 0",
+    "engine": "engine TEXT NOT NULL DEFAULT 'legacy'",
+    "index_revision": "index_revision INTEGER NOT NULL DEFAULT 0",
+    "response_tokens": "response_tokens INTEGER NOT NULL DEFAULT 0",
+    "cursor": "cursor TEXT",
     "created_at": "created_at REAL NOT NULL DEFAULT 0",
 }
 
@@ -89,6 +93,9 @@ _RETRIEVAL_CONTEXT_COLUMN_DEFINITIONS = {
     "score": "score REAL NOT NULL DEFAULT 0",
     "raw_code": "raw_code INTEGER NOT NULL DEFAULT 0",
     "evidence": "evidence TEXT NOT NULL DEFAULT '{}'",
+    "source_hash": "source_hash TEXT NOT NULL DEFAULT ''",
+    "start_line": "start_line INTEGER",
+    "end_line": "end_line INTEGER",
 }
 
 _LEXICAL_COLUMNS = {
@@ -127,8 +134,15 @@ def _migrate_legacy_to_current(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS schema_meta")
 
 
-def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
-    """Add impact evidence tables without rewriting the v7 graph."""
+def _migrate_v7_to_current(conn: sqlite3.Connection) -> None:
+    """Add impact and adaptive retrieval tables without rewriting the graph."""
+    conn.executescript(SCHEMA_DDL)
+    _ensure_current_columns(conn)
+
+
+def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
+    """Add adaptive retrieval revision, cache, continuation, and lease state."""
+    _ensure_current_columns(conn)
     conn.executescript(SCHEMA_DDL)
 
 
@@ -232,5 +246,10 @@ SCHEMA_MIGRATIONS = {
 SCHEMA_MIGRATIONS["csegraph-sqlite-v7"] = SchemaMigration(
     "csegraph-sqlite-v7",
     SCHEMA_VERSION,
-    _migrate_v7_to_v8,
+    _migrate_v7_to_current,
+)
+SCHEMA_MIGRATIONS["csegraph-sqlite-v8"] = SchemaMigration(
+    "csegraph-sqlite-v8",
+    SCHEMA_VERSION,
+    _migrate_v8_to_v9,
 )

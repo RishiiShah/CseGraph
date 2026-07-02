@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "csegraph-sqlite-v8"
-SCHEMA_USER_VERSION = 8
+SCHEMA_VERSION = "csegraph-sqlite-v9"
+SCHEMA_USER_VERSION = 9
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
@@ -229,6 +229,10 @@ CREATE TABLE IF NOT EXISTS retrieval_runs (
     semantic_overlap REAL NOT NULL,
     model_confidence REAL NOT NULL,
     sufficient INTEGER NOT NULL,
+    engine TEXT NOT NULL DEFAULT 'legacy',
+    index_revision INTEGER NOT NULL DEFAULT 0,
+    response_tokens INTEGER NOT NULL DEFAULT 0,
+    cursor TEXT,
     created_at REAL NOT NULL
 );
 
@@ -239,7 +243,25 @@ CREATE TABLE IF NOT EXISTS retrieval_context (
     score REAL NOT NULL,
     raw_code INTEGER NOT NULL,
     evidence TEXT NOT NULL,
+    source_hash TEXT NOT NULL DEFAULT '',
+    start_line INTEGER,
+    end_line INTEGER,
     PRIMARY KEY(run_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS retrieval_plan_cache (
+    cache_key TEXT PRIMARY KEY,
+    index_revision INTEGER NOT NULL,
+    plan_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    last_used_at REAL NOT NULL,
+    hit_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS refresh_leases (
+    repo_root TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    expires_at REAL NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
@@ -286,6 +308,12 @@ CREATE INDEX IF NOT EXISTS idx_symbol_history_symbol
     ON symbol_history(symbol_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_symbol_history_path_state
     ON symbol_history(path, state);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_retrieval_runs_cursor
+    ON retrieval_runs(cursor) WHERE cursor IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_retrieval_plan_revision_used
+    ON retrieval_plan_cache(index_revision, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_leases_expiry
+    ON refresh_leases(expires_at);
 """
 
 METADATA_UPSERT = """

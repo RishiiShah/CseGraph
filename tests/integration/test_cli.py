@@ -106,6 +106,16 @@ def test_context_cli_passes_task_kind_to_retrieval(monkeypatch, tmp_path):
             captured.update(kwargs)
             return {"command": "context"}
 
+        def retrieve(self, request):
+            captured.update(
+                {
+                    "task": request.task,
+                    "target": request.target,
+                    "task_kind": request.task_kind,
+                }
+            )
+            return {"schema_version": "csegraph-context-v4"}
+
     monkeypatch.setattr(context_module, "ContextService", StubContextService)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -148,6 +158,7 @@ def test_cli_json_contracts(tmp_path):
         "create_user",
         "--repo",
         str(repo),
+        "--legacy",
         "--json",
     )
     assert context["command"] == "context"

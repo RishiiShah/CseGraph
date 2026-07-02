@@ -31,6 +31,7 @@ class ProjectIndex:
             "PRAGMA foreign_keys = ON",
             "PRAGMA temp_store = MEMORY",
             "PRAGMA cache_size = -64000",
+            "PRAGMA busy_timeout = 5000",
         ):
             self.conn.execute(pragma)
 
@@ -134,6 +135,7 @@ class ProjectIndex:
             "updated_at": str(now),
             "built_branch": branch or "",
             "built_commit": commit or "",
+            "index_revision": existing.get("index_revision", "0"),
         }
         if include_roots is not None:
             rows["include_roots"] = json.dumps(list(include_roots), sort_keys=True)
@@ -146,6 +148,26 @@ class ProjectIndex:
             sorted(rows.items()),
         )
         self.conn.commit()
+
+    def index_revision(self) -> int:
+        metadata = self.metadata(raise_if_empty=False)
+        try:
+            return max(0, int(metadata.get("index_revision", "0")))
+        except (TypeError, ValueError):
+            return 0
+
+    def bump_index_revision(self) -> int:
+        revision = self.index_revision() + 1
+        self.conn.execute(
+            """
+            INSERT INTO metadata(key, value)
+            VALUES('index_revision', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (str(revision),),
+        )
+        self.conn.commit()
+        return revision
 
     def metadata(self, *, raise_if_empty: bool = True) -> Dict[str, str]:
         if not self._table_exists("metadata"):
@@ -164,6 +186,7 @@ class ProjectIndex:
     def clear_graph(self) -> None:
         self.conn.execute("DELETE FROM retrieval_context")
         self.conn.execute("DELETE FROM retrieval_runs")
+        self.conn.execute("DELETE FROM retrieval_plan_cache")
         self.conn.execute("DELETE FROM lexical_index")
         self.conn.execute("DELETE FROM summaries")
         self.conn.execute("DELETE FROM embedding_cache")

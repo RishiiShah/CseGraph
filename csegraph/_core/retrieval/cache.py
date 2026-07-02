@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -54,14 +53,10 @@ class SnapshotManager:
     def get_snapshot(self, index: ProjectIndex) -> GraphSnapshot:
         db_path = index.db_path
 
-        fingerprint = 0
-        for p in (db_path, f"{db_path}-wal", f"{db_path}-shm"):
-            try:
-                st = os.stat(p)
-                fingerprint ^= st.st_mtime_ns ^ st.st_size
-            except OSError:
-                pass
-        current_data_version = fingerprint
+        # Retrieval-history and session writes share the SQLite database but do
+        # not alter graph topology. A monotonic index revision prevents those
+        # writes from invalidating and reloading the full graph snapshot.
+        current_data_version = index.index_revision()
 
         snapshot = self._snapshots.get(db_path)
         if snapshot is not None and snapshot.data_version == current_data_version:

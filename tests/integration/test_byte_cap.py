@@ -124,7 +124,13 @@ class TestByteCapOnMcpResponse:
         repo, db = _indexed(tmp_path)
         result = _handle_tool(
             "csegraph_context",
-            {"task": "foo", "repo": str(repo), "db": db, "target": "foo"},
+            {
+                "task": "foo",
+                "repo": str(repo),
+                "db": db,
+                "target": "foo",
+                "response_mode": "legacy-v3",
+            },
         )
         assert result["byte_cap_applied"] is False
         assert result["response_bytes"] == _encoded(result)
@@ -140,6 +146,7 @@ class TestByteCapOnMcpResponse:
                 "target": "foo",
                 "include_source": "always",
                 "max_bytes": 1000,
+                "response_mode": "legacy-v3",
             },
         )
         assert result["response_bytes"] == _encoded(result)
