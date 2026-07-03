@@ -104,7 +104,7 @@ TOOLS: list[Tool] = [
     Tool(
         name="csegraph_context",
         description=(
-            "Primary one-call adaptive, edit-ready code retrieval. Returns an exact-budget "
+            "Primary one-call adaptive, edit-ready code retrieval. Returns a budgeted "
             "compact slice by default, using lexical search first and graph ranking only when needed. "
             "Use response_mode=diagnostic for selection evidence or legacy-v3 for the old shape; "
             "legacy-v3 reports sufficiency.edit_ready=false and missing_context when incomplete."
@@ -128,71 +128,71 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": list(PROFILE_CHOICES),
                     "default": "auto",
-                    "description": "Retrieval profile selector. `auto` resolves from the indexed repository size.",
+                    "description": "Legacy-v3 retrieval profile.",
                 },
                 "include_source": {
                     "type": "string",
                     "enum": ["auto", "always", "never"],
                     "default": "auto",
-                    "description": "Control symbol source_text materialization. `never` keeps relationship occurrence path/line metadata and import-only preludes, but strips relationship occurrence snippets. File nodes never return whole-file source.",
+                    "description": "Source policy: auto, always, or never.",
                 },
                 "token_budget": {
                     "type": "integer",
                     "minimum": 256,
                     "maximum": 16384,
                     "default": 800,
-                    "description": "Exact token ceiling for the complete compact response.",
+                    "description": "Whole-response budget; exact with optional tokenizer, estimated otherwise.",
                 },
                 "encoding": {
                     "type": "string",
                     "enum": ["o200k_base", "cl100k_base"],
                     "default": "o200k_base",
-                    "description": "Tokenizer encoding used to enforce token_budget.",
+                    "description": "Encoding label for token estimation.",
                 },
                 "response_mode": {
                     "type": "string",
                     "enum": ["compact", "diagnostic", "legacy-v3"],
                     "default": "compact",
-                    "description": "Compact adaptive output, diagnostic adaptive output, or the legacy v3 contract.",
+                    "description": "Compact, diagnostic, or legacy-v3 output.",
                 },
                 "engine": {
                     "type": "string",
                     "enum": ["adaptive", "legacy"],
                     "default": "adaptive",
-                    "description": "Retrieval engine. Adaptive is the CseGraph 2.0 default.",
+                    "description": "Adaptive or legacy retrieval.",
                 },
                 "cursor": {
                     "type": "string",
-                    "description": "Optional prior compact-response cursor; supplied continuations omit already emitted slices.",
+                    "description": "Prior cursor for deduplicated continuation.",
                 },
                 "max_tokens": {
                     "type": "integer",
                     "deprecated": True,
-                    "description": "Legacy-v3 source-material hint. Use token_budget for compact responses.",
+                    "description": "Legacy-v3 source budget.",
                 },
                 "explain": {
                     "type": "boolean",
                     "default": False,
                     "deprecated": True,
-                    "description": "Include human-readable explanations for selection.",
+                    "description": "Legacy-v3 selection explanations.",
                 },
                 "detail_level": {
                     "type": "string",
                     "enum": ["auto", "minimal", "standard", "full"],
                     "default": "auto",
                     "deprecated": True,
-                    "description": "auto promotes edit tasks when needed; minimal is routing metadata, standard is edit-ready source and impact evidence, full adds explanations.",
+                    "description": "Legacy-v3 detail level.",
                 },
                 "task_kind": {
                     "type": "string",
                     "enum": ["auto", "edit", "understand", "review", "test-impact"],
                     "default": "auto",
-                    "description": "Task intent for context and impact planning; auto infers it.",
+                    "description": "Task intent; auto infers it.",
                 },
                 "max_bytes": {
                     "type": "integer",
                     "minimum": MIN_BYTE_CAP,
-                    "description": "Hard ceiling on serialized JSON size. Drop order: symbol source_text, explanations, import_preludes, relationships[].occurrences[].snippet, relationships, symbols from the tail.",
+                    "description": "Hard serialized JSON byte ceiling.",
                 },
                 "db": {
                     "type": "string",

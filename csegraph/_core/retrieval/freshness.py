@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import sqlite3
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -42,10 +43,23 @@ class FreshnessCoordinator:
         *,
         auto_index_file_limit: int = AUTO_INDEX_FILE_LIMIT,
         refresh_timeout: float = AUTO_REFRESH_TIMEOUT_SECONDS,
+        lease_seconds: float = REFRESH_LEASE_SECONDS,
+        lease_renew_interval: float | None = None,
     ) -> None:
         self.db_path = str(Path(db_path))
         self.auto_index_file_limit = auto_index_file_limit
         self.refresh_timeout = refresh_timeout
+        self.lease_seconds = max(0.1, lease_seconds)
+        default_renew_interval = min(5.0, self.lease_seconds / 3.0)
+        requested_renew_interval = (
+            lease_renew_interval
+            if lease_renew_interval is not None
+            else default_renew_interval
+        )
+        self.lease_renew_interval = min(
+            max(0.02, requested_renew_interval),
+            self.lease_seconds / 2.0,
+        )
 
     def ensure_current(self, repo: str | Path | None) -> FreshnessResult:
         repo_path = Path(repo).resolve() if repo is not None else None
@@ -68,6 +82,17 @@ class FreshnessCoordinator:
             revision = index.index_revision()
             changed_paths = _detect_changed_paths(index, repo_path, metadata)
             if not changed_paths:
+                current_commit = _run_git(
+                    repo_path, ["rev-parse", "--short=12", "HEAD"]
+                )
+                current_branch = _run_git(
+                    repo_path, ["rev-parse", "--abbrev-ref", "HEAD"]
+                )
+                if (
+                    metadata.get("built_commit", "") != (current_commit or "")
+                    or metadata.get("built_branch", "") != (current_branch or "")
+                ):
+                    index.checkpoint_git_state(str(repo_path))
                 return FreshnessResult(state="current", revision=revision)
             profile = metadata.get("active_profile") or "auto"
         finally:
@@ -210,7 +235,7 @@ class FreshnessCoordinator:
                 INSERT OR IGNORE INTO refresh_leases(repo_root, owner, expires_at)
                 VALUES(?, ?, ?)
                 """,
-                (repo_root, owner, now + REFRESH_LEASE_SECONDS),
+                (repo_root, owner, now + self.lease_seconds),
             )
             row = index.conn.execute(
                 "SELECT owner FROM refresh_leases WHERE repo_root = ?",
@@ -218,6 +243,24 @@ class FreshnessCoordinator:
             ).fetchone()
             index.conn.commit()
             return row is not None and row["owner"] == owner
+        finally:
+            index.close()
+
+    def _renew_lease(self, repo_root: str, owner: str) -> bool:
+        index = ProjectIndex(self.db_path)
+        try:
+            now = time.time()
+            index.conn.execute("BEGIN IMMEDIATE")
+            cursor = index.conn.execute(
+                """
+                UPDATE refresh_leases
+                SET expires_at = ?
+                WHERE repo_root = ? AND owner = ? AND expires_at > ?
+                """,
+                (now + self.lease_seconds, repo_root, owner, now),
+            )
+            index.conn.commit()
+            return cursor.rowcount == 1
         finally:
             index.close()
 
@@ -239,11 +282,44 @@ class FreshnessCoordinator:
         profile: str,
         changed_paths: list[Path],
     ) -> FreshnessResult:
+        stop_renewal = threading.Event()
+        lease_lost = threading.Event()
+        confirmed_until = [time.time() + self.lease_seconds]
+
+        def renew_lease() -> None:
+            while not stop_renewal.wait(self.lease_renew_interval):
+                try:
+                    if not self._renew_lease(repo_root, owner):
+                        lease_lost.set()
+                        return
+                    confirmed_until[0] = time.time() + self.lease_seconds
+                except sqlite3.Error:
+                    # A short-lived writer may delay renewal. Once the last
+                    # confirmed lease window has elapsed, however, this owner
+                    # must be fenced out even if SQLite remained busy.
+                    if time.time() >= confirmed_until[0]:
+                        lease_lost.set()
+                        return
+
+        renewal_thread = threading.Thread(
+            target=renew_lease,
+            name=f"csegraph-refresh-lease-{owner[:8]}",
+            daemon=True,
+        )
+        renewal_thread.start()
         try:
+            if not self._renew_lease(repo_root, owner):
+                raise RuntimeError("Refresh lease ownership was lost before refresh.")
+            confirmed_until[0] = time.time() + self.lease_seconds
             result = RefreshService(self.db_path).refresh(
                 profile=profile,
                 changed_paths=changed_paths,
             )
+            # This synchronous renewal is also the final ownership fence. It
+            # prevents an expired or replaced owner from reporting successful
+            # freshness even if its refresh call happened to finish.
+            if lease_lost.is_set() or not self._renew_lease(repo_root, owner):
+                raise RuntimeError("Refresh lease ownership was lost before completion.")
             index = ProjectIndex(self.db_path)
             try:
                 revision = index.index_revision()
@@ -256,6 +332,8 @@ class FreshnessCoordinator:
                 warnings=list(result.warnings),
             )
         finally:
+            stop_renewal.set()
+            renewal_thread.join(timeout=max(1.0, self.lease_renew_interval * 2.0))
             self._release_lease(repo_root, owner)
 
     def _wait_for_active_refresh(
@@ -358,8 +436,12 @@ def _run_git_bytes(repo: Path, args: list[str]) -> bytes | None:
 
 def _filesystem_changed_paths(index: ProjectIndex, repo: Path) -> list[Path]:
     stored = {
-        str(row["path"]): (int(row["size"]), float(row["mtime"]))
-        for row in index.conn.execute("SELECT path, size, mtime FROM files")
+        str(row["path"]): (
+            int(row["size"]),
+            float(row["mtime"]),
+            str(row["sha256"]),
+        )
+        for row in index.conn.execute("SELECT path, size, mtime, sha256 FROM files")
     }
     current: dict[str, tuple[int, float]] = {}
     for _parser, path in registry.iter_files(repo):
@@ -370,11 +452,22 @@ def _filesystem_changed_paths(index: ProjectIndex, repo: Path) -> list[Path]:
             continue
         current[rel] = (int(stat.st_size), float(stat.st_mtime))
 
-    changed = {
-        repo / rel
-        for rel, fingerprint in current.items()
-        if stored.get(rel) != fingerprint
-    }
+    changed: set[Path] = set()
+    for rel, fingerprint in current.items():
+        previous = stored.get(rel)
+        if previous is None:
+            changed.add(repo / rel)
+            continue
+        if previous[:2] == fingerprint:
+            continue
+        path = repo / rel
+        try:
+            current_hash = sha256_text(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError):
+            changed.add(path)
+            continue
+        if current_hash != previous[2]:
+            changed.add(path)
     changed.update(repo / rel for rel in stored.keys() - current.keys())
     return sorted(changed)
 
@@ -388,7 +481,11 @@ def _filter_indexed_content(
         str(row["path"]): str(row["sha256"])
         for row in index.conn.execute("SELECT path, sha256 FROM files")
     }
-    changed: list[Path] = []
+    changed: set[Path] = {
+        repo / rel_path
+        for rel_path in stored
+        if not (repo / rel_path).exists()
+    }
     for path in paths:
         try:
             rel = path.resolve().relative_to(repo).as_posix()
@@ -396,13 +493,13 @@ def _filter_indexed_content(
             continue
         expected = stored.get(rel)
         if expected is None or not path.exists():
-            changed.append(path)
+            changed.add(path)
             continue
         try:
             current = sha256_text(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError):
-            changed.append(path)
+            changed.add(path)
             continue
         if current != expected:
-            changed.append(path)
+            changed.add(path)
     return sorted(changed)

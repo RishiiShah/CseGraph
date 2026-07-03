@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
+import textwrap
 import time
 import uuid
 from pathlib import Path
@@ -22,13 +24,15 @@ from csegraph._core.retrieval.token_budget import (
     count_payload_tokens,
     response_bytes,
     response_tokens,
+    token_estimator,
+    token_measurement,
     validate_token_budget,
 )
 from csegraph._core.text.query_tokenizer import query_tokenizer
 from csegraph._core.text.source_reader import read_source_lines
 
 ADAPTIVE_SCHEMA_VERSION = "csegraph-context-v4"
-ADAPTIVE_ENGINE_VERSION = "adaptive-v1"
+ADAPTIVE_ENGINE_VERSION = "adaptive-v2"
 MAX_CANDIDATES = 64
 MAX_SLICES = 5
 PLAN_CACHE_LIMIT = 1_000
@@ -36,6 +40,26 @@ PLAN_CACHE_TTL_SECONDS = 24 * 60 * 60
 TARGET_CONFIDENCE_THRESHOLD = 0.75
 TARGET_MARGIN_THRESHOLD = 0.15
 EMBEDDING_FALLBACK_THRESHOLD = 0.65
+
+_IMPACT_RELATIONS = {
+    "calls",
+    "decorates",
+    "dispatches",
+    "imports",
+    "inherits",
+    "registers",
+    "tested_by",
+}
+_GENERATED_PATH_PARTS = {
+    ".generated",
+    ".venv",
+    "build",
+    "dist",
+    "generated",
+    "node_modules",
+    "third_party",
+    "vendor",
+}
 
 _EDIT_WORDS = {
     "add",
@@ -154,6 +178,10 @@ class AdaptiveContextService:
                         )
                 cached_plan = {
                     "ranked_ids": [str(row["id"]) for row in ranked[:MAX_CANDIDATES]],
+                    "rank_evidence": {
+                        str(row["id"]): _candidate_evidence(row)
+                        for row in ranked[:MAX_CANDIDATES]
+                    },
                     "roles": roles,
                     "target_id": target_id,
                     "confidence": confidence,
@@ -172,6 +200,27 @@ class AdaptiveContextService:
                 for node_id in cached_plan.get("ranked_ids", [])
                 if node_id in rows
             ]
+            rank_evidence = cached_plan.get("rank_evidence") or {}
+            for position, row in enumerate(ordered):
+                row["_rank_position"] = position
+                evidence = rank_evidence.get(str(row["id"]))
+                if isinstance(evidence, dict):
+                    row["_score"] = float(evidence.get("score") or 0.0)
+                    row["_rank_reasons"] = list(evidence.get("reasons") or [])
+                    row["_precedence"] = _evidence_int(evidence, "precedence", 9)
+                    row["_penalty_rank"] = _evidence_int(evidence, "penalty_rank", 0)
+                    row["_fts_rank"] = _evidence_int(
+                        evidence,
+                        "fts_rank",
+                        MAX_CANDIDATES,
+                    )
+                    row["_scope_rank"] = _evidence_int(evidence, "scope_rank", 2)
+                    row["_graph_rank"] = _evidence_int(evidence, "graph_rank", 1)
+                    row["_semantic_rank"] = _evidence_int(
+                        evidence,
+                        "semantic_rank",
+                        MAX_CANDIDATES,
+                    )
             target_id = str(cached_plan.get("target_id") or "")
             resolved = bool(cached_plan.get("resolved") and target_id in rows)
             confidence = float(cached_plan.get("confidence") or 0.0)
@@ -223,6 +272,8 @@ class AdaptiveContextService:
                     "tokens": 0,
                     "budget": request.token_budget,
                     "encoding": request.encoding,
+                    "estimator": token_estimator(request.encoding),
+                    "measurement": token_measurement(request.encoding),
                     "latency_ms": 0.0,
                     "cache": cache_state,
                 },
@@ -250,7 +301,9 @@ class AdaptiveContextService:
                             "id": row["id"],
                             "name": row["name"],
                             "path": row["path"],
+                            "rank": int(row.get("_rank_position", 0)) + 1,
                             "score": round(float(row.get("_score", 0.0)), 4),
+                            "reasons": list(row.get("_rank_reasons") or []),
                         }
                         for row in ordered[:8]
                     ],
@@ -375,6 +428,8 @@ def _terminal_freshness_response(
             "tokens": 0,
             "budget": request.token_budget,
             "encoding": request.encoding,
+            "estimator": token_estimator(request.encoding),
+            "measurement": token_measurement(request.encoding),
             "latency_ms": 0.0,
             "cache": "miss",
         },
@@ -400,10 +455,10 @@ def _infer_intent(task: str, requested: str) -> str:
 
 def _plan_mode(task: str, intent: str) -> str:
     tokens = set(query_tokenizer.tokenize(task))
-    if tokens & _STRUCTURAL_WORDS:
-        return "structural"
     if intent in {"edit", "debug", "review"}:
         return "impact"
+    if tokens & _STRUCTURAL_WORDS:
+        return "structural"
     return "lexical"
 
 
@@ -413,6 +468,9 @@ def _discover_candidates(
     target: str | None,
 ) -> tuple[list[dict[str, Any]], bool]:
     candidate_scores: dict[str, float] = {}
+    candidate_precedence: dict[str, int] = {}
+    candidate_fts_rank: dict[str, int] = {}
+    candidate_reasons: dict[str, list[str]] = {}
     exact_ids: set[str] = set()
     target_exact = False
     target_rows: list[dict[str, Any]] = []
@@ -420,9 +478,14 @@ def _discover_candidates(
         target_rows, exact = _target_candidate_rows(index, target)
         target_exact = exact
         for position, row in enumerate(target_rows):
-            candidate_scores[str(row["id"])] = 100.0 - position
+            node_id = str(row["id"])
+            candidate_scores[node_id] = 100.0 - position
+            candidate_precedence[node_id] = 0 if exact else 1
+            candidate_reasons[node_id] = [
+                "explicit exact target" if exact else "explicit target candidate"
+            ]
             if exact:
-                exact_ids.add(str(row["id"]))
+                exact_ids.add(node_id)
 
     fts_ids = _fts_candidate_ids(index, task, MAX_CANDIDATES)
     for position, node_id in enumerate(fts_ids):
@@ -430,6 +493,12 @@ def _discover_candidates(
             candidate_scores.get(node_id, 0.0),
             30.0 - (position / max(1, len(fts_ids))) * 10.0,
         )
+        candidate_precedence[node_id] = min(candidate_precedence.get(node_id, 9), 3)
+        candidate_fts_rank[node_id] = min(
+            candidate_fts_rank.get(node_id, MAX_CANDIDATES),
+            position,
+        )
+        candidate_reasons.setdefault(node_id, []).append("full-text match")
 
     task_tokens = sorted(
         {
@@ -452,39 +521,81 @@ def _discover_candidates(
         for row in rows:
             node_id = str(row["id"])
             candidate_scores[node_id] = max(candidate_scores.get(node_id, 0.0), 60.0)
+            candidate_precedence[node_id] = min(candidate_precedence.get(node_id, 9), 2)
+            candidate_reasons.setdefault(node_id, []).append("exact task symbol")
             exact_ids.add(node_id)
 
     rows_by_id = _load_candidate_rows(index, candidate_scores.keys())
     task_lower = task.lower()
     explicit_target = (target or "").lower()
+    task_token_set = set(task_tokens)
+    scope_file_ids, imported_file_ids = _task_scope_file_ids(index, task)
+    anchor_ids = (
+        [str(row["id"]) for row in target_rows]
+        if target_rows
+        else sorted(exact_ids)
+    )
+    if not anchor_ids and fts_ids:
+        anchor_ids = fts_ids[:1]
+    graph_near_ids = _directly_connected_candidate_ids(
+        index,
+        anchor_ids,
+        rows_by_id.keys(),
+    )
     for node_id, row in rows_by_id.items():
         score = candidate_scores.get(node_id, 0.0)
         name = str(row["name"]).lower()
         path = str(row["path"]).lower()
         if name and name in task_lower:
             score += 20.0
+            candidate_reasons.setdefault(node_id, []).append("name mentioned in task")
         if path and path in task_lower:
             score += 15.0
+            candidate_reasons.setdefault(node_id, []).append("path mentioned in task")
         if explicit_target and (
             name == explicit_target or path == explicit_target or node_id.lower() == explicit_target
         ):
             score += 50.0
+            candidate_precedence[node_id] = 0
+            candidate_reasons.setdefault(node_id, []).append("explicit target match")
             exact_ids.add(node_id)
-        overlap = set(query_tokenizer.tokenize(f"{name} {path}")) & set(task_tokens)
+        overlap = set(query_tokenizer.tokenize(f"{name} {path}")) & task_token_set
         score += float(len(overlap)) * 2.0
-        if bool(row.get("is_test")) and not (set(task_tokens) & _TEST_WORDS):
-            score *= 0.45
+        file_id = str(row.get("file_id") or "")
+        if file_id in scope_file_ids:
+            row["_scope_rank"] = 0
+            score += 18.0
+            candidate_reasons.setdefault(node_id, []).append("same-file task scope")
+        elif file_id in imported_file_ids:
+            row["_scope_rank"] = 1
+            score += 12.0
+            candidate_reasons.setdefault(node_id, []).append("imported task scope")
+        else:
+            row["_scope_rank"] = 2
+        if node_id in graph_near_ids:
+            row["_graph_rank"] = 0
+            score += 6.0
+            candidate_reasons.setdefault(node_id, []).append("direct candidate relationship")
+        else:
+            row["_graph_rank"] = 1
+        explicitly_requested = candidate_precedence.get(node_id, 9) == 0
+        if bool(row.get("is_test")) and not (task_token_set & _TEST_WORDS) and not explicitly_requested:
+            score -= 24.0
+            row["_penalty_rank"] = 1
+            candidate_reasons.setdefault(node_id, []).append("test-symbol penalty")
+        else:
+            row["_penalty_rank"] = 0
+        if _is_generated_or_vendor_path(path) and not explicitly_requested:
+            score -= 20.0
+            row["_penalty_rank"] = max(int(row["_penalty_rank"]), 1)
+            candidate_reasons.setdefault(node_id, []).append("generated/vendor penalty")
         row["_score"] = score
+        row["_precedence"] = candidate_precedence.get(node_id, 9)
+        row["_fts_rank"] = candidate_fts_rank.get(node_id, MAX_CANDIDATES)
+        row["_semantic_rank"] = MAX_CANDIDATES
+        row["_rank_reasons"] = list(dict.fromkeys(candidate_reasons.get(node_id, [])))
 
-    ranked = sorted(
-        rows_by_id.values(),
-        key=lambda row: (
-            -float(row.get("_score", 0.0)),
-            0 if str(row["id"]).startswith("symbol::") else 1,
-            str(row["path"]),
-            int(row.get("start_line") or 0),
-        ),
-    )
+    ranked = sorted(rows_by_id.values(), key=_candidate_sort_key)
     exact = bool(
         ranked
         and (
@@ -496,7 +607,7 @@ def _discover_candidates(
             )
         )
     )
-    return ranked[:MAX_CANDIDATES], exact
+    return _deduplicate_ranked_rows(ranked)[:MAX_CANDIDATES], exact
 
 
 def _target_candidate_rows(
@@ -522,6 +633,10 @@ def _target_candidate_rows(
     ).fetchall()
     if exact_name:
         return [dict(item) for item in exact_name], len(exact_name) == 1
+
+    reexported = _reexport_target_candidates(index, requested)
+    if reexported:
+        return [{"id": node_id} for node_id in reexported], len(reexported) == 1
 
     qualified = index.conn.execute(
         """
@@ -561,6 +676,97 @@ def _target_candidate_rows(
     return [dict(item) for item in fuzzy], False
 
 
+def _reexport_target_candidates(index: ProjectIndex, requested: str) -> list[str]:
+    """Resolve an import alias to its canonical indexed symbol.
+
+    Re-export chains are followed through resolved files, with a small depth cap
+    and cycle guard. Multiple canonical destinations stay ambiguous.
+    """
+
+    terminal = requested.rsplit(".", 1)[-1]
+    rows = index.conn.execute(
+        """
+        SELECT file_id, local_name, imported_name, qualified_name,
+               resolved_file_id, resolved_symbol_id
+        FROM import_bindings
+        WHERE LOWER(local_name) = LOWER(?)
+           OR LOWER(qualified_name) = LOWER(?)
+        ORDER BY file_id, start_line, local_name
+        LIMIT 16
+        """,
+        (terminal, requested),
+    ).fetchall()
+    candidates: set[str] = set()
+    for row in rows:
+        candidates.update(_binding_target_ids(index, dict(row), visited=set(), depth=0))
+    return sorted(candidates)
+
+
+def _binding_target_ids(
+    index: ProjectIndex,
+    binding: dict[str, Any],
+    *,
+    visited: set[tuple[str, str]],
+    depth: int,
+) -> set[str]:
+    resolved_symbol = str(binding.get("resolved_symbol_id") or "")
+    if resolved_symbol:
+        return {resolved_symbol}
+    resolved_file = str(binding.get("resolved_file_id") or "")
+    imported_name = str(binding.get("imported_name") or "")
+    if not resolved_file or not imported_name or depth >= 4:
+        return set()
+    visit_key = (resolved_file, imported_name.casefold())
+    if visit_key in visited:
+        return set()
+    next_visited = {*visited, visit_key}
+
+    direct = set(_symbol_ids_in_file(index, resolved_file, imported_name))
+    if direct:
+        return direct
+
+    rows = index.conn.execute(
+        """
+        SELECT file_id, local_name, imported_name, qualified_name,
+               resolved_file_id, resolved_symbol_id
+        FROM import_bindings
+        WHERE file_id = ? AND LOWER(local_name) = LOWER(?)
+        ORDER BY start_line, local_name
+        LIMIT 8
+        """,
+        (resolved_file, imported_name),
+    ).fetchall()
+    candidates: set[str] = set()
+    for row in rows:
+        candidates.update(
+            _binding_target_ids(
+                index,
+                dict(row),
+                visited=next_visited,
+                depth=depth + 1,
+            )
+        )
+    return candidates
+
+
+def _symbol_ids_in_file(index: ProjectIndex, file_id: str, name: str) -> list[str]:
+    rows = index.conn.execute(
+        """
+        SELECT id
+        FROM symbols
+        WHERE file_id = ?
+          AND (
+              LOWER(name) = LOWER(?)
+              OR LOWER(name) LIKE '%.' || LOWER(?)
+          )
+        ORDER BY path, start_line, id
+        LIMIT 3
+        """,
+        (file_id, name, name),
+    ).fetchall()
+    return [str(row["id"]) for row in rows]
+
+
 def _fts_candidate_ids(index: ProjectIndex, task: str, limit: int) -> list[str]:
     tokens = [
         token
@@ -597,7 +803,7 @@ def _load_candidate_rows(
     rows = index.conn.execute(
         f"""
         SELECT
-            s.id, s.kind, s.name, s.path, s.language, s.signature,
+            s.id, s.file_id, s.parent_id, s.kind, s.name, s.path, s.language, s.signature,
             s.docstring, s.start_line, s.end_line, s.source_hash, s.is_test,
             COALESCE(sm.summary, '') AS summary
         FROM symbols s
@@ -607,6 +813,139 @@ def _load_candidate_rows(
         tuple(unique),
     ).fetchall()
     return {str(row["id"]): dict(row) for row in rows}
+
+
+def _task_scope_file_ids(
+    index: ProjectIndex,
+    task: str,
+) -> tuple[set[str], set[str]]:
+    task_lower = task.lower().replace("\\", "/")
+    scoped: set[str] = set()
+    for row in index.conn.execute("SELECT id, path FROM files ORDER BY path"):
+        path = str(row["path"]).lower()
+        basename = path.rsplit("/", 1)[-1]
+        if path in task_lower or basename in task_lower:
+            scoped.add(str(row["id"]))
+    if not scoped:
+        return set(), set()
+    placeholders = ",".join("?" for _ in scoped)
+    imported = {
+        str(row["resolved_file_id"])
+        for row in index.conn.execute(
+            f"""
+            SELECT DISTINCT resolved_file_id
+            FROM imports
+            WHERE file_id IN ({placeholders}) AND resolved_file_id IS NOT NULL
+            """,
+            tuple(sorted(scoped)),
+        )
+    }
+    return scoped, imported
+
+
+def _directly_connected_candidate_ids(
+    index: ProjectIndex,
+    anchor_ids: Iterable[str],
+    node_ids: Iterable[str],
+) -> set[str]:
+    anchors = list(dict.fromkeys(str(node_id) for node_id in anchor_ids if node_id))
+    candidates = {str(node_id) for node_id in node_ids if node_id}
+    if not anchors or len(candidates) < 2:
+        return set()
+    placeholders = ",".join("?" for _ in anchors)
+    rows = index.conn.execute(
+        f"""
+        SELECT source, target
+        FROM edges
+        WHERE (source IN ({placeholders}) OR target IN ({placeholders}))
+          AND relation IN ('calls', 'decorates', 'imports', 'inherits', 'tested_by')
+        ORDER BY source, target, relation
+        LIMIT 128
+        """,
+        (*anchors, *anchors),
+    ).fetchall()
+    connected: set[str] = set()
+    for row in rows:
+        source = str(row["source"])
+        target = str(row["target"])
+        if source in anchors and target in candidates:
+            connected.add(target)
+        if target in anchors and source in candidates:
+            connected.add(source)
+    return connected
+
+
+def _is_generated_or_vendor_path(path: str) -> bool:
+    normalized = path.lower().replace("\\", "/")
+    parts = {part for part in normalized.split("/") if part}
+    filename = normalized.rsplit("/", 1)[-1]
+    return bool(
+        parts & _GENERATED_PATH_PARTS
+        or ".generated." in filename
+        or filename.endswith((".g.py", ".g.ts", ".min.js"))
+    )
+
+
+def _deduplicate_ranked_rows(
+    rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, int, int]] = set()
+    for row in rows:
+        source_hash, start_line, end_line = _slice_key(row)
+        key = (
+            source_hash or str(row.get("id") or ""),
+            str(row.get("path") or ""),
+            start_line,
+            end_line,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(row)
+    return result
+
+
+def _candidate_evidence(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "score": round(float(row.get("_score", 0.0)), 4),
+        "precedence": int(row.get("_precedence", 9)),
+        "penalty_rank": int(row.get("_penalty_rank", 0)),
+        "fts_rank": int(row.get("_fts_rank", MAX_CANDIDATES)),
+        "scope_rank": int(row.get("_scope_rank", 2)),
+        "graph_rank": int(row.get("_graph_rank", 1)),
+        "semantic_rank": int(row.get("_semantic_rank", MAX_CANDIDATES)),
+        "reasons": list(row.get("_rank_reasons") or []),
+    }
+
+
+def _evidence_int(evidence: dict[str, Any], key: str, default: int) -> int:
+    value = evidence.get(key)
+    return default if value is None else int(value)
+
+
+def _candidate_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Keep public ranking precedence explicit and deterministic.
+
+    Test/generated penalties apply before discovery rank unless the symbol was
+    explicitly requested. FTS and semantic positions are only meaningful inside
+    their own discovery tier.
+    """
+
+    precedence = int(row.get("_precedence", 9))
+    return (
+        precedence,
+        int(row.get("_penalty_rank", 0)),
+        int(row.get("_fts_rank", MAX_CANDIDATES)) if precedence == 3 else 0,
+        int(row.get("_scope_rank", 2)),
+        int(row.get("_graph_rank", 1)),
+        int(row.get("_semantic_rank", MAX_CANDIDATES)) if precedence >= 4 else 0,
+        -float(row.get("_score", 0.0)),
+        0 if str(row.get("id") or "").startswith("symbol::") else 1,
+        str(row.get("path") or "").casefold(),
+        int(row.get("start_line") or 0),
+        str(row.get("id") or ""),
+    )
 
 
 def _target_confidence(
@@ -633,13 +972,16 @@ def _expand_one_hop(
     target_id: str,
     intent: str,
 ) -> tuple[list[dict[str, Any]], dict[str, str], list[dict[str, Any]]]:
-    edges = [
+    direct_edges = [
         dict(row)
         for row in index.conn.execute(
             """
             SELECT source, target, relation, confidence, confidence_tier
             FROM edges
-            WHERE source = ? OR target = ?
+            WHERE (source = ? OR target = ?)
+              AND relation IN (
+                  'calls', 'decorates', 'imports', 'inherits', 'tested_by'
+              )
             ORDER BY
                 CASE relation
                     WHEN 'calls' THEN 0
@@ -655,19 +997,23 @@ def _expand_one_hop(
             (target_id, target_id),
         )
     ]
+    inferred_edges = _inferred_occurrence_edges(index, target_id)
+    inferred_edges.extend(_literal_dispatch_edges(index, target_id))
+    edges = _deduplicate_relationships([*direct_edges, *inferred_edges])
     neighbor_ids: list[str] = []
     roles = {target_id: "target"}
     for edge in edges:
         outgoing = edge["source"] == target_id
         other = str(edge["target"] if outgoing else edge["source"])
+        if not other or other == target_id:
+            continue
         neighbor_ids.append(other)
-        if edge["relation"] == "tested_by":
-            roles[other] = "test"
-        elif outgoing:
-            roles[other] = "dependency"
-        else:
-            roles[other] = "caller"
+        role = _relationship_role(edge, target_id)
+        current = roles.get(other)
+        if current is None or _role_rank(role, intent) < _role_rank(current, intent):
+            roles[other] = role
 
+    neighbor_ids = list(dict.fromkeys(neighbor_ids))
     loaded = _load_candidate_rows(index, neighbor_ids)
     existing = {str(row["id"]): row for row in ranked}
     base_score = float(ranked[0].get("_score", 0.0)) if ranked else 1.0
@@ -680,17 +1026,285 @@ def _expand_one_hop(
         if intent == "debug" and role == "test":
             bonus += 4.0
         row["_score"] = base_score - 10.0 + bonus - position * 0.01
+        row["_rank_position"] = len(ranked) + position
+        row["_rank_reasons"] = [
+            f"one-hop {role}",
+            *(
+                ["single-candidate indirect reference"]
+                if any(
+                    edge.get("inferred")
+                    and node_id in {str(edge["source"]), str(edge["target"])}
+                    for edge in inferred_edges
+                )
+                else []
+            ),
+        ]
         existing.setdefault(node_id, row)
     expanded = sorted(
         existing.values(),
         key=lambda row: (
             0 if str(row["id"]) == target_id else 1,
             _role_rank(roles.get(str(row["id"]), "context"), intent),
+            int(row.get("_rank_position", MAX_CANDIDATES)),
             -float(row.get("_score", 0.0)),
             str(row["path"]),
         ),
     )
-    return expanded[:MAX_CANDIDATES], roles, edges
+    return _deduplicate_ranked_rows(expanded)[:MAX_CANDIDATES], roles, edges
+
+
+def _inferred_occurrence_edges(
+    index: ProjectIndex,
+    target_id: str,
+) -> list[dict[str, Any]]:
+    """Promote only unambiguous indexed occurrence candidates.
+
+    The parser deliberately leaves attribute calls unresolved when it cannot infer
+    the receiver type. A single indexed candidate is still useful retrieval
+    evidence, but it must remain visibly inferred rather than becoming a graph fact.
+    """
+
+    rows = index.conn.execute(
+        """
+        SELECT relation, name, source_text, source_file_id, resolution_status,
+               resolution_strategy, candidate_targets
+        FROM edge_occurrences
+        WHERE source = ?
+          AND target IS NULL
+          AND is_stale = 0
+          AND relation IN ('calls', 'decorates', 'inherits', 'tested_by')
+        ORDER BY start_line, end_line, name
+        LIMIT 48
+        """,
+        (target_id,),
+    ).fetchall()
+    inferred: list[dict[str, Any]] = []
+    for row in rows:
+        candidates = _json_string_list(row["candidate_targets"])
+        strategy = "single_indexed_candidate"
+        if not candidates:
+            reference_name = _reference_terminal_name(str(row["name"] or ""))
+            candidates = _unique_reference_candidates(
+                index,
+                reference_name,
+                str(row["source_file_id"] or ""),
+            )
+            strategy = "unique_scoped_symbol_reference"
+        if len(candidates) != 1 or candidates[0] == target_id:
+            continue
+        candidate = index.conn.execute(
+            "SELECT id FROM symbols WHERE id = ? LIMIT 1",
+            (candidates[0],),
+        ).fetchone()
+        if candidate is None:
+            continue
+        inferred.append(
+            {
+                "source": target_id,
+                "target": str(candidate["id"]),
+                "relation": str(row["relation"]),
+                "confidence": 0.65,
+                "confidence_tier": "INFERRED",
+                "inferred": True,
+                "resolution_status": str(row["resolution_status"]),
+                "resolution_strategy": (
+                    str(row["resolution_strategy"])
+                    if strategy == "single_indexed_candidate"
+                    else strategy
+                ),
+                "evidence": str(row["source_text"] or row["name"]),
+            }
+        )
+    return inferred
+
+
+def _literal_dispatch_edges(
+    index: ProjectIndex,
+    target_id: str,
+) -> list[dict[str, Any]]:
+    row = index.conn.execute(
+        """
+        SELECT language, file_id, path, start_line, end_line
+        FROM symbols
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (target_id,),
+    ).fetchone()
+    if row is None or str(row["language"]).lower() != "python":
+        return []
+    root_dir = str(index.metadata().get("root_dir") or "")
+    source = _read_symbol_source(root_dir, dict(row)) if root_dir else None
+    if not source:
+        return []
+    try:
+        tree = ast.parse(textwrap.dedent(source))
+    except (SyntaxError, ValueError):
+        return []
+
+    references: list[tuple[str, str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Call):
+            call = node.func
+            if (
+                isinstance(call.func, ast.Name)
+                and call.func.id == "getattr"
+                and len(call.args) >= 2
+                and isinstance(call.args[1], ast.Constant)
+                and isinstance(call.args[1].value, str)
+            ):
+                references.append(
+                    (call.args[1].value, "dispatches", f'getattr(..., "{call.args[1].value}")')
+                )
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Subscript):
+            literal_key = _literal_string(node.func.slice)
+            if literal_key:
+                references.append(
+                    (literal_key, "dispatches", f'...["{literal_key}"](...)')
+                )
+        if isinstance(node, ast.Dict):
+            for dict_key, dict_value in zip(node.keys, node.values, strict=True):
+                if not (
+                    isinstance(dict_key, ast.Constant)
+                    and isinstance(dict_key.value, str)
+                ):
+                    continue
+                symbol_name = _ast_symbol_name(dict_value)
+                if symbol_name:
+                    references.append((symbol_name, "registers", dict_key.value))
+
+    inferred: list[dict[str, Any]] = []
+    for name, relation, evidence in references:
+        candidates = _unique_reference_candidates(index, name, str(row["file_id"]))
+        if len(candidates) != 1 or candidates[0] == target_id:
+            continue
+        inferred.append(
+            {
+                "source": target_id,
+                "target": candidates[0],
+                "relation": relation,
+                "confidence": 0.55,
+                "confidence_tier": "INFERRED",
+                "inferred": True,
+                "resolution_status": "inferred",
+                "resolution_strategy": "unique_literal_symbol",
+                "evidence": evidence,
+            }
+        )
+    return inferred
+
+
+def _ast_symbol_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _literal_string(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _reference_terminal_name(name: str) -> str:
+    return name.rsplit(".", 1)[-1].strip()
+
+
+def _unique_reference_candidates(
+    index: ProjectIndex,
+    name: str,
+    source_file_id: str,
+) -> list[str]:
+    """Resolve a weak dynamic reference only when one canonical target remains."""
+
+    if not name:
+        return []
+    local = _symbol_ids_in_file(index, source_file_id, name)
+    if local:
+        return local if len(local) > 1 else [local[0]]
+
+    binding_rows = index.conn.execute(
+        """
+        SELECT file_id, local_name, imported_name, qualified_name,
+               resolved_file_id, resolved_symbol_id
+        FROM import_bindings
+        WHERE file_id = ? AND LOWER(local_name) = LOWER(?)
+        ORDER BY start_line, local_name
+        LIMIT 8
+        """,
+        (source_file_id, name),
+    ).fetchall()
+    bound: set[str] = set()
+    for binding in binding_rows:
+        bound.update(
+            _binding_target_ids(index, dict(binding), visited=set(), depth=0)
+        )
+    if bound:
+        return sorted(bound)
+    return _exact_symbol_name_candidates(index, name)
+
+
+def _exact_symbol_name_candidates(index: ProjectIndex, name: str) -> list[str]:
+    rows = index.conn.execute(
+        """
+        SELECT id
+        FROM symbols
+        WHERE LOWER(name) = LOWER(?)
+           OR LOWER(name) LIKE '%.' || LOWER(?)
+        ORDER BY path, start_line
+        LIMIT 2
+        """,
+        (name, name),
+    ).fetchall()
+    return [str(row["id"]) for row in rows]
+
+
+def _json_string_list(value: Any) -> list[str]:
+    if not isinstance(value, str):
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list) or any(not isinstance(item, str) for item in parsed):
+        return []
+    return list(dict.fromkeys(parsed))
+
+
+def _relationship_role(edge: dict[str, Any], target_id: str) -> str:
+    relation = str(edge.get("relation") or "")
+    source = str(edge.get("source") or "")
+    target = str(edge.get("target") or "")
+    if relation == "tested_by":
+        return "test"
+    if relation in {"calls", "dispatches", "registers", "inherits"}:
+        return "dependency" if source == target_id else "caller"
+    if relation == "decorates":
+        return "dependency" if target == target_id else "caller"
+    return "dependency" if source == target_id else "caller"
+
+
+def _deduplicate_relationships(
+    edges: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for edge in edges:
+        relation = str(edge.get("relation") or "")
+        if relation not in _IMPACT_RELATIONS:
+            continue
+        key = (
+            str(edge.get("source") or ""),
+            str(edge.get("target") or ""),
+            relation,
+        )
+        if not all(key) or key in seen:
+            continue
+        seen.add(key)
+        result.append(edge)
+    return result
 
 
 def _role_rank(role: str, intent: str) -> int:
@@ -716,6 +1330,7 @@ def _prioritize_rows(
         key=lambda row: (
             0 if str(row["id"]) == target_id else 1,
             _role_rank(roles.get(str(row["id"]), "context"), intent),
+            int(row.get("_rank_position", MAX_CANDIDATES)),
             -float(row.get("_score", 0.0)),
             str(row["path"]),
             int(row.get("start_line") or 0),
@@ -873,6 +1488,8 @@ def _ambiguous_response(
             "tokens": 0,
             "budget": request.token_budget,
             "encoding": request.encoding,
+            "estimator": token_estimator(request.encoding),
+            "measurement": token_measurement(request.encoding),
             "latency_ms": 0.0,
             "cache": cache_state,
         },
@@ -1011,14 +1628,39 @@ def _merge_semantic_candidates(
     existing = {str(row["id"]): row for row in ranked}
     loaded = _load_candidate_rows(index, semantic_ids)
     for position, node_id in enumerate(semantic_ids):
-        if node_id in existing or node_id not in loaded:
+        if node_id in existing:
+            row = existing[node_id]
+            row["_semantic_rank"] = min(
+                int(row.get("_semantic_rank", MAX_CANDIDATES)),
+                position,
+            )
+            row["_score"] = float(row.get("_score", 0.0)) + max(
+                0.0,
+                4.0 - position * 0.1,
+            )
+            row["_rank_reasons"] = list(
+                dict.fromkeys([*(row.get("_rank_reasons") or []), "semantic match"])
+            )
+            continue
+        if node_id not in loaded:
             continue
         row = loaded[node_id]
         row["_score"] = max(1.0, 12.0 - position * 0.25)
+        row["_precedence"] = 4
+        row["_penalty_rank"] = (
+            1
+            if bool(row.get("is_test"))
+            or _is_generated_or_vendor_path(str(row.get("path") or ""))
+            else 0
+        )
+        row["_fts_rank"] = MAX_CANDIDATES
+        row["_scope_rank"] = 2
+        row["_graph_rank"] = 1
+        row["_semantic_rank"] = position
+        row["_rank_reasons"] = ["semantic fallback"]
         existing[node_id] = row
-    return sorted(
-        existing.values(),
-        key=lambda row: (-float(row.get("_score", 0.0)), str(row["path"])),
+    return _deduplicate_ranked_rows(
+        sorted(existing.values(), key=_candidate_sort_key)
     )[:MAX_CANDIDATES]
 
 

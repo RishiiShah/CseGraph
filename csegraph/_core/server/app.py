@@ -78,6 +78,7 @@ def _handle_tool(
     if provided_max is not None:
         if isinstance(provided_max, float) and provided_max == int(provided_max):
             provided_max = int(provided_max)
+            arguments = {**arguments, "max_bytes": provided_max}
         if not isinstance(provided_max, int):
             raise TypeError(f"max_bytes must be an integer, got {type(provided_max).__name__}")
     if isinstance(provided_max, int) and 0 < provided_max < _MIN_BYTE_CAP:

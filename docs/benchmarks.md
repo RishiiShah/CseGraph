@@ -4,21 +4,36 @@
 
 The release baseline is no longer a full-corpus read. The deterministic
 comparison uses `rg --json`, exact-name/path ranking, bounded 80-line selective
-reads, one-hop import following, and the same exact `o200k_base` response budget
+reads, one-hop import following, and the same response estimator and budget
 as CseGraph. Pull-request CI runs the 20-task pinned corpus in
-`benchmarks/adaptive/pr_tasks.json`; nightly and release jobs expand the same
-schema with pinned cross-repository and agent patch/test trials.
+`benchmarks/adaptive/pr_tasks.json`. The scheduled nightly workflow runs 60
+pinned retrieval tasks across micrograd, nanoGPT, Flask, pytest, Django, and
+FastAPI. Missing repositories are cloned at their declared commits, and CI
+requires Pyright `1.1.407` rather than silently degrading to rg-only results.
 
 ```bash
 env/bin/python tools/run_adaptive_retrieval_benchmark.py \
   --corpus benchmarks/adaptive/pr_tasks.json \
-  --output benchmark_results/adaptive_retrieval.json
+  --bootstrap-missing \
+  --allow-network \
+  --modes cold,warm \
+  --pyright required \
+  --output benchmark_results/adaptive_retrieval.json \
+  --fail-on-gates
 ```
 
-Release gates cover exact budget compliance, target resolution, required-slice
+Release gates cover budget compliance, target resolution, required-slice
 recall and precision, median tokens, p95 latency, tool calls, cache behavior,
-and stale-context failures. Historical full-corpus comparisons remain below
-for reproducibility only and are not used as evidence for 2.0 product claims.
+baseline completeness, corpus completeness, and stale-context failures.
+Reports include the corpus digest, repository commits, dirty-tree state,
+platform, Python, rg, tokenizer measurement mode, and Pyright availability.
+
+`benchmarks/adaptive/release_tasks.json` is intentionally marked `blocked`
+until an independently curated set of 30 real maintenance tasks with hidden
+checks is committed. Release CI fails closed while that manifest is incomplete;
+synthetic retrieval tasks are not substituted for agent patch/test evidence.
+Historical full-corpus comparisons remain below for reproducibility only and
+are not used as evidence for 2.0 product claims.
 
 ## Native MCP Cross-Repo Results (CseGraph 1.8.0)
 

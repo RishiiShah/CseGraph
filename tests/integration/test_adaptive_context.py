@@ -19,7 +19,11 @@ from csegraph import (
 from csegraph._core.index.migrations import migrate_schema
 from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.retrieval.freshness import FreshnessCoordinator
-from csegraph._core.retrieval.token_budget import count_payload_tokens
+from csegraph._core.retrieval.token_budget import (
+    count_payload_tokens,
+    count_text_tokens,
+    token_estimator,
+)
 from csegraph._core.server.app import _handle_tool
 
 
@@ -86,10 +90,249 @@ def test_adaptive_context_returns_ambiguous_candidates(tmp_path: Path):
     result = ContextService(db).retrieve(
         ContextRequest(repo=str(repo), task="Update handle")
     )
+    repeated = ContextService(db).retrieve(
+        ContextRequest(repo=str(repo), task="Update handle")
+    )
 
     assert result.status == ContextStatus.AMBIGUOUS
     assert len(result.candidates) == 2
+    assert [candidate["path"] for candidate in result.candidates] == ["a.py", "b.py"]
+    assert repeated.status == ContextStatus.AMBIGUOUS
+    assert repeated.candidates == result.candidates
     assert result.slices == []
+
+
+def test_adaptive_ranking_penalizes_unrequested_test_symbols(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "processor.py").write_text(
+        "def process(value):\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    tests = repo / "tests"
+    tests.mkdir()
+    (tests / "test_processor.py").write_text(
+        "def process(value):\n"
+        "    assert value\n",
+        encoding="utf-8",
+    )
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
+    IndexService(db).index(repo, profile="small")
+
+    result = ContextService(db).retrieve(
+        ContextRequest(repo=str(repo), task="Update process")
+    )
+
+    assert result.status == ContextStatus.AMBIGUOUS
+    assert [candidate["path"] for candidate in result.candidates] == [
+        "processor.py",
+        "tests/test_processor.py",
+    ]
+
+
+def test_adaptive_ranking_penalizes_generated_symbols(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src"
+    source.mkdir()
+    (source / "handler.py").write_text(
+        "def handle(value):\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    generated = repo / "generated"
+    generated.mkdir()
+    (generated / "handler.py").write_text(
+        "def handle(value):\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
+    IndexService(db).index(repo, profile="small")
+
+    result = ContextService(db).retrieve(
+        ContextRequest(repo=str(repo), task="Update handle")
+    )
+
+    assert result.status == ContextStatus.AMBIGUOUS
+    assert [candidate["path"] for candidate in result.candidates] == [
+        "src/handler.py",
+        "generated/handler.py",
+    ]
+
+
+def test_adaptive_context_finds_unique_unresolved_attribute_dependency(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "engine.py").write_text(
+        "class Value:\n"
+        "    def relu(self):\n"
+        "        return self\n",
+        encoding="utf-8",
+    )
+    (repo / "nn.py").write_text(
+        "from engine import Value\n\n"
+        "class Neuron:\n"
+        "    def __call__(self, value):\n"
+        "        activation = value\n"
+        "        return activation.relu()\n",
+        encoding="utf-8",
+    )
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
+    IndexService(db).index(repo, profile="small")
+
+    result = ContextService(db).retrieve(
+        ContextRequest(
+            repo=str(repo),
+            task="Update Neuron.__call__ and its activation dependency",
+            target="Neuron.__call__",
+            response_mode="diagnostic",
+            token_budget=2_000,
+        )
+    )
+
+    assert result.status == ContextStatus.READY
+    slices = {(item.path, item.symbol, item.role) for item in result.slices}
+    assert ("nn.py", "Neuron.__call__", "target") in slices
+    assert ("engine.py", "Value.relu", "dependency") in slices
+    assert any(
+        relationship.get("inferred")
+        and relationship.get("relation") == "calls"
+        and relationship.get("evidence") == "activation.relu()"
+        for relationship in result.diagnostic["relationships"]
+    )
+
+
+def test_dynamic_dispatch_follows_reexport_chain_without_guessing(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "engine.py").write_text(
+        "def relu(value):\n"
+        "    return max(0, value)\n",
+        encoding="utf-8",
+    )
+    (repo / "public.py").write_text(
+        "from engine import relu as activation\n",
+        encoding="utf-8",
+    )
+    (repo / "dispatch.py").write_text(
+        "from public import activation\n\n"
+        "def dispatch(value):\n"
+        "    callbacks = {'rectifier': activation}\n"
+        "    return callbacks['rectifier'](value)\n",
+        encoding="utf-8",
+    )
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
+    IndexService(db).index(repo, profile="small")
+    service = ContextService(db)
+
+    result = service.retrieve(
+        ContextRequest(
+            repo=str(repo),
+            task="Update dispatch and its registered activation",
+            target="dispatch",
+            response_mode="diagnostic",
+            token_budget=2_000,
+        )
+    )
+    alias = service.retrieve(
+        ContextRequest(
+            repo=str(repo),
+            task="Explain the activation export",
+            target="activation",
+        )
+    )
+
+    assert result.status == ContextStatus.READY
+    assert any(
+        item.path == "engine.py"
+        and item.symbol == "relu"
+        and item.role == "dependency"
+        for item in result.slices
+    )
+    assert any(
+        relationship.get("relation") == "registers"
+        and relationship.get("resolution_strategy") == "unique_literal_symbol"
+        for relationship in result.diagnostic["relationships"]
+    )
+    assert alias.status == ContextStatus.READY
+    assert alias.target is not None
+    assert (alias.target.path, alias.target.name) == ("engine.py", "relu")
+
+
+def test_literal_getattr_dispatch_requires_unique_symbol(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "models.py").write_text(
+        "class First:\n"
+        "    def save(self):\n"
+        "        return 1\n\n"
+        "class Second:\n"
+        "    def save(self):\n"
+        "        return 2\n\n"
+        "def invoke(item):\n"
+        "    return getattr(item, 'save')()\n",
+        encoding="utf-8",
+    )
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
+    IndexService(db).index(repo, profile="small")
+
+    result = ContextService(db).retrieve(
+        ContextRequest(
+            repo=str(repo),
+            task="Update invoke and its dynamic dependency",
+            target="invoke",
+            response_mode="diagnostic",
+            token_budget=2_000,
+        )
+    )
+
+    assert result.status == ContextStatus.READY
+    assert [(item.symbol, item.role) for item in result.slices] == [
+        ("invoke", "target")
+    ]
+    assert not any(
+        relationship.get("relation") == "dispatches"
+        for relationship in result.diagnostic["relationships"]
+    )
+
+
+def test_literal_getattr_dispatch_inside_method_finds_unique_symbol(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "models.py").write_text(
+        "class Action:\n"
+        "    def run(self):\n"
+        "        return 1\n\n"
+        "class Router:\n"
+        "    def invoke(self, action):\n"
+        "        return getattr(action, 'run')()\n",
+        encoding="utf-8",
+    )
+    db = str(repo / ".scratch" / "csegraph" / "test.db")
+    IndexService(db).index(repo, profile="small")
+
+    result = ContextService(db).retrieve(
+        ContextRequest(
+            repo=str(repo),
+            task="Update Router.invoke and its dynamic call",
+            target="Router.invoke",
+            response_mode="diagnostic",
+            token_budget=2_000,
+        )
+    )
+
+    assert result.status == ContextStatus.READY
+    assert any(
+        item.symbol == "Action.run" and item.role == "dependency"
+        for item in result.slices
+    )
+    assert any(
+        relationship.get("relation") == "dispatches"
+        and relationship.get("resolution_strategy") == "unique_literal_symbol"
+        for relationship in result.diagnostic["relationships"]
+    )
 
 
 def test_adaptive_continuation_omits_previously_emitted_slices(tmp_path: Path):
@@ -226,6 +469,30 @@ def test_exact_budget_accepts_code_that_looks_like_special_tokens(tmp_path: Path
     )
     assert result.status == ContextStatus.READY
     assert "<|endoftext|>" in result.slices[0].code
+
+
+def test_token_budget_has_dependency_free_chars_proxy_fallback():
+    with patch(
+        "csegraph._core.retrieval.token_budget._load_encoding",
+        return_value=None,
+    ):
+        assert count_text_tokens("abcdefgh", "o200k_base") == 2
+        assert token_estimator("o200k_base") == "chars/4 proxy"
+
+
+def test_adaptive_usage_labels_estimated_token_measurement(tmp_path: Path):
+    repo, db = _repo(tmp_path)
+    with patch(
+        "csegraph._core.retrieval.token_budget._load_encoding",
+        return_value=None,
+    ):
+        result = ContextService(db).retrieve(
+            ContextRequest(repo=str(repo), task="Explain greet", target="greet")
+        )
+
+    assert result.usage["measurement"] == "estimated"
+    assert result.usage["estimator"] == "chars/4 proxy"
+    assert result.usage["tokens"] <= result.usage["budget"]
 
 
 def test_bounded_bootstrap_refuses_repo_above_configured_limit(tmp_path: Path):

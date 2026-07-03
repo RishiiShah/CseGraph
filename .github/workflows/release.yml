@@ -32,11 +32,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
       - name: Install test/build tooling
         run: python -m pip install --upgrade pip build
 
       - name: Install csegraph editable
-        run: python -m pip install -e ".[test,all]"
+        run: |
+          python -m pip install -e ".[test,all,benchmark]"
+          npm install --global pyright@1.1.407
 
       - name: Run Python release verification
         run: |
@@ -50,6 +56,35 @@ jobs:
             CSEGRAPH_CROSS_REPO_JSON=benchmark_results/release_native_mcp_sandbox.json \
             python tools/cross_repo_benchmark.py
           python tools/check_benchmark_regression.py --repo .
+
+      - name: Run adaptive release evaluation
+        id: adaptive_release
+        continue-on-error: true
+        run: |
+          python tools/run_adaptive_retrieval_benchmark.py \
+            --corpus benchmarks/adaptive/release_tasks.json \
+            --bootstrap-missing \
+            --allow-network \
+            --modes cold,warm \
+            --warm-runs 3 \
+            --pyright required \
+            --execute-tasks \
+            --output benchmark_results/adaptive_release.json \
+            --fail-on-gates
+
+      - name: Upload adaptive release report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaptive-release-benchmark
+          path: benchmark_results/adaptive_release.json
+          if-no-files-found: error
+
+      - name: Enforce adaptive release gates
+        if: steps.adaptive_release.outcome != 'success'
+        run: |
+          echo "Adaptive release evaluation did not satisfy the release gates."
+          exit 1
 
       - name: Build wheel and sdist
         run: python -m build

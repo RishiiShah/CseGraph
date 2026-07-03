@@ -306,13 +306,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--budget",
         type=int,
         default=800,
-        help="Exact whole-response token budget for adaptive retrieval (default: 800).",
+        help=(
+            "Whole-response token budget; exact with optional tiktoken and estimated "
+            "otherwise (default: 800)."
+        ),
     )
     context.add_argument(
         "--encoding",
         choices=("o200k_base", "cl100k_base"),
         default="o200k_base",
-        help="Tokenizer used to enforce --budget (default: o200k_base).",
+        help="Tokenizer label used when optional tiktoken is available.",
     )
     context.add_argument(
         "--diagnostic",
@@ -956,7 +959,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
         task = args.task or args.task_arg
         if not task:
             raise ValueError('context requires a task. Example: csegraph context "Fix auth"')
-        service = ContextService(_db_arg(args, str(repo_path)))
+        context_service = ContextService(_db_arg(args, str(repo_path)))
         use_legacy = bool(
             args.legacy
             or args.engine == "legacy"
@@ -966,7 +969,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
             or args.config is not None
         )
         if not use_legacy:
-            return service.retrieve(
+            return context_service.retrieve(
                 ContextRequest(
                     repo=str(repo_path),
                     task=task,
@@ -979,7 +982,7 @@ def _dispatch(args: argparse.Namespace) -> Any:
                     engine="adaptive",
                 )
             )
-        return service.build_context(
+        return context_service.build_context(
             task=task,
             target=args.target,
             profile=args.profile,
@@ -1111,13 +1114,13 @@ def _dispatch(args: argparse.Namespace) -> Any:
         from csegraph._core.mcp_doctor import McpDoctorService
 
         repo = _repo_arg(args)
-        service = McpDoctorService(repo, command=args.server_command)
+        doctor_service = McpDoctorService(repo, command=args.server_command)
         if args.platform == "auto":
-            return service.doctor_all(
+            return doctor_service.doctor_all(
                 require_observed_call=args.require_observed_call,
                 verify=args.verify,
             )
-        return service.doctor(
+        return doctor_service.doctor(
             platform=args.platform,
             require_observed_call=args.require_observed_call,
             verify=args.verify,

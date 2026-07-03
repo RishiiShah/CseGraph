@@ -6,12 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+
+- Added explicit `usage.measurement` metadata so optional-tokenizer counts are
+  distinguished from dependency-free token estimates.
+- Hardened the adaptive benchmark, retrieval planner, freshness leases, and
+  release verification for reproducible CseGraph 2.0 evaluation.
+- Added pinned Pyright baseline support, cold/warm latency accounting, a
+  60-task nightly corpus, provenance-rich CI artifacts, and fail-closed release
+  evaluation while the real-maintenance corpus remains incomplete.
+
 ## 2.0.0 - 2026-07-02
 
 ### Added
 
-- Added adaptive one-call context retrieval with exact `o200k_base` whole-response
-  token budgets, compact code slices, ambiguity handling, and focused structural
+- Added adaptive one-call context retrieval with whole-response token budgets,
+  compact code slices, ambiguity handling, and focused structural
   continuations.
 - Added bounded automatic index bootstrapping and freshness coordination with
   incremental refresh, cross-process refresh leases, and stale-context refusal.
@@ -29,7 +39,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `csegraph-context-v4`; explicit `legacy-v3` mode remains available.
 - Changed context retrieval to hydrate bounded SQL candidates instead of
   copying the complete graph snapshot.
-- Promoted `tiktoken` to a runtime dependency.
+- Kept `tiktoken` benchmark-only; runtime retrieval uses it when available and
+  otherwise reports a dependency-free chars/4 estimate.
 - Upgraded the index schema to v9 with monotonic retrieval revisions.
 
 ## 1.8.1 - 2026-06-24

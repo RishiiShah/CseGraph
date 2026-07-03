@@ -12,7 +12,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 from csegraph._core.config.profiles import get_profile, resolve_profile_name
 from csegraph._core.core.ids import file_node_id, folder_node_id, repo_node_id
 from csegraph._core.core.models import IndexResult, RefreshResult
-from csegraph._core.discovery import is_discoverable_rel_path, iter_discoverable_rel_paths
+from csegraph._core.discovery import iter_discoverable_rel_paths
 from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.index.migrations import migrate_schema
@@ -197,8 +197,6 @@ class RefreshService:
                     source_file_count=_indexed_file_count(index),
                 )
             )
-            index.set_metadata(str(repo_root), config.name, include_roots=include_prefixes)
-
             start = time.perf_counter()
             if changed_paths is not None:
                 ignore = load_ignore_filter(repo_root, exclude_patterns=exclude_patterns)
@@ -224,9 +222,15 @@ class RefreshService:
                 for path in changed_abs_set:
                     if path.exists() and path.is_file():
                         rel = path.relative_to(repo_root).as_posix()
+                        # ``changed_paths`` explicitly includes untracked
+                        # files. Ordinary Git discovery intentionally limits
+                        # itself to tracked paths, but applying that rule here
+                        # would detect an untracked source and then silently
+                        # refuse to refresh it. Explicit paths still honor
+                        # include roots and every ignore rule.
                         if not _is_included_rel_path(
                             rel, include_prefixes
-                        ) or not is_discoverable_rel_path(rel, ignore):
+                        ) or ignore.is_ignored(rel):
                             if rel in stored:
                                 deleted.append(rel)
                             continue
@@ -287,6 +291,7 @@ class RefreshService:
             timings_ms["parse_changed"] = _elapsed_ms(start)
 
             if not changed and not deleted:
+                index.set_metadata(str(repo_root), config.name, include_roots=include_prefixes)
                 return RefreshResult(
                     command="refresh",
                     db_path=self.db_path,
@@ -379,6 +384,7 @@ class RefreshService:
                 for parsed in parsed_changed
                 if parsed.parse_status != "ok"
             }
+            index.set_metadata(str(repo_root), config.name, include_roots=include_prefixes)
             index.bump_index_revision()
             return RefreshResult(
                 command="refresh",

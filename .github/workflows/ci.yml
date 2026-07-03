@@ -101,6 +101,22 @@ jobs:
       - name: Install csegraph editable
         run: python -m pip install -e ".[test,all]"
 
+      - name: Verify base install does not require the optional tokenizer
+        run: |
+          python - <<'PY'
+          import importlib.metadata as metadata
+
+          from csegraph._core.retrieval.token_budget import token_measurement
+
+          try:
+              metadata.version("tiktoken")
+          except metadata.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError("base test installation unexpectedly installed tiktoken")
+          assert token_measurement("o200k_base") == "estimated"
+          PY
+
       - name: Assert single installed distribution and import surface
         run: |
           python - <<'PY'
@@ -267,11 +283,37 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
       - name: Install benchmark dependencies
-        run: python -m pip install --upgrade pip -e ".[test,all]"
+        run: |
+          python -m pip install --upgrade pip -e ".[test,all,benchmark]"
+          npm install --global pyright@1.1.407
 
       - name: Run context benchmark regression check
         run: python tools/check_benchmark_regression.py --repo .
+
+      - name: Run adaptive retrieval PR gates
+        run: |
+          python tools/run_adaptive_retrieval_benchmark.py \
+            --corpus benchmarks/adaptive/pr_tasks.json \
+            --bootstrap-missing \
+            --allow-network \
+            --modes cold,warm \
+            --warm-runs 1 \
+            --pyright required \
+            --output benchmark_results/adaptive_pr.json \
+            --fail-on-gates
+
+      - name: Upload adaptive benchmark report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaptive-pr-benchmark
+          path: benchmark_results/adaptive_pr.json
+          if-no-files-found: error
 
   docs:
     name: Documentation site

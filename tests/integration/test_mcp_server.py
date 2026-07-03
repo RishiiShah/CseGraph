@@ -158,7 +158,7 @@ class TestHandlePrompt:
         assert message.role == "user"
         assert message.content.type == "text"
         assert "csegraph_context" in message.content.text
-        assert "exact-budget" in message.content.text
+        assert "budgeted" in message.content.text
         assert "/repo" in message.content.text
         assert "fix auth refresh" in message.content.text
         assert "refresh_token" in message.content.text

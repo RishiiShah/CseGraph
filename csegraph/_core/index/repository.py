@@ -62,6 +62,8 @@ class ProjectIndex:
             "lexical_index",
             "retrieval_context",
             "retrieval_runs",
+            "retrieval_plan_cache",
+            "refresh_leases",
             "embedding_cache",
             "summaries",
             "test_assertions",
@@ -168,6 +170,23 @@ class ProjectIndex:
         )
         self.conn.commit()
         return revision
+
+    def checkpoint_git_state(self, root_dir: str) -> None:
+        """Record the Git state only after the indexed graph is current."""
+        branch, commit = git_head_state(root_dir)
+        self.conn.executemany(
+            """
+            INSERT INTO metadata(key, value)
+            VALUES(?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (
+                ("built_branch", branch or ""),
+                ("built_commit", commit or ""),
+                ("updated_at", str(time.time())),
+            ),
+        )
+        self.conn.commit()
 
     def metadata(self, *, raise_if_empty: bool = True) -> Dict[str, str]:
         if not self._table_exists("metadata"):

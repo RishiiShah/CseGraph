@@ -177,7 +177,7 @@ flowchart TD
    inheritance relationships, and test links.
 2. The `csegraph_context` MCP tool performs indexed lexical retrieval first,
    uses graph relationships only when ambiguity or impact requires them, and
-   packages the result under an exact whole-response token budget.
+   packages the result under a whole-response token budget.
 3. The optional `csegraph_minimal` tool reports index health and repository
    entry points without being required before ordinary context retrieval.
 4. `csegraph refresh` updates changed and deleted files without rebuilding
@@ -253,7 +253,7 @@ every available grammar.
 | `csegraph_index` | Build a repository graph |
 | `csegraph_refresh` | Refresh changed and deleted files |
 | `csegraph_minimal` | Optional index-health and repository-orientation card |
-| `csegraph_context` | Retrieve exact-budget adaptive code slices in one call |
+| `csegraph_context` | Retrieve budgeted adaptive code slices in one call |
 | `csegraph_graph` | Inspect a graph neighborhood |
 | `csegraph_path` | Find the shortest path between two nodes |
 
@@ -266,17 +266,26 @@ the compact response recommends structural escalation.
 CseGraph 2.0 is evaluated against a strong, reproducible `rg` plus selective
 read baseline rather than a full-repository-read strawman. The baseline ranks
 JSON ripgrep matches, reads bounded 80-line windows, follows imports once, and
-uses the same exact token budget as adaptive retrieval.
+uses the same token estimator and budget as adaptive retrieval.
 
 ```bash
 env/bin/python tools/run_adaptive_retrieval_benchmark.py \
   --corpus benchmarks/adaptive/pr_tasks.json \
+  --modes cold,warm \
   --fail-on-gates
 ```
 
 The report measures target resolution, required-slice recall and precision,
-whole-response tokens, latency, tool calls, cache state, and freshness. See
+whole-response tokens, cold/warm engine and tool latency, tool calls, cache
+state, corpus completeness, and provenance. CI bootstraps the pinned
+repositories and requires Pyright `1.1.407`; local runs may use
+`--bootstrap-missing --allow-network --pyright required`. See
 [Agent Context Benchmarks](docs/benchmarks.md) for methodology and release gates.
+
+Adaptive responses label `usage.measurement` as `exact` when the optional
+benchmark tokenizer is installed and `estimated` when the dependency-free
+chars/4 fallback is used. `max_bytes` remains an exact transport ceiling in
+both modes.
 
 ## VS Code
 

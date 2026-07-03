@@ -23,18 +23,18 @@ def resolve_csegraph_executable(repo: str | Path, *, command: str = "csegraph") 
     repo_path = Path(repo).resolve()
     if _looks_like_path(command):
         for candidate in _path_command_candidates(repo_path, command):
-            resolved = _first_existing_script(candidate)
-            if resolved is not None:
-                return str(resolved.resolve())
+            resolved_path = _first_existing_script(candidate)
+            if resolved_path is not None:
+                return str(resolved_path.resolve())
         raise McpLauncherResolutionError(
             f"CseGraph MCP command does not exist: {command}. "
             "Install the CLI or pass --command /absolute/path/to/csegraph."
         )
 
     if command != "csegraph":
-        resolved = shutil.which(command)
-        if resolved:
-            return str(Path(resolved).resolve())
+        which_result = shutil.which(command)
+        if which_result:
+            return str(Path(which_result).resolve())
         raise McpLauncherResolutionError(
             f"CseGraph MCP command was not found on PATH: {command}. "
             "Pass --command /absolute/path/to/csegraph."
@@ -44,9 +44,9 @@ def resolve_csegraph_executable(repo: str | Path, *, command: str = "csegraph") 
         if candidate.is_file():
             return str(candidate.resolve())
 
-    resolved = shutil.which("csegraph")
-    if resolved:
-        return str(Path(resolved).resolve())
+    which_result = shutil.which("csegraph")
+    if which_result:
+        return str(Path(which_result).resolve())
 
     raise McpLauncherResolutionError(
         "Could not find a real csegraph CLI executable. "

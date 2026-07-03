@@ -31,6 +31,11 @@ def token_estimator(encoding: str) -> str:
     return "tiktoken" if _load_encoding(encoding) is not None else "chars/4 proxy"
 
 
+def token_measurement(encoding: str) -> str:
+    """Describe whether the reported token count is exact or estimated."""
+    return "exact" if _load_encoding(encoding) is not None else "estimated"
+
+
 def _estimate_tokens(text: str) -> int:
     """Estimate token count using the chars/4 heuristic."""
     return max(1, math.ceil(len(text) / _CHARS_PER_TOKEN))

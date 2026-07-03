@@ -62,6 +62,7 @@ class McpDoctorService:
         verify: bool = True,
     ) -> McpDoctorResult:
         config_path, config_present, config_entry = self._read_config(platform)
+        resolution_error: str | None
         try:
             server_entry = config_entry or build_mcp_server_entry(
                 self.repo,

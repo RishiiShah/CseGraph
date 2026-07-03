@@ -63,16 +63,15 @@ def test_cache_invalidation_by_data_version(tmp_path):
 
     snap1 = manager.get_snapshot(index)
 
-    # Any write to the DB updates the file mtime. Sleep to ensure mtime resolution boundary is crossed.
-    import time
-
-    time.sleep(0.1)
+    # Graph writers advance the explicit revision. Retrieval-history writes do
+    # not, so they cannot evict the topology snapshot.
     conn2 = sqlite3.connect(db_path)
     conn2.execute(
         "INSERT INTO nodes (id, type, name, path, language, source_hash, updated_at) VALUES ('test_node', 'file', 'test.py', 'test.py', '', 'hash', 0)"
     )
     conn2.commit()
     conn2.close()
+    index.bump_index_revision()
 
     snap2 = manager.get_snapshot(index)
 

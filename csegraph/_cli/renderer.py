@@ -746,6 +746,7 @@ def _render_adaptive_context_markdown(payload: Dict[str, Any]) -> str:
     target = payload.get("target") or {}
     usage = payload.get("usage") or {}
     freshness = payload.get("freshness") or {}
+    measurement = usage.get("measurement", "estimated")
     lines: List[str] = [
         "# csegraph context",
         "",
@@ -753,7 +754,7 @@ def _render_adaptive_context_markdown(payload: Dict[str, Any]) -> str:
         f"Intent: `{payload.get('intent', '')}`",
         f"Target: `{target.get('id', '')}`",
         f"Tokens: {usage.get('tokens', 0)} / {usage.get('budget', 0)} "
-        f"(`{usage.get('encoding', '')}`)",
+        f"(`{usage.get('encoding', '')}`, {measurement})",
         f"Freshness: `{freshness.get('state', '')}` "
         f"(revision {freshness.get('revision', 0)})",
         "",

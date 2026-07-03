@@ -1,5 +1,34 @@
 {
   "schema_version": "csegraph-adaptive-benchmark-v1",
+  "corpus_version": "2026.07.1",
+  "tier": "pr",
+  "status": "ready",
+  "repositories": {
+    "sandbox/micrograd": {
+      "url": "https://github.com/karpathy/micrograd.git",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685"
+    },
+    "sandbox/nanoGPT": {
+      "url": "https://github.com/karpathy/nanoGPT.git",
+      "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291"
+    },
+    "sandbox/flask": {
+      "url": "https://github.com/pallets/flask.git",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81"
+    },
+    "sandbox/pytest": {
+      "url": "https://github.com/pytest-dev/pytest.git",
+      "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9"
+    },
+    "sandbox/django": {
+      "url": "https://github.com/django/django.git",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304"
+    },
+    "sandbox/fastapi": {
+      "url": "https://github.com/fastapi/fastapi.git",
+      "commit": "702fea83bb3ef0b558104835d7936af49650fb2d"
+    }
+  },
   "tasks": [
     {
       "id": "micrograd-relu",

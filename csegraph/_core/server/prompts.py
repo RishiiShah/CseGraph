@@ -218,7 +218,7 @@ def handle_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetProm
         )
     elif name == "csegraph-context":
         text = prompt_text(
-            "Retrieve an exact-budget task-specific code slice in one call.",
+            "Retrieve a budgeted task-specific code slice in one call.",
             [
                 "Call `csegraph_context` directly with the repo, task, and target when known.",
                 "Use the returned `slices` before opening files or searching the repository.",

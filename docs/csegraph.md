@@ -168,7 +168,7 @@ MCP exposes six tools only:
 | `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db`, `postprocess_level` |
 | `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db`, `postprocess_level` |
 | `csegraph_minimal` | Optional health/orientation card with summary and top-degree entities. | `repo`, `task`, `db` |
-| `csegraph_context` | Primary exact-budget adaptive code retrieval; diagnostic and legacy-v3 modes are available. | `repo`, `task`, `target`, `task_kind`, `token_budget`, `encoding`, `response_mode`, `engine`, `cursor`, `include_source`, `max_bytes`, `db` |
+| `csegraph_context` | Primary budgeted adaptive code retrieval; diagnostic and legacy-v3 modes are available. | `repo`, `task`, `target`, `task_kind`, `token_budget`, `encoding`, `response_mode`, `engine`, `cursor`, `include_source`, `max_bytes`, `db` |
 | `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
 | `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS uses relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
 
@@ -195,9 +195,13 @@ document symbols for files already present in the SQLite index, so run
 `csegraph index` or `csegraph refresh` before launching an editor client.
 
 `csegraph_context` defaults to the adaptive `csegraph-context-v4` response.
-`token_budget` is an exact ceiling over the complete serialized response using
-`encoding=o200k_base` by default. Compact output contains a resolved target,
-whole-symbol `slices`, freshness, usage, and an optional focused `next` action.
+`token_budget` covers the complete serialized response. When the benchmark
+extra is installed, `encoding=o200k_base` is counted with `tiktoken`; otherwise
+the response reports a dependency-free chars/4 estimate. The compact
+`usage.measurement` field is `exact` for tokenizer counts and `estimated` for
+the fallback. Use `max_bytes` when a strict vendor-neutral transport ceiling is
+required. Compact output contains a resolved target, whole-symbol `slices`,
+freshness, usage, and an optional focused `next` action.
 Use `response_mode=diagnostic` for ranking evidence or
 `response_mode=legacy-v3` for the prior symbols/relationships contract.
 

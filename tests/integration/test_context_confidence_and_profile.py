@@ -23,7 +23,15 @@ def test_context_includes_confidence_breakdown(tmp_path: Path):
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-    result = _handle_tool("csegraph_context", {"repo": str(repo), "task": "call b", "db": db})
+    result = _handle_tool(
+        "csegraph_context",
+        {
+            "repo": str(repo),
+            "task": "call b",
+            "db": db,
+            "response_mode": "legacy-v3",
+        },
+    )
     assert isinstance(result, dict)
     assert "confidence_breakdown" in result and isinstance(result["confidence_breakdown"], dict)
 
@@ -35,7 +43,15 @@ def test_no_implicit_byte_cap_without_max_bytes(tmp_path: Path):
 
     _handle_tool("csegraph_index", {"repo": str(repo), "db": db})
 
-    result = _handle_tool("csegraph_context", {"repo": str(repo), "task": "call b", "db": db})
+    result = _handle_tool(
+        "csegraph_context",
+        {
+            "repo": str(repo),
+            "task": "call b",
+            "db": db,
+            "response_mode": "legacy-v3",
+        },
+    )
     assert result["byte_cap_applied"] is False
     assert "byte_cap" not in result or result.get("byte_cap") is None
 
@@ -48,7 +64,13 @@ def test_explicit_max_bytes_is_honored(tmp_path: Path):
 
     result = _handle_tool(
         "csegraph_context",
-        {"repo": str(repo), "task": "call b", "db": db, "max_bytes": 800},
+        {
+            "repo": str(repo),
+            "task": "call b",
+            "db": db,
+            "max_bytes": 800,
+            "response_mode": "legacy-v3",
+        },
     )
     assert result["byte_cap"] == 800
     assert result["byte_cap_applied"] is True

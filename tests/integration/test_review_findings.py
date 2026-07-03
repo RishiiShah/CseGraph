@@ -85,6 +85,7 @@ class TestMcpProtocol:
                 "db": db,
                 "target": "foo",
                 "max_bytes": 1024.0,
+                "response_mode": "legacy-v3",
             },
         )
         assert result["byte_cap"] == 1024
