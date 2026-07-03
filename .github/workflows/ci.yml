@@ -111,7 +111,7 @@ jobs:
           assert project_dists == ["csegraph"], project_dists
           import csegraph
           from csegraph import ContextService
-          assert csegraph.__version__ == "1.8.1"
+          assert csegraph.__version__ == "2.0.0"
           assert ContextService is not None
           PY
 

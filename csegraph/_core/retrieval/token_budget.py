@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 from functools import lru_cache
 from typing import Any
-
-import tiktoken
 
 from csegraph._core.core.models import ContextResponse
 from csegraph._core.core.serializer import to_dict
@@ -13,13 +12,28 @@ SUPPORTED_ENCODINGS = ("o200k_base", "cl100k_base")
 MIN_TOKEN_BUDGET = 256
 MAX_TOKEN_BUDGET = 16_384
 
+_CHARS_PER_TOKEN = 4
+
 
 @lru_cache(maxsize=len(SUPPORTED_ENCODINGS))
-def _encoding(name: str) -> Any:
+def _load_encoding(name: str) -> Any | None:
     if name not in SUPPORTED_ENCODINGS:
         choices = ", ".join(SUPPORTED_ENCODINGS)
         raise ValueError(f"encoding must be one of: {choices}")
+    try:
+        import tiktoken
+    except ImportError:
+        return None
     return tiktoken.get_encoding(name)
+
+
+def token_estimator(encoding: str) -> str:
+    return "tiktoken" if _load_encoding(encoding) is not None else "chars/4 proxy"
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count using the chars/4 heuristic."""
+    return max(1, math.ceil(len(text) / _CHARS_PER_TOKEN))
 
 
 def validate_token_budget(value: int) -> int:
@@ -37,16 +51,14 @@ def serialized_json(payload: Any) -> str:
 
 
 def count_payload_tokens(payload: Any, encoding: str) -> int:
-    return len(
-        _encoding(encoding).encode(
-            serialized_json(payload),
-            disallowed_special=(),
-        )
-    )
+    return count_text_tokens(serialized_json(payload), encoding)
 
 
 def count_text_tokens(text: str, encoding: str) -> int:
-    return len(_encoding(encoding).encode(text, disallowed_special=()))
+    encoder = _load_encoding(encoding)
+    if encoder is not None:
+        return len(encoder.encode(text, disallowed_special=()))
+    return _estimate_tokens(text)
 
 
 def response_tokens(response: ContextResponse) -> int:
