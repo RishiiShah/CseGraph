@@ -650,7 +650,7 @@ def test_vscode_install_creates_three_files(tmp_path: Path) -> None:
     assert settings["csegraph.statusBar"] is True
 
     tasks = _read_json(repo / ".vscode" / "tasks.json")
-    assert tasks["version"] == "1.8.0"
+    assert tasks["version"] == "2.0.0"
     by_label = {t["label"]: t for t in tasks["tasks"]}
     labels = set(by_label)
     assert labels == {"csegraph: Build Index", "csegraph: Refresh", "csegraph: Status"}
@@ -694,7 +694,7 @@ def test_vscode_install_merges_tasks_without_duplicating(tmp_path: Path) -> None
     tasks_path.write_text(
         json.dumps(
             {
-                "version": "1.8.0",
+                "version": "2.0.0",
                 "tasks": [
                     {"label": "csegraph: Build Index", "type": "shell", "command": "old"},
                     {"label": "my-task", "type": "shell", "command": "echo hi"},
