@@ -1,475 +1,326 @@
-# csegraph Command Reference
+# CseGraph CLI and MCP Reference
 
-The examples below assume CseGraph is installed and the `csegraph` command is
-available on your PATH.
+CseGraph 2.0 exposes a deliberately small public surface. The CLI contains
+exactly nine commands and the MCP server contains exactly six tools.
 
-## Setup
+All repository arguments resolve to an absolute repository root. The index
+location is always `<repo>/.csegraph/index.db`.
 
-```bash
-pip install csegraph                         # or: uv tool install csegraph
-csegraph install --platform auto
-csegraph install --platform codex --dry-run --json
-csegraph install --platform codex --no-hooks --no-instructions --no-gitignore
+## CLI
+
+`csegraph -v` enables informational logging; repeat `-v` for debug logging.
+
+### `index`
+
+Build, validate, and atomically install a fresh schema-v11 index.
+
+```text
+csegraph index [REPO] [--repo REPO]
+               [--exclude PATTERN]...
+               [--include-root PATH]...
+               [--json]
 ```
 
-Current package release: `1.8.1`. To install it exactly:
+`--exclude` adds an ignore pattern. `--include-root` limits discovery to a
+repository-relative subtree. Both may be repeated.
 
-```bash
-pip install csegraph==1.8.1
+### `refresh`
+
+Refresh changed and deleted files in an existing schema-v11 index.
+
+```text
+csegraph refresh [REPO] [--repo REPO]
+                 [--exclude PATTERN]...
+                 [--include-root PATH]...
+                 [--json]
 ```
 
-The base package includes Python, JavaScript, and TypeScript grammars. Install
-individual extras such as `csegraph[go,rust]`, or use `csegraph[all]` for every
-optional Tree-sitter grammar. See the
-[platform-specific installation guide](https://github.com/RishiiShah/CseGraph#install)
-for `pip`, `uv`, `pipx`, macOS, Linux, and Windows.
+### `context`
 
-Global `--verbose` and `--quiet` flags control diagnostic logging. Put them
-before the subcommand, for example `csegraph --verbose watch .`.
+Retrieve compact adaptive context for a coding task.
 
-`install` configures MCP clients to launch the real CseGraph CLI MCP server as
-`csegraph serve --repo <absolute repo> --platform <client>`, writes
-platform-scoped agent guidance, installs one lightweight refresh hook at the end
-of an agent turn, verifies the generated MCP tool surface by default, and adds
-generated setup paths plus `.csegraph/` to `.gitignore`. Continuous freshness is
-watcher-first: register the repository and run `csegraph daemon start`. Hooks do
-not run refresh or status after each edit or shell command; the end-of-turn hook
-refreshes only git-detected changed paths. Use `--no-hooks` to disable the
-safety refresh; `--hooks` forces hook installation for every supported agent.
-
-Generated MCP configs are intended to be ready to use on macOS, Linux, and
-Windows. The installer resolves the native absolute CLI path, including Windows
-virtualenv/pipx launchers such as `Scripts\csegraph.exe`, `Scripts\csegraph.cmd`,
-or `Scripts\csegraph.bat`, and Python user-install launchers such as
-`%APPDATA%\Python\PythonXY\Scripts\csegraph.exe` or `~/.local/bin/csegraph`.
-It then writes the same `serve --repo <absolute repo> --platform <client>`
-contract for every supported host. If setup looks wrong, run `doctor`; do not
-hand-edit generated `mcp.json` files as the normal path.
-
-Use
-`--platform codex|cursor|claude-code|gemini-cli|kiro|antigravity-cli|antigravity-ide|copilot|vscode`
-to target one client. Install commands write repo-local client config by
-default, including `.codex/`, `.cursor/`, `.gemini/`, `.kiro/`, `.agents/`,
-`.vscode/`, and `.mcp.json`. `antigravity-ide` is explicit opt-in because it
-writes user-global Antigravity IDE MCP config under `~/.gemini/config/`.
-Codex hooks are written to `.codex/hooks.json` unless `--no-hooks` is selected.
-Review generated local setup before sharing logs or issue reproductions, and do
-not commit it.
-
-Use `doctor` to distinguish generated config from real protocol and host use:
-
-```bash
-csegraph doctor . --platform auto --json
-csegraph doctor . --platform codex --json
-csegraph doctor . --platform cursor --require-observed-call --json
+```text
+csegraph context TASK [--repo REPO]
+                 [--target TARGET]
+                 [--task-kind {auto,edit,understand,review,test-impact}]
+                 [--token-budget TOKENS]
+                 [--source-mode {auto,always,never}]
+                 [--diagnostic]
+                 [--format {json,markdown}]
 ```
 
-`doctor --platform auto` inspects every project-scoped platform config. It
-does not silently inspect or write global Antigravity IDE config; use
-`--platform antigravity-ide` when you want that explicit global check.
-After installation, open the current client's MCP/tools settings and enable or
-approve the `csegraph` server until the six CseGraph tools are visible. The
-local `.csegraph` index is shared, but host access is not: a Cursor config or
-observed Cursor tool call does not count as Codex, Claude Code, Gemini CLI,
-Kiro, Copilot, or Antigravity setup. Agents should not query
-`.csegraph/index.db` directly or use CLI context commands as a substitute for
-that platform's MCP server.
+Defaults are `task-kind=auto`, `token-budget=800`, `source-mode=auto`, and
+`format=json`. The token budget covers the complete serialized response.
 
-Doctor output separates setup layers:
+### `graph`
 
-- `config_present`: the platform config contains a `csegraph` server entry.
-- `contract_valid`: the entry uses a native absolute `csegraph` executable and
-  `["serve", "--repo", "<absolute repo>", "--platform", "<client>"]`, with
-  required `cwd` where applicable.
-- `protocol_verified`: the generated command initialized as an MCP server and
-  advertised the six canonical CseGraph tools.
-- `observed_call`: a real host for that same platform called one of those tools
-  in this repo.
+Inspect a focused graph neighborhood.
 
-VS Code extension install and project setup live in the
-[extension README](https://github.com/RishiiShah/CseGraph/tree/main/csegraph-vscode#readme).
-
-## Index And Refresh
-
-```bash
-csegraph index .
-csegraph index . --profile medium --postprocess full --json
-csegraph index . --include-root apps/api --include-root packages/shared --json
-csegraph refresh .
-csegraph refresh . --postprocess minimal --json
-csegraph postprocess . --level full --json
-csegraph watch .
-csegraph registry register .
-csegraph daemon start
-csegraph status . --verbose
+```text
+csegraph graph NODE [--repo REPO]
+               [--depth DEPTH]
+               [--relations RELATION,...]
+               [--json]
 ```
 
-Postprocess levels:
+Depth defaults to one. Use this command when context recommends focused
+structural expansion.
 
-- `none`: parse/write only.
-- `minimal`: rebuild FTS.
-- `full`: rebuild FTS, resolver edges, and communities.
+### `path`
 
-Default DB: `<repo>/.csegraph/index.db`.
+Find a focused dependency path.
 
-For monorepos, repeat `--include-root` to limit indexing to selected repo-local
-subtrees. Refresh reuses the indexed include roots unless new include roots are
-provided.
-
-Codex-safe temporary artifacts should live under `<repo>/.scratch/csegraph/`, not
-OS temp directories such as `/tmp` or `/private/tmp`. Use that repo-local scratch
-area for throwaway DBs, exports, and test fixtures, and clean up generated
-artifacts before handoff.
-
-## Retrieval
-
-```bash
-csegraph context "fix auth token refresh" --target refresh_token --json
-csegraph context "explain the index pipeline" --detail-level standard --format markdown
-csegraph context "debug parser misses" --include-source always --max-tokens 6000 --explain --json
-csegraph context "replace checkout pricing and remove discounts" --task-kind edit --json
-csegraph inspect ContextService.build_context --depth 1 --relations calls,imports --json
-csegraph path IndexService.index ContextService.build_context --relations calls,imports --json
+```text
+csegraph path SOURCE TARGET [--repo REPO]
+              [--relations RELATION,...]
+              [--json]
 ```
 
-Context flags:
+### `status`
 
-- `--detail-level auto|minimal|standard|full`
-- `--task-kind auto|edit|understand|review|test-impact`
-- `--include-source auto|always|never`
-- `--target NODE_OR_SYMBOL_OR_PATH`
-- `--max-tokens N`
-- `--format json|markdown`
-- `--profile auto|small|medium|large`
+Report index health and freshness.
 
-Graph/path flags:
-
-- `--detail-level minimal|standard`
-- `--relations calls,imports,tested_by`
-
-JSON responses include `repo_root`; per-node `path` fields are repo-relative to
-that root. Harnesses that need absolute file names should join `repo_root` and
-`path` instead of expecting repeated absolute paths in every node.
-
-## MCP
-
-```bash
-csegraph serve
-csegraph serve --repo /path/to/repo
-csegraph serve --repo /path/to/repo --platform codex
-csegraph serve --tools core
-csegraph serve --tools csegraph_minimal,csegraph_context
+```text
+csegraph status [REPO] [--repo REPO] [--json]
 ```
 
-MCP exposes six tools only:
+### `doctor`
 
-| Tool | Description | Key args |
+Diagnose MCP client setup.
+
+```text
+csegraph doctor [REPO] [--repo REPO]
+                [--platform PLATFORM]
+                [--command COMMAND]
+                [--no-verify]
+                [--json]
+```
+
+Use `csegraph doctor --help` to list the accepted client platforms.
+
+### `install`
+
+Register CseGraph with an MCP client.
+
+```text
+csegraph install [REPO] [--repo REPO]
+                 [--platform PLATFORM]
+                 [--command COMMAND]
+                 [--dry-run]
+                 [--no-verify]
+                 [--json]
+```
+
+The accepted platforms are the same as for `doctor`.
+
+### `serve`
+
+Start the MCP stdio server.
+
+```text
+csegraph serve [--repo REPO]
+               [--tools core|TOOL,...]
+               [--platform PLATFORM]
+```
+
+`--tools` accepts `core` or a comma-separated subset of the six MCP tool names.
+
+## MCP tools
+
+Every tool uses a strict object input schema with
+`additionalProperties: false`.
+
+### `csegraph_index`
+
+Build a fresh index.
+
+```json
+{"repo": "/absolute/repository"}
+```
+
+`repo` is required.
+
+### `csegraph_refresh`
+
+Refresh changed and deleted files.
+
+```json
+{"repo": "/absolute/repository"}
+```
+
+`repo` is required.
+
+### `csegraph_minimal`
+
+Return a small index-health or repository-orientation summary. Ordinary coding
+tasks should call `csegraph_context` directly.
+
+```json
+{
+  "repo": "/absolute/repository",
+  "task": "Optional orientation task"
+}
+```
+
+`repo` is required. `task` is optional. The response contains `summary`, no
+more than three `entities`, and at most one `next` continuation.
+
+### `csegraph_context`
+
+Primary task-specific retrieval.
+
+```json
+{
+  "task": "Fix stale cache invalidation",
+  "repo": "/absolute/repository",
+  "target": "Cache.invalidate",
+  "task_kind": "edit",
+  "token_budget": 800,
+  "source_mode": "auto",
+  "diagnostic": false
+}
+```
+
+`task` and `repo` are required. The remaining fields are optional:
+
+| Field | Accepted value | Default |
 |---|---|---|
-| `csegraph_index` | Build a repository SQLite graph index. | `repo`, `profile`, `db`, `postprocess_level` |
-| `csegraph_refresh` | Refresh changed/deleted files in an existing index. | `repo`, `profile`, `db`, `postprocess_level` |
-| `csegraph_minimal` | Optional health/orientation card with summary and top-degree entities. | `repo`, `task`, `db` |
-| `csegraph_context` | Primary budgeted adaptive code retrieval; diagnostic and legacy-v3 modes are available. | `repo`, `task`, `target`, `task_kind`, `token_budget`, `encoding`, `response_mode`, `engine`, `cursor`, `include_source`, `max_bytes`, `db` |
-| `csegraph_graph` | Inspect a graph neighborhood around a node. Hub-aware BFS suppresses expansion through high-degree utility nodes. | `repo`, `node`, `depth`, `detail_level`, `relations`, `max_bytes`, `db` |
-| `csegraph_path` | Find the shortest path between two nodes. Hub-aware BFS uses relation filtering matching `csegraph_graph` behavior. | `repo`, `source`, `target`, `detail_level`, `relations`, `max_depth`, `max_bytes`, `db` |
+| `target` | symbol, node ID, or repository-relative path | omitted |
+| `task_kind` | `auto`, `edit`, `understand`, `review`, `test-impact` | `auto` |
+| `token_budget` | integer from 256 through 16384 | `800` |
+| `source_mode` | `auto`, `always`, `never` | `auto` |
+| `diagnostic` | boolean | `false` |
 
-Agents should use minimal/context first and inspect/path only when the returned
-next action calls for it.
+### `csegraph_graph`
 
-For MCP tools, `profile` accepts `auto`, `small`, `medium`, or `large`; omitted
-profile arguments default to `auto`.
+Inspect a focused neighborhood.
 
-`csegraph serve --tools` accepts `core` or a comma-separated subset of the six
-core tool names. The MCP surface does not expose CLI operations such as
-`analyze`, `export`, `registry`, or `daemon`, and it does not expose
-maintainer-only benchmark/eval tools.
+```json
+{
+  "node": "Cache.invalidate",
+  "repo": "/absolute/repository",
+  "depth": 1,
+  "relations": ["calls"],
+  "confidence_tiers": ["EXTRACTED"]
+}
+```
 
-## LSP
+`node` and `repo` are required. `depth` is an integer from one through three.
+`relations` and `confidence_tiers` are optional string arrays.
+
+### `csegraph_path`
+
+Find a focused dependency path.
+
+```json
+{
+  "source": "Cache.invalidate",
+  "target": "Cache.get",
+  "repo": "/absolute/repository",
+  "relations": ["calls"],
+  "confidence_tiers": ["EXTRACTED"]
+}
+```
+
+`source`, `target`, and `repo` are required. `relations` and
+`confidence_tiers` are optional string arrays.
+
+## Compact response contracts
+
+### Context v5
+
+`csegraph-context-v5` is the only context response contract:
+
+```json
+{
+  "schema_version": "csegraph-context-v5",
+  "status": "ready",
+  "slices": [
+    {
+      "path": "package/cache.py",
+      "lines": [42, 61],
+      "symbol": "Cache.invalidate",
+      "role": "target",
+      "code": "..."
+    }
+  ]
+}
+```
+
+The required top-level fields are `schema_version`, `status`, and `slices`.
+`status` is `ready`, `ambiguous`, `insufficient`, `index_required`, or
+`refresh_required`.
+
+Conditional top-level fields are:
+
+- `candidates` when target resolution needs a choice;
+- `missing` when more evidence is required;
+- `next` for one focused recovery or structural operation;
+- `warnings` for actionable non-fatal conditions;
+- `diagnostics` only when `diagnostic` is `true`.
+
+Each slice contains `path`, `lines`, `symbol`, `role`, and `code`. Diagnostic
+data is subject to the same whole-response token budget and may be omitted to
+keep the response within that budget.
+
+CLI JSON and Markdown carry the same semantic fields.
+
+### Continuations
+
+Every continuation uses:
+
+```json
+{
+  "tool": "csegraph_context",
+  "arguments": {
+    "repo": "/absolute/repository",
+    "task": "Fix stale cache invalidation"
+  },
+  "reason": "Retry after refreshing the index."
+}
+```
+
+`tool` is required. `arguments` and `reason` are optional. No alternate
+argument field is accepted.
+
+### Graph and path
+
+Graph results use `csegraph-graph-v2`. Path results use
+`csegraph-path-v2`. These compact serializers omit empty fields and internal
+database or repository locations.
+
+## Schema compatibility
+
+The required database schema is `csegraph-sqlite-v11`
+(`PRAGMA user_version = 11`). There is no migration from any other schema.
+Rebuild with:
 
 ```bash
-csegraph lsp --repo .
-csegraph lsp . --db .csegraph/index.db
+csegraph index /absolute/repository
 ```
 
-The LSP server speaks JSON-RPC over stdio for editor integrations. It advertises
-document symbols for files already present in the SQLite index, so run
-`csegraph index` or `csegraph refresh` before launching an editor client.
+A missing or incompatible index produces `index_required` and a continuation
+for `csegraph_index`. The build occurs beside the active database, is validated
+before replacement, and is installed atomically. Failure preserves the active
+database.
 
-`csegraph_context` defaults to the adaptive `csegraph-context-v4` response.
-`token_budget` covers the complete serialized response. When the benchmark
-extra is installed, `encoding=o200k_base` is counted with `tiktoken`; otherwise
-the response reports a dependency-free chars/4 estimate. The compact
-`usage.measurement` field is `exact` for tokenizer counts and `estimated` for
-the fallback. Use `max_bytes` when a strict vendor-neutral transport ceiling is
-required. Compact output contains a resolved target, whole-symbol `slices`,
-freshness, usage, and an optional focused `next` action.
-Use `response_mode=diagnostic` for ranking evidence or
-`response_mode=legacy-v3` for the prior symbols/relationships contract.
+## Public Python facade
 
-Legacy-v3 continues to support `max_tokens`, a soft source-material hint, and
-`max_bytes`, a hard serialized-size ceiling. File nodes never materialize
-whole-file source text.
+The package root lazily exposes:
 
-### Response Annotations
+- `IndexService`, `RefreshService`, `StatusService`, `ContextService`,
+  `MinimalService`, and `GraphQueryService`;
+- `ContextRequest`, `ContextResponse`, `ContextSlice`, `ContextStatus`, and
+  `ContextTarget`;
+- `IndexResult`, `RefreshResult`, `StatusResult`, `MinimalResult`,
+  `GraphResult`, and `PathResult`;
+- `IndexRequiredError`, `to_dict`, and `__version__`.
 
-Every MCP response carries metadata that agents can use to triage and gate
-further calls:
+Only Python, JavaScript, and TypeScript source files are indexed.
 
-| Field | Where | Meaning |
-|---|---|---|
-| `tools_already_called` | every response | Sorted list of tools called in this MCP session. Suggestions whose `tool` field is in this set are filtered out automatically. |
-| `trust` | every MCP JSON response | Local trust metadata such as bound repo, effective repo, tool name, platform, index-health verdict, and the `access_contract` declaring that `.csegraph/index.db` is not an agent API. |
-| `token_usage` | `csegraph_context` | Estimated context tokens used, indexed-corpus baseline tokens, saved tokens, and reduction ratio using a `chars/4` proxy. |
-| `session_token_usage` | every MCP JSON response | Running per-MCP-session counters: calls, response tokens, context tokens used, indexed-corpus baseline tokens, saved tokens, and context reduction ratio using the same `chars/4` proxy. |
-| `response_bytes` | every response | Exact serialized JSON size in bytes. |
-| `byte_cap_applied`, `byte_cap`, `truncated_fields` | when `max_bytes` is set | Whether truncation kicked in and what was dropped. Context drop order: symbol `source_text`, `explanation`, `import_preludes`, `relationships[].occurrences[].snippet`, `relationships`, `symbols`. |
-| `confidence_breakdown` | `csegraph_graph`, `csegraph_path`, `csegraph_context` | Edge-trust mix, surfaced even in `detail_level=minimal` where edges are dropped. |
-| `hubs_skipped` | `csegraph_graph`, `csegraph_path` | Number of high-degree utility nodes BFS refused to expand through. |
-| `relations_filter` | `csegraph_graph`, `csegraph_path` | Echo of the `relations` arg applied to traversal, for transparency. |
-| `next_tool_suggestions`, `next_actions` | `csegraph_minimal`, `csegraph_context` | Routing recommendations, already filtered against `tools_already_called`. |
-| `target.confidence`, `target.score_margin`, `sufficiency.verdict` | `csegraph_context` | Target-resolution and sufficiency trust signals. Low-confidence inferred targets are marked not sufficient instead of silently passing. |
+## Agent instructions
 
-MCP prompts are workflow templates that clients expose as slash commands.
-
-| Prompt | Workflow |
-|---|---|
-| `csegraph-index` | Build the graph with `csegraph_index`. |
-| `csegraph-refresh` | Refresh changed files with `csegraph_refresh`. |
-| `csegraph-minimal` | Routing card; call first. |
-| `csegraph-context` | Task-specific context with `csegraph_context`. |
-| `csegraph-debug-issue` | Debug workflow: minimal, context, optional graph. |
-| `csegraph-review-changes` | Pre-commit review: refresh, minimal, context. |
-| `csegraph-pre-merge-check` | Merge readiness: minimal, context, optional graph. |
-| `csegraph-explore-architecture` | Architecture map: minimal, graph neighborhood. |
-| `csegraph-onboard-developer` | Onboarding guide: minimal, context, graph. |
-
-Run `csegraph install --platform claude-code` to generate the project
-`.mcp.json` configuration.
-
-## Public Operations
-
-These are public CLI commands, not MCP tools:
-
-```bash
-csegraph analyze . --json
-csegraph export . --format html --output graph.html
-csegraph export . --format tree
-csegraph export . --format json --output graph.json
-csegraph export . --format graphml --output graph.graphml
-csegraph export . --format obsidian --output vault
-csegraph doctor . --platform codex --json
-csegraph watch .
-csegraph registry register /path/to/repo --alias app
-csegraph registry list
-csegraph daemon start --alias app
-csegraph daemon status
-```
-
-Supported export formats:
-- `html`: Generates an interactive web graph visualization featuring an electric blue theme, N-body repulsion physics, neighborhood isolation focus, and code summary tooltips.
-- `tree`: Generates an interactive file tree visualization.
-- `json`: Exports a portable JSON graph representation.
-- `graphml`: Exports in standard GraphML format.
-- `obsidian`: Exports markdown notes formatted as an Obsidian vault.
-
-
-## Maintainer Tooling
-
-Development analytics stay repo-local:
-
-```bash
-env/bin/python tools/csegraph_dev.py detect-changes . --base-ref HEAD~1 --json
-env/bin/python tools/csegraph_dev.py test-gaps . --json
-env/bin/python tools/csegraph_dev.py architecture . --json
-env/bin/python tools/csegraph_dev.py flows . --json
-env/bin/python tools/csegraph_dev.py vulnerabilities . --json
-env/bin/python tools/csegraph_dev.py communities . --json
-env/bin/python tools/csegraph_dev.py resolvers . --json
-env/bin/python tools/csegraph_dev.py review-eval . --ground-truth ids.json
-env/bin/python tools/csegraph_dev.py review-questions . --json
-env/bin/python tools/csegraph_dev.py report . --json
-env/bin/python tools/csegraph_dev.py embeddings status .
-```
-
-Native MCP benchmarks use sandbox workloads and the stdio transport:
-
-```bash
-env/bin/python tools/cross_repo_benchmark.py
-env/bin/python tools/check_benchmark_regression.py --repo .
-env/bin/python tools/run_full_mcp_benchmark.py
-```
-
-`tools/csegraph_dev.py benchmark` is still available for maintainer-only
-SDK/internal service diagnostics, but those results should be labeled as
-internal SDK benchmarks rather than native MCP agent benchmarks.
-
-See [Agent Context Benchmarks](benchmarks.md) for measured context-size
-reductions from sandbox repositories.
-The benchmark corpus accepts file/symbol hits plus v3 evidence checks such as
-`expected_relationships`, `expected_occurrence_snippets`,
-`expected_import_preludes`, and `forbidden_source_patterns`.
-
-There is no `csegraph-dev` console script.
-
-## Profiles And Config
-
-Profiles trade breadth against token budget:
-
-- `auto`: resolves to `small`, `medium`, or `large` from repository size.
-- `small`: narrow retrieval, fastest context.
-- `medium`: middle retrieval breadth.
-- `large`: wider graph expansion and more source.
-
-Config files: `csegraph.json`, `csegraph.toml`, or `--config`.
-
-Supported config keys in `csegraph.json` or `csegraph.toml` include:
-- `profile`: Base profile name to load (`auto`, `small`, `medium`, or `large`).
-- `top_k`: Number of lexical query candidates to retrieve.
-- `graph_radius`: Radius of the neighborhood expansion.
-- `context_budget`: Maximum budget for the context package in tokens.
-- `raw_code_budget`: Token budget limit for raw code source nodes.
-- `max_bytes`: Hard ceiling on the serialized JSON response size.
-- `dep_threshold`, `entity_threshold`, `semantic_threshold`, `semantic_threshold_relaxed`, `confidence_threshold`: Retrieval filtering thresholds. `semantic_threshold_relaxed` is the active semantic-overlap floor once dependency and entity coverage pass; set it to `0.0` to disable that relaxed semantic gate.
-
-All keys must use underscore notation matching these Python/JSON property names. Unknown keys raise `ValueError`.
-
-## Ignore Policy
-
-Use `.csegraphignore` for CseGraph-specific exclusions. It supports comments,
-globs, rooted patterns, directory patterns, basename matching, and `!`
-negation.
-
-Discovery order: `git ls-files` (staged and committed, submodules on by default),
-then `svn list -R` as a backup for SVN working copies, then a directory walk.
-Untracked and gitignored files are denied by default: CseGraph does not parse or
-store their contents. A local `.csegraphinclude` is an explicit per-path consent
-list that can opt selected ignored paths into this machine's index:
-
-```gitignore
-# .csegraphinclude
-internal/architecture/**
-notes/current-design.md
-```
-
-Included Markdown, reStructuredText, AsciiDoc, and plain-text files are indexed
-as document context. Common secret and private-key paths (`.env*`, credentials,
-`*.key`, `*.pem`, and similar) remain blocked even when a broad pattern matches.
-Files larger than 2 MiB and symlinks are also rejected. Use
-`.csegraphignore` for hard exclusions from agent context. If no
-`.csegraphinclude` exists, no ignored file is read. Removing a path from the
-consent list and refreshing removes it from the index.
-
-| Variable | Effect |
-|----------|--------|
-| `CSEGRAPH_RECURSE_SUBMODULES` | `0` / `false` disables submodule paths in discovery; default is on |
-| `CSEGRAPH_HEALTH_STALE_HOURS` | Hours before index is flagged stale in `status` / minimal (default `24`) |
-| `CSEGRAPH_HEALTH_THIN_FILES` | File count below which index is “thin” (default `3`) |
-
-`csegraph index` and `csegraph refresh` accept repeatable `--exclude PATTERN` for
-runtime gitignore-style rules (in addition to `.csegraphignore`).
-
-`csegraph status` and `csegraph_minimal` include `index_health`: `verdict` (`ok`, `thin`, `stale`, `large`, `errors`, `rebuild`), `summary`, `metrics`, and `hints` for agents.
-
-## SDK
-
-```python
-from csegraph import (
-    ContextService,
-    GraphQueryService,
-    IndexService,
-    MinimalService,
-    PostprocessService,
-    RefreshService,
-    StatusService,
-)
-
-IndexService(".csegraph/index.db").index(".", profile="medium")
-RefreshService(".csegraph/index.db").refresh(profile="medium")
-
-routing = MinimalService(".csegraph/index.db").first(task="fix auth bug")
-
-context = ContextService(".csegraph/index.db").build_context(
-    task="fix auth token refresh bug",
-    target="refresh_token",
-    profile="medium",
-    task_kind="edit",
-)
-
-graph = GraphQueryService(".csegraph/index.db").neighborhood(
-    "refresh_token",
-    depth=1,
-)
-
-status = StatusService(".csegraph/index.db").status()
-PostprocessService(".csegraph/index.db").postprocess(level="minimal")
-```
-
-Async applications can use thread-backed async facades for the main SDK
-services:
-
-```python
-from csegraph import AsyncContextService, AsyncIndexService
-
-await AsyncIndexService(".csegraph/index.db").index(".", profile="medium")
-context = await AsyncContextService(".csegraph/index.db").build_context(
-    task="fix auth token refresh bug",
-    target="refresh_token",
-    profile="medium",
-)
-```
-
-Custom parser integrations can register process-local parsers without forking
-CseGraph:
-
-```python
-from csegraph import BaseParser, register_parser
-
-class MyParser(BaseParser):
-    language = "my_language"
-    extensions = (".mine",)
-    # implement parse(), module_name_from_relpath(), resolve_local_import()
-
-register_parser(MyParser())
-```
-
-## Context Output
-
-Context responses include:
-
-- `schema_version = "csegraph-context-v3"`.
-- `request.detail_level` and `request.returned_detail_level`; `auto` may return minimal or standard.
-- `request.task_kind` and inferred `intent`; edit-oriented requests are promoted when
-  source would otherwise be omitted.
-- `target` with the resolved id, kind, path, line range, and ambiguity candidates.
-- `edit_targets` with the symbols selected as likely change locations.
-- `impact` grouped into `edit_targets`, `dependencies`, `dependents`, and
-  `affected_tests`.
-- `affected_tests` with test symbols whose calls or assertions cover the changed behavior.
-  Linked assertions include their source location and, unless source is disabled,
-  the assertion expression.
-- `missing_context` with exact source or evidence still required before an edit is safe.
-- historical targets for renamed or deleted symbols, including stale callers,
-  affected tests, a replacement symbol when one can be resolved conservatively,
-  and an exact recovery action.
-- ranked `symbols` with paths, line ranges, reason tags, summaries, and estimated tokens.
-- `relationships` for selected calls, callers, imports, inheritance, decorators, and tests.
-  Relationships may include bounded `occurrences` with path, line range,
-  enclosing symbol, name, kind, optional metadata, and optional callsite/import
-  snippet.
-  Default `confidence=1.0`, `confidence_tier=EXTRACTED`, and redundant endpoint
-  paths are omitted from serialized context relationships.
-- `import_preludes` containing import-only snippets for files that contain selected symbols.
-- `minimal`: compact symbol-neighborhood card, no source text, and next actions.
-- `standard`: selected symbol source slices plus relationships and import preludes.
-- `full`: broader selected symbol slices with explanations for each selection reason.
-- optional symbol `source_text` in standard/full responses; whole-file source is never returned.
-- `source_omitted_reason` on symbols without source, for example
-  `minimal_detail`, `source_policy_never`, `auto_source_budget`, or
-  `token_budget`.
-- optional `explanation` in full responses or when `--explain` is requested.
-- `next_actions` with deterministic suggestions.
-- sufficiency metrics and thresholds, including `edit_ready`. For `edit` and
-  `test-impact`, edit readiness requires source for a likely edit target.
-
-All detail levels return the same v3 top-level structure. They differ in which
-symbol fields are populated and whether the response is a routing card or
-working context.
+Use one `csegraph_context` call for an ordinary task. Use
+`csegraph_minimal` only when the request is explicitly about health or
+orientation. Call `csegraph_graph` or `csegraph_path` only when `next`
+recommends that focused operation.

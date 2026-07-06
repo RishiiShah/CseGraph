@@ -27,7 +27,7 @@ jobs:
 
       - name: Install pinned benchmark dependencies
         run: |
-          python -m pip install --upgrade pip -e ".[test,all,benchmark]"
+          python -m pip install --upgrade pip -e ".[test,benchmark]"
           npm install --global pyright@1.1.407
 
       - name: Run the complete nightly corpus

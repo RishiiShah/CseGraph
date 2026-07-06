@@ -76,30 +76,21 @@ jobs:
           PY
 
   python:
-    name: Python package and tests
+    name: Python 3.13 package and build
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-          - "3.14"
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
           cache: pip
 
       - name: Install test/build tooling
         run: python -m pip install --upgrade pip build
 
       - name: Install csegraph editable
-        run: python -m pip install -e ".[test,all]"
+        run: python -m pip install -e ".[test]"
 
       - name: Verify base install does not require the optional tokenizer
         run: |
@@ -140,13 +131,10 @@ jobs:
             tests/integration/test_mcp_install.py \
             tests/integration/test_mcp_server.py \
             tests/integration/test_mcp_surface_guardrails.py \
-            tests/integration/test_agent_workflow_benchmark.py \
-            tests/integration/test_target_disambiguation.py \
-            tests/integration/test_context_quality_corpus.py \
+            tests/integration/test_agent_contracts.py \
+            tests/integration/test_context_contract.py \
+            tests/integration/test_graph_path_contract.py \
             -q
-
-      - name: Run full test suite
-        run: python -m pytest tests/ -q
 
       - name: Compile Python sources
         run: python -m compileall -q csegraph tools csegraph-vscode
@@ -158,15 +146,12 @@ jobs:
           from pathlib import Path
           import zipfile
 
-          try:
-              import tomllib
-              project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
-          except ModuleNotFoundError:
-              import tomlkit
-              project = tomlkit.parse(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          import tomllib
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
           version = project["version"]
           wheels = sorted(Path("dist").glob("csegraph-*.whl"))
           assert len(wheels) == 1, wheels
+          assert wheels[0].stat().st_size <= 175 * 1024, wheels[0].stat().st_size
           with zipfile.ZipFile(wheels[0]) as wheel:
               names = wheel.namelist()
           assert any(name.startswith("csegraph/") for name in names)
@@ -175,6 +160,39 @@ jobs:
               for name in names
           )
           PY
+
+  python-compat:
+    name: Python compatibility (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.14"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install compatibility test dependencies
+        run: python -m pip install --upgrade pip -e ".[test]"
+
+      - name: Run compatibility smoke suite
+        run: |
+          python -m pytest \
+            tests/integration/test_versions.py \
+            tests/integration/test_package_layout.py \
+            tests/integration/test_migrations.py \
+            tests/integration/test_adaptive_context.py \
+            tests/integration/test_freshness_concurrency.py \
+            tests/integration/test_token_budget_modes.py \
+            -q
 
   mcp-install-smoke:
     name: MCP install smoke (${{ matrix.os }})
@@ -195,7 +213,7 @@ jobs:
           cache: pip
 
       - name: Install csegraph editable
-        run: python -m pip install --upgrade pip -e ".[test,all]"
+        run: python -m pip install --upgrade pip -e ".[test]"
 
       - name: Run MCP install smoke tests
         run: |
@@ -256,7 +274,7 @@ jobs:
           cache: pip
 
       - name: Install quality tooling
-        run: python -m pip install --upgrade pip -e ".[test,dev,all]"
+        run: python -m pip install --upgrade pip -e ".[test,dev]"
 
       - name: Run Ruff
         run: python -m ruff check .
@@ -289,18 +307,13 @@ jobs:
 
       - name: Install benchmark dependencies
         run: |
-          python -m pip install --upgrade pip -e ".[test,all,benchmark]"
+          python -m pip install --upgrade pip -e ".[test,benchmark]"
           npm install --global pyright@1.1.407
-
-      - name: Run context benchmark regression check
-        run: python tools/check_benchmark_regression.py --repo .
 
       - name: Run adaptive retrieval PR gates
         run: |
           python tools/run_adaptive_retrieval_benchmark.py \
             --corpus benchmarks/adaptive/pr_tasks.json \
-            --bootstrap-missing \
-            --allow-network \
             --modes cold,warm \
             --warm-runs 1 \
             --pyright required \

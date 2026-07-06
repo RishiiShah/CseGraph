@@ -3,7 +3,7 @@ from pathlib import Path
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
-    import tomlkit
+    import tomli as tomllib
 
 import csegraph
 import csegraph._cli
@@ -14,10 +14,8 @@ EXPECTED_VERSION = "2.0.0"
 
 def _project_version(path: Path) -> str:
     pyproject = path / "pyproject.toml"
-    if "tomllib" in globals():
-        with pyproject.open("rb") as fh:
-            return tomllib.load(fh)["project"]["version"]
-    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))["project"]["version"]
+    with pyproject.open("rb") as fh:
+        return tomllib.load(fh)["project"]["version"]
 
 
 def test_all_package_versions_match_module_versions():

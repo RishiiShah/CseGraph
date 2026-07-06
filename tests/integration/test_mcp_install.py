@@ -10,7 +10,7 @@ import pytest
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
-    import tomlkit as tomllib
+    import tomli as tomllib
 
 from csegraph._core.mcp_doctor import McpDoctorService
 from csegraph._core.mcp_install import McpInstallService
@@ -83,11 +83,10 @@ def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: P
     }
     assert result.installed[0].platform == "cursor"
     assert result.installed[0].action == "updated"
-    assert "registry register" in result.next_steps[0]
-    assert "daemon start" in result.next_steps[1]
-    assert "Open cursor's MCP/tools settings" in result.next_steps[3]
-    assert "six CseGraph tools" in result.next_steps[4]
-    assert "--platform cursor" in result.next_steps[5]
+    assert "Run `csegraph install --platform cursor`" in result.next_steps[0]
+    assert "Open each configured client" in result.next_steps[1]
+    assert "Confirm the six CseGraph tools" in result.next_steps[2]
+    assert "--platform cursor --json" in result.next_steps[3]
 
 
 @pytest.mark.parametrize("host_os", ["darwin", "linux", "win32"])
@@ -139,8 +138,8 @@ def test_codex_hooks_use_windows_safe_launcher(tmp_path: Path, monkeypatch) -> N
     assert "csegraph.exe" in refresh
     assert " refresh " in refresh
     assert str(repo.resolve()) in refresh
-    assert "--profile small" in refresh
-    assert "--changed-from-git" in refresh
+    assert "--profile" not in refresh
+    assert "--changed-from-git" not in refresh
     assert "git rev-parse" not in refresh
     assert "PostToolUse" not in hooks
     assert "PreToolUse" not in hooks
@@ -238,9 +237,10 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
     assert ".csegraphinclude" in gitignore
     assert "AGENTS.md" in gitignore
     assert result.skipped == []
-    assert "registry register" in result.next_steps[0]
-    assert "daemon start" in result.next_steps[1]
-    assert "--platform auto" in result.next_steps[5]
+    assert "Run `csegraph install --platform auto`" in result.next_steps[0]
+    assert "Open each configured client" in result.next_steps[1]
+    assert "Confirm the six CseGraph tools" in result.next_steps[2]
+    assert "--platform auto --json" in result.next_steps[3]
     assert {target.platform for target in result.installed} == {
         "codex",
         "claude-code",
@@ -289,7 +289,7 @@ def test_antigravity_ide_is_global_explicit_opt_in(tmp_path: Path) -> None:
     assert not (repo / ".gemini" / "config" / "mcp_config.json").exists()
 
 
-def test_doctor_reports_config_and_observed_call_states(tmp_path: Path) -> None:
+def test_doctor_reports_written_config(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _write_fake_cli(repo)
@@ -297,59 +297,12 @@ def test_doctor_reports_config_and_observed_call_states(tmp_path: Path) -> None:
 
     result = McpDoctorService(repo).doctor(
         platform="cursor",
-        require_observed_call=True,
         verify=False,
     )
 
     assert result.config_present is True
     assert result.launcher_present is True
     assert result.state == "config_written"
-
-    evidence = repo / ".csegraph" / "mcp_sessions.jsonl"
-    evidence.parent.mkdir()
-    evidence.write_text(
-        json.dumps({"tool": "csegraph_minimal", "success": True, "platform": "cursor"}) + "\n",
-        encoding="utf-8",
-    )
-
-    observed = McpDoctorService(repo).doctor(
-        platform="cursor",
-        require_observed_call=True,
-        verify=False,
-    )
-    assert observed.state == "host_call_observed"
-    assert observed.observed_call is True
-
-
-def test_doctor_observed_calls_are_platform_scoped(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _write_fake_cli(repo)
-    McpInstallService(repo).install(platform="cursor", dry_run=False)
-    McpInstallService(repo).install(platform="codex", dry_run=False)
-
-    evidence = repo / ".csegraph" / "mcp_sessions.jsonl"
-    evidence.parent.mkdir(exist_ok=True)
-    evidence.write_text(
-        json.dumps({"tool": "csegraph_minimal", "success": True, "platform": "cursor"}) + "\n",
-        encoding="utf-8",
-    )
-
-    cursor = McpDoctorService(repo).doctor(
-        platform="cursor",
-        require_observed_call=True,
-        verify=False,
-    )
-    codex = McpDoctorService(repo).doctor(
-        platform="codex",
-        require_observed_call=True,
-        verify=False,
-    )
-
-    assert cursor.state == "host_call_observed"
-    assert cursor.observed_call is True
-    assert codex.state == "config_written"
-    assert codex.observed_call is False
 
 
 def test_doctor_reports_codex_missing_when_only_cursor_is_installed(tmp_path: Path) -> None:
@@ -360,33 +313,12 @@ def test_doctor_reports_codex_missing_when_only_cursor_is_installed(tmp_path: Pa
 
     result = McpDoctorService(repo).doctor(
         platform="codex",
-        require_observed_call=True,
         verify=False,
     )
 
     assert result.state == "config_missing"
     assert result.config_present is False
-    assert result.observed_call is False
     assert result.recommendations == ["Run `csegraph install --platform codex`."]
-
-
-def test_doctor_host_verification_mentions_host_tool_enablement(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _write_fake_cli(repo)
-    McpInstallService(repo).install(platform="codex", dry_run=False)
-
-    result = McpDoctorService(repo).doctor(
-        platform="codex",
-        require_observed_call=True,
-        verify=False,
-    )
-
-    host_guidance = " ".join(result.host_verification).lower()
-    recommendations = " ".join(result.recommendations).lower()
-    assert "enable" in host_guidance
-    assert "tools" in host_guidance
-    assert "csegraph_minimal" in recommendations
 
 
 def test_doctor_auto_reports_project_scoped_platforms(tmp_path: Path) -> None:
@@ -556,7 +488,9 @@ def test_codex_install_merges_existing_hooks_json(tmp_path: Path) -> None:
     assert len(csegraph_refresh_groups) == 1
     command = csegraph_refresh_groups[0]["hooks"][0]["command"]
     assert "git rev-parse" not in command
-    assert f"{command_path} refresh {repo.resolve()} --profile small --changed-from-git" in command
+    assert f"{command_path} refresh {repo.resolve()}" in command
+    assert "--profile" not in command
+    assert "--changed-from-git" not in command
 
 
 def test_install_updates_gitignore_without_duplicating_covered_paths(tmp_path: Path) -> None:

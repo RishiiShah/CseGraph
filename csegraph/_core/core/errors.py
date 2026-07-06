@@ -19,8 +19,8 @@ class CsegraphError(Exception):
         self.hint = hint
         self.install = install
 
-    def to_payload(self) -> Dict[str, str]:
-        payload = {"error": str(self), "error_code": self.error_code}
+    def to_payload(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {"error": str(self), "error_code": self.error_code}
         if self.hint:
             payload["hint"] = self.hint
         if self.install:
@@ -28,10 +28,23 @@ class CsegraphError(Exception):
         return payload
 
 
-class UnsupportedSchemaError(CsegraphError):
-    def __init__(self) -> None:
+class IndexRequiredError(CsegraphError):
+    """Raised when an operation requires a fresh compatible index."""
+
+    def __init__(
+        self,
+        message: str = "A current CseGraph index is required for this repository.",
+    ) -> None:
         super().__init__(
-            "Unsupported csegraph index schema. Rerun csegraph index for this repository.",
-            error_code="unsupported_schema",
-            hint="Run `csegraph index <repo>` to rebuild this beta index with the current schema.",
+            message,
+            error_code="index_required",
+            hint="Run `csegraph index <repo>` to build a fresh index.",
         )
+
+    def to_payload(self) -> Dict[str, object]:
+        payload = super().to_payload()
+        payload["next"] = {
+            "tool": "csegraph_index",
+            "reason": "Build a fresh index before retrying this operation.",
+        }
+        return payload

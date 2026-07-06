@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from csegraph._core.core.models import McpInstallResult, McpInstallTarget, to_dict
+from csegraph._core.core.models import McpInstallResult, McpInstallTarget
+from csegraph._core.core.serializer import to_dict
 from csegraph._core.mcp_resolve import build_mcp_server_entry
 from csegraph._core.mcp_verify import verify_mcp_entry
 
@@ -145,9 +146,6 @@ def _claude_hooks(command: str, repo: Path) -> dict[str, Any]:
                                 [
                                     "refresh",
                                     str(repo),
-                                    "--profile",
-                                    "small",
-                                    "--changed-from-git",
                                 ],
                             ),
                         }
@@ -171,9 +169,6 @@ def _codex_hooks(command: str, repo: Path) -> dict[str, Any]:
                                 [
                                     "refresh",
                                     str(repo),
-                                    "--profile",
-                                    "small",
-                                    "--changed-from-git",
                                 ],
                             ),
                             "timeout": 120,
@@ -196,6 +191,32 @@ _HOOK_CONFIGS: dict[str, dict[str, Any]] = {
         "build": _codex_hooks,
     },
 }
+
+
+def _replace_toml_table(existing: str, name: str, replacement: str) -> str:
+    """Replace one top-level TOML table without requiring a TOML writer."""
+
+    lines = existing.splitlines(keepends=True)
+    header = f"[{name}]"
+    start: int | None = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if start is None:
+            if stripped == header:
+                start = index
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end = index
+            break
+
+    if start is not None:
+        del lines[start:end]
+
+    prefix = "".join(lines).rstrip()
+    if prefix:
+        prefix += "\n\n"
+    return prefix + replacement.rstrip() + "\n"
 
 
 def _vscode_tasks(command: str) -> list[dict[str, Any]]:
@@ -359,26 +380,19 @@ class McpInstallService:
         action = "updated" if path.exists() else "created"
 
         if not dry_run:
-            try:
-                import tomlkit
-            except ImportError as exc:  # pragma: no cover - exercised when packaging is broken
-                raise RuntimeError(
-                    "Codex MCP install requires tomlkit. Install csegraph with its dependencies."
-                ) from exc
-
-            doc = (
-                tomlkit.parse(path.read_text(encoding="utf-8"))
-                if path.exists()
-                else tomlkit.document()
-            )
-            servers = doc.setdefault("mcp_servers", tomlkit.table())
             entry = self._server_entry(vscode_style=False, platform="codex")
-            table = tomlkit.table()
-            table["command"] = entry["command"]
-            table["args"] = entry["args"]
-            servers["csegraph"] = table
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+            args = ", ".join(json.dumps(value) for value in entry["args"])
+            table = (
+                "[mcp_servers.csegraph]\n"
+                f"command = {json.dumps(entry['command'])}\n"
+                f"args = [{args}]\n"
+            )
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+            path.write_text(
+                _replace_toml_table(existing, "mcp_servers.csegraph", table),
+                encoding="utf-8",
+            )
 
         result.installed.append(
             McpInstallTarget(
@@ -733,25 +747,37 @@ def _gitignore_covers(entry: str, text: str) -> bool:
 
 
 def _install_next_steps(platform: str, repo: Path) -> list[str]:
-    watcher_steps = [
-        f"Register the repository once with `csegraph registry register {repo}`.",
-        "Run `csegraph daemon start` for debounced continuous freshness.",
-        "The default hook performs one safety refresh when an agent turn ends; use `--no-hooks` to disable it.",
+    install_steps = [
+        (
+            f"Run `csegraph install --platform {platform}` again if you need to "
+            "refresh the client config."
+        ),
+        (
+            "Open each configured client's MCP/tools settings and enable or "
+            "approve the csegraph server."
+        ),
+        (
+            "Confirm the six CseGraph tools are visible: csegraph_index, "
+            "csegraph_refresh, csegraph_minimal, csegraph_context, "
+            "csegraph_graph, and csegraph_path."
+        ),
     ]
     if platform == "auto":
-        return watcher_steps + [
-            "Open each configured client's MCP/tools settings and enable or approve the csegraph server.",
-            "Confirm the six CseGraph tools are visible: csegraph_index, csegraph_refresh, csegraph_minimal, csegraph_context, csegraph_graph, and csegraph_path.",
-            f"Run `csegraph doctor {repo} --platform auto --require-observed-call --json` after each host has called a CseGraph tool.",
+        return install_steps + [
+            (
+                f"Run `csegraph doctor {repo} --platform auto --json` after "
+                "each host has called a CseGraph tool."
+            ),
         ]
     if platform == "vscode":
-        return watcher_steps + [
+        return install_steps + [
             "Reload VS Code after installing or enabling the CseGraph extension recommendation.",
             "Confirm the CseGraph status bar and commands are available in the workspace.",
             f"Run `csegraph status {repo}` if the extension reports a stale or missing index.",
         ]
-    return watcher_steps + [
-        f"Open {platform}'s MCP/tools settings and enable or approve the csegraph server.",
-        "Confirm the six CseGraph tools are visible: csegraph_index, csegraph_refresh, csegraph_minimal, csegraph_context, csegraph_graph, and csegraph_path.",
-        f"Run `csegraph doctor {repo} --platform {platform} --require-observed-call --json` after the host has called a CseGraph tool.",
+    return install_steps + [
+        (
+            f"Run `csegraph doctor {repo} --platform {platform} --json` after "
+            "the host has called a CseGraph tool."
+        ),
     ]

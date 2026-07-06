@@ -34,28 +34,23 @@ def _write_resolution_repo(repo):
         encoding="utf-8",
     )
     (repo / "local.py").write_text(
-        "def calculate(value):\n"
-        "    return value\n\n"
-        "def run(value):\n"
-        "    return calculate(value)\n",
+        "def calculate(value):\n    return value\n\ndef run(value):\n    return calculate(value)\n",
         encoding="utf-8",
     )
     tests = repo / "tests"
     tests.mkdir()
     (tests / "test_checkout.py").write_text(
-        "from checkout import checkout\n\n"
-        "def test_checkout():\n"
-        "    assert checkout(10) == 20\n",
+        "from checkout import checkout\n\ndef test_checkout():\n    assert checkout(10) == 20\n",
         encoding="utf-8",
     )
 
 
-def test_import_bindings_occurrences_assertions_and_ambiguity(tmp_path):
+def test_import_bindings_occurrences_and_ambiguity(tmp_path):
     repo = tmp_path / "repo"
     db_path = _db_path(repo)
     _write_resolution_repo(repo)
 
-    IndexService(db_path).index(repo, profile="small")
+    IndexService(db_path).index(repo)
 
     with sqlite3.connect(db_path) as conn:
         binding = conn.execute(
@@ -79,13 +74,6 @@ def test_import_bindings_occurrences_assertions_and_ambiguity(tmp_path):
             FROM edge_occurrences
             WHERE enclosing_symbol_id = 'symbol::checkout.py::function::checkout'
               AND relation = 'calls' AND name = 'compute'
-            """
-        ).fetchone()
-        assertion = conn.execute(
-            """
-            SELECT target_symbol_id, start_line, expression, resolution_status
-            FROM test_assertions
-            WHERE test_symbol_id = 'symbol::tests/test_checkout.py::function::test_checkout'
             """
         ).fetchone()
         ambiguous = conn.execute(
@@ -116,12 +104,6 @@ def test_import_bindings_occurrences_assertions_and_ambiguity(tmp_path):
     assert binding == ("compute", "calculate", "file::pricing_b.py", pricing_b, "resolved")
     assert external == ("external",)
     assert aliased_call == (pricing_b, 5, "compute(subtotal)", "resolved", "explicit_import")
-    assert assertion == (
-        "symbol::checkout.py::function::checkout",
-        4,
-        "assert checkout(10) == 20",
-        "resolved",
-    )
     assert ambiguous[0:2] == (None, "ambiguous")
     assert set(json.loads(ambiguous[2])) == {
         "symbol::local.py::function::calculate",
@@ -137,7 +119,7 @@ def test_import_bindings_occurrences_assertions_and_ambiguity(tmp_path):
 
 
 @pytest.mark.parametrize("change", ["rename", "delete"])
-def test_refresh_preserves_stale_child_impacts(tmp_path, change):
+def test_refresh_replaces_changed_files_without_history(tmp_path, change):
     repo = tmp_path / "repo"
     repo.mkdir()
     child = repo / "child.py"
@@ -146,21 +128,17 @@ def test_refresh_preserves_stale_child_impacts(tmp_path, change):
         encoding="utf-8",
     )
     (repo / "caller.py").write_text(
-        "from child import helper\n\n"
-        "def parent(value):\n"
-        "    return helper(value)\n",
+        "from child import helper\n\ndef parent(value):\n    return helper(value)\n",
         encoding="utf-8",
     )
     tests = repo / "tests"
     tests.mkdir()
     (tests / "test_parent.py").write_text(
-        "from caller import parent\n\n"
-        "def test_parent():\n"
-        "    assert parent(1) == 2\n",
+        "from caller import parent\n\ndef test_parent():\n    assert parent(1) == 2\n",
         encoding="utf-8",
     )
     db_path = _db_path(repo)
-    IndexService(db_path).index(repo, profile="small")
+    IndexService(db_path).index(repo)
 
     if change == "rename":
         child.write_text(
@@ -171,29 +149,14 @@ def test_refresh_preserves_stale_child_impacts(tmp_path, change):
         child.unlink()
 
     result = RefreshService(db_path).refresh(
-        profile="small",
         changed_paths=[child],
     )
 
     old_helper = "symbol::child.py::function::helper"
     with sqlite3.connect(db_path) as conn:
-        history = conn.execute(
-            """
-            SELECT state, replaced_by
-            FROM symbol_history
-            WHERE symbol_id = ?
-            ORDER BY recorded_at DESC
-            LIMIT 1
-            """,
-            (old_helper,),
-        ).fetchone()
-        stale = conn.execute(
-            """
-            SELECT source_file_id, relation, name, resolution_status, is_stale
-            FROM edge_occurrences
-            WHERE target = ? AND is_stale = 1
-            ORDER BY relation
-            """,
+        old_symbol = conn.execute("SELECT 1 FROM symbols WHERE id = ?", (old_helper,)).fetchone()
+        old_occurrences = conn.execute(
+            "SELECT 1 FROM edge_occurrences WHERE target = ?",
             (old_helper,),
         ).fetchall()
         current_call = conn.execute(
@@ -201,14 +164,13 @@ def test_refresh_preserves_stale_child_impacts(tmp_path, change):
             SELECT target, resolution_status
             FROM edge_occurrences
             WHERE enclosing_symbol_id = 'symbol::caller.py::function::parent'
-              AND relation = 'calls' AND name = 'helper' AND is_stale = 0
+              AND relation = 'calls' AND name = 'helper'
             """
         ).fetchone()
+        foreign_keys = conn.execute("PRAGMA foreign_key_check").fetchall()
 
     assert "caller.py" in result.changed_files or result.dependents_expanded >= 1
-    assert history == (
-        "tombstone",
-        "symbol::child.py::function::new_helper" if change == "rename" else None,
-    )
-    assert ("file::caller.py", "calls", "helper", "stale_target", 1) in stale
+    assert old_symbol is None
+    assert old_occurrences == []
     assert current_call == (None, "unresolved")
+    assert foreign_keys == []

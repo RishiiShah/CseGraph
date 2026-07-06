@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import shlex
+import shutil
 import statistics
 import subprocess
 import sys
@@ -18,9 +19,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import csegraph
 from csegraph import ContextRequest, ContextService, IndexService, to_dict
-from csegraph._core.benchmark_baseline import (
+from csegraph._core.retrieval.token_budget import response_tokens, token_measurement
+from tools.adaptive_benchmark import (
     PINNED_PYRIGHT_VERSION,
     AdaptiveBenchmarkCorpus,
     AdaptiveBenchmarkTask,
@@ -32,9 +38,8 @@ from csegraph._core.benchmark_baseline import (
     prepare_benchmark_repository,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-REPORT_SCHEMA_VERSION = "csegraph-adaptive-retrieval-report-v2"
-RUNNER_VERSION = "2.0"
+REPORT_SCHEMA_VERSION = "csegraph-adaptive-retrieval-report-v3"
+RUNNER_VERSION = "2.1"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -118,11 +123,15 @@ def main(argv: list[str] | None = None) -> int:
                     "reason": prepared.reason,
                 }
                 if prepared.path is not None and prepared.commit_matches:
+                    benchmark_repo = prepared.path
+                    if repository.url == "fixture://local":
+                        benchmark_repo = scratch / f"fixture-{len(indexed)}"
+                        shutil.copytree(prepared.path, benchmark_repo)
                     db = scratch / f"repo-{len(indexed)}.db"
                     index_started = time.perf_counter()
-                    IndexService(db).index(prepared.path, profile="auto")
+                    IndexService(db).index(benchmark_repo)
                     index_ms = (time.perf_counter() - index_started) * 1000
-                    indexed[task.repo] = (prepared.path, db, index_ms)
+                    indexed[task.repo] = (benchmark_repo, db, index_ms)
 
             prepared_index = indexed.get(task.repo)
             if prepared_index is None:
@@ -142,9 +151,7 @@ def main(argv: list[str] | None = None) -> int:
                     index_ms=index_ms,
                     execute_tasks=args.execute_tasks,
                     agent_command=(
-                        tuple(shlex.split(args.agent_command))
-                        if args.agent_command
-                        else None
+                        tuple(shlex.split(args.agent_command)) if args.agent_command else None
                     ),
                     allow_network=args.allow_network,
                 )
@@ -171,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         "duration_ms": round((finished_at - started_at).total_seconds() * 1000, 3),
         "corpus": {
             "path": str(corpus_path),
+            "schema_version": corpus.schema_version,
             "version": corpus.version,
             "tier": corpus.tier,
             "status": corpus.status,
@@ -243,6 +251,37 @@ def _run_retrieval_task(
     adaptive_result = measurements[selected_mode]["adaptive"]
     expected = set(task.expected_locations)
     permitted = set(task.permitted_files)
+    uses_v2_expectations = bool(
+        task.expected_target
+        or task.expected_candidates
+        or task.required_evidence
+        or task.permitted_ranges
+        or task.expected_next_tool
+        or task.expected_status != "ready"
+    )
+    if uses_v2_expectations:
+        baseline_evaluation = _evaluate_v2_result(task, baseline_result, adaptive=False)
+        adaptive_evaluation = _evaluate_v2_result(task, adaptive_result, adaptive=True)
+    else:
+        baseline_evaluation = {
+            "recall": _recall(set(baseline_result["paths"]), expected),
+            "target_found": (
+                not task.expected_locations
+                or task.expected_locations[0] in set(baseline_result["paths"])
+            ),
+            "precision": _precision(set(baseline_result["paths"]), permitted),
+            "status_matched": baseline_result["status"] == "ready",
+            "role_recall": 1.0,
+            "next_tool_matched": True,
+        }
+        adaptive_evaluation = {
+            "recall": _recall(set(adaptive_result["paths"]), expected),
+            "target_found": adaptive_result["status"] == "ready",
+            "precision": _precision(set(adaptive_result["paths"]), permitted),
+            "status_matched": adaptive_result["status"] == "ready",
+            "role_recall": 1.0,
+            "next_tool_matched": True,
+        }
     execution = None
     if execute_tasks:
         execution = asdict(
@@ -263,21 +302,36 @@ def _run_retrieval_task(
         "index_ms": round(index_ms, 3),
         "expected_locations": sorted(expected),
         "permitted_files": sorted(permitted),
+        "expected_status": task.expected_status,
+        **(
+            {"expected_target": asdict(task.expected_target)}
+            if task.expected_target is not None
+            else {}
+        ),
+        **(
+            {"expected_candidates": [asdict(item) for item in task.expected_candidates]}
+            if task.expected_candidates
+            else {}
+        ),
+        **(
+            {"required_evidence": [asdict(item) for item in task.required_evidence]}
+            if task.required_evidence
+            else {}
+        ),
+        **(
+            {"permitted_ranges": [asdict(item) for item in task.permitted_ranges]}
+            if task.permitted_ranges
+            else {}
+        ),
         "selected_mode": selected_mode,
         "measurements": measurements,
         "baseline": {
             **baseline_result,
-            "recall": _recall(set(baseline_result["paths"]), expected),
-            "target_found": (
-                not task.expected_locations
-                or task.expected_locations[0] in set(baseline_result["paths"])
-            ),
-            "precision": _precision(set(baseline_result["paths"]), permitted),
+            **baseline_evaluation,
         },
         "adaptive": {
             **adaptive_result,
-            "recall": _recall(set(adaptive_result["paths"]), expected),
-            "precision": _precision(set(adaptive_result["paths"]), permitted),
+            **adaptive_evaluation,
         },
         **({"execution": execution} if execution is not None else {}),
     }
@@ -297,6 +351,7 @@ def _measure_pair(
         repo,
         task.task,
         target=task.target,
+        task_kind=task.category,
         token_budget=budget,
         temperature=temperature,
     )
@@ -308,13 +363,27 @@ def _measure_pair(
             repo=str(repo),
             task=task.task,
             target=task.target,
+            task_kind=_context_task_kind(task.category),
             token_budget=budget,
         )
     )
     adaptive_observed_ms = (time.perf_counter() - adaptive_started) * 1000
     adaptive_payload = to_dict(adaptive)
-    adaptive_usage = adaptive_payload["usage"]
-    adaptive_engine_ms = float(adaptive_usage["latency_ms"])
+    adaptive_diagnostics = adaptive_payload.get("diagnostics") or {}
+    adaptive_usage = adaptive_diagnostics.get("usage") or {}
+    adaptive_engine_ms = float(adaptive_usage.get("latency_ms") or adaptive_observed_ms)
+    adaptive_tokens = int(adaptive_usage.get("tokens") or response_tokens(adaptive))
+    target_slice = next((item for item in adaptive.slices if item.role == "target"), None)
+    adaptive_target = (
+        {
+            "id": target_slice.id,
+            "name": target_slice.symbol,
+            "path": target_slice.path,
+            "lines": target_slice.lines,
+        }
+        if target_slice is not None
+        else None
+    )
     return {
         "baseline": {
             "status": "ready" if baseline_result.slices else "empty",
@@ -328,12 +397,13 @@ def _measure_pair(
             "lsp_latency_ms": baseline_result.usage["lsp_latency_ms"],
             "tool_calls": baseline_result.usage["tool_calls"],
             "paths": sorted({item.path for item in baseline_result.slices}),
+            "slices": [asdict(item) for item in baseline_result.slices],
             "warnings": baseline_result.warnings,
         },
         "adaptive": {
             "status": adaptive_payload["status"],
-            "tokens": adaptive_usage["tokens"],
-            "measurement": adaptive_usage.get("measurement"),
+            "tokens": adaptive_tokens,
+            "measurement": adaptive_usage.get("measurement") or token_measurement("o200k_base"),
             "tool_observed_latency_ms": round(adaptive_observed_ms, 3),
             "tool_latency_ms": round(adaptive_observed_ms, 3),
             "engine_latency_ms": round(adaptive_engine_ms, 3),
@@ -341,10 +411,24 @@ def _measure_pair(
                 max(0.0, adaptive_observed_ms - adaptive_engine_ms), 3
             ),
             "tool_calls": 1,
-            "cache": adaptive_usage["cache"],
+            "cache": adaptive_usage.get("cache", "disabled"),
             "paths": sorted({item.path for item in adaptive.slices}),
+            "target": adaptive_target,
+            "candidates": adaptive_payload.get("candidates", []),
+            "slices": adaptive_payload.get("slices", []),
+            "next": adaptive_payload.get("next"),
         },
     }
+
+
+def _context_task_kind(category: str) -> str:
+    return {
+        "definition": "understand",
+        "debug": "test-impact",
+        "refactor": "edit",
+        "cross-file": "edit",
+        "test-impact": "test-impact",
+    }.get(category, "auto")
 
 
 def _aggregate_system(samples: Sequence[dict[str, Any]], system: str) -> dict[str, Any]:
@@ -361,7 +445,9 @@ def _aggregate_system(samples: Sequence[dict[str, Any]], system: str) -> dict[st
         numeric = [float(value[key]) for value in values if key in value]
         if numeric:
             median = statistics.median(numeric)
-            representative[key] = int(median) if key in {"tokens", "tool_calls"} else round(median, 3)
+            representative[key] = (
+                int(median) if key in {"tokens", "tool_calls"} else round(median, 3)
+            )
     representative["sample_count"] = len(values)
     return representative
 
@@ -377,6 +463,108 @@ def _unmeasured_task(task: AdaptiveBenchmarkTask, reason: str) -> dict[str, Any]
         "expected_locations": list(task.expected_locations),
         "permitted_files": list(task.permitted_files),
     }
+
+
+def _evaluate_v2_result(
+    task: AdaptiveBenchmarkTask,
+    result: dict[str, Any],
+    *,
+    adaptive: bool,
+) -> dict[str, Any]:
+    slices = [item for item in result.get("slices", []) if isinstance(item, dict)]
+    status_matched = result.get("status") == task.expected_status
+
+    if task.expected_status == "ambiguous":
+        candidates = (
+            [item for item in result.get("candidates", []) if isinstance(item, dict)]
+            if adaptive
+            else slices
+        )
+        target_found = all(
+            any(_item_matches_target(item, expected) for item in candidates)
+            for expected in task.expected_candidates
+        )
+    elif task.expected_target is not None:
+        target_item = result.get("target") if adaptive else (slices[0] if slices else None)
+        target_found = isinstance(target_item, dict) and _item_matches_target(
+            target_item,
+            task.expected_target,
+        )
+    else:
+        target_found = status_matched
+
+    evidence_hits = 0
+    role_hits = 0
+    for expected in task.required_evidence:
+        matching = [
+            item for item in slices if _item_contains_line(item, expected.path, expected.line)
+        ]
+        if matching:
+            evidence_hits += 1
+        if matching and (
+            not adaptive
+            or expected.role is None
+            or any(item.get("role") == expected.role for item in matching)
+        ):
+            role_hits += 1
+    recall = evidence_hits / len(task.required_evidence) if task.required_evidence else 1.0
+    role_recall = role_hits / len(task.required_evidence) if task.required_evidence else 1.0
+
+    if not slices:
+        precision = 1.0 if task.expected_status == "ambiguous" else 0.0
+    else:
+        precise = sum(
+            any(_slice_overlaps_range(item, permitted) for permitted in task.permitted_ranges)
+            for item in slices
+        )
+        precision = precise / len(slices)
+
+    expected_next = task.expected_next_tool
+    next_value = result.get("next")
+    next_tool_matched = expected_next is None or (
+        isinstance(next_value, dict) and next_value.get("tool") == expected_next
+    )
+    return {
+        "recall": recall,
+        "target_found": target_found,
+        "precision": precision,
+        "status_matched": status_matched,
+        "role_recall": role_recall,
+        "next_tool_matched": next_tool_matched,
+    }
+
+
+def _item_matches_target(item: dict[str, Any], expected: Any) -> bool:
+    if str(item.get("path") or "") != expected.path:
+        return False
+    if not _item_contains_line(item, expected.path, expected.line):
+        return False
+    if expected.id is not None and item.get("id") is not None:
+        if str(item["id"]) != expected.id:
+            return False
+    if expected.name is not None and item.get("name") is not None:
+        if str(item["name"]) != expected.name:
+            return False
+    return True
+
+
+def _item_contains_line(item: dict[str, Any], path: str, line: int) -> bool:
+    if str(item.get("path") or "") != path:
+        return False
+    lines = item.get("lines")
+    return isinstance(lines, list) and len(lines) == 2 and int(lines[0]) <= line <= int(lines[1])
+
+
+def _slice_overlaps_range(item: dict[str, Any], permitted: Any) -> bool:
+    if str(item.get("path") or "") != permitted.path:
+        return False
+    lines = item.get("lines")
+    return (
+        isinstance(lines, list)
+        and len(lines) == 2
+        and int(lines[0]) <= permitted.end_line
+        and int(lines[1]) >= permitted.start_line
+    )
 
 
 def _recall(paths: set[str], expected: set[str]) -> float:
@@ -424,18 +612,18 @@ def _summary(
     baseline_tool_latency = [float(item["tool_observed_latency_ms"]) for item in baseline]
     adaptive_engine_latency = [float(item["engine_latency_ms"]) for item in adaptive]
     baseline_engine_latency = [float(item["engine_latency_ms"]) for item in baseline]
-    target_rate = sum(item["status"] == "ready" for item in adaptive) / len(adaptive)
+    target_rate = statistics.mean(1.0 if item["target_found"] else 0.0 for item in adaptive)
+    status_rate = statistics.mean(1.0 if item["status_matched"] else 0.0 for item in adaptive)
     recall = statistics.mean(float(item["recall"]) for item in adaptive)
     precision = statistics.mean(float(item["precision"]) for item in adaptive)
+    role_recall = statistics.mean(float(item["role_recall"]) for item in adaptive)
+    next_tool_rate = statistics.mean(1.0 if item["next_tool_matched"] else 0.0 for item in adaptive)
     baseline_recall = statistics.mean(float(item["recall"]) for item in baseline)
     baseline_target_rate = statistics.mean(
         1.0 if item["target_found"] else 0.0 for item in baseline
     )
     within_budget = all(tokens <= token_budget for tokens in adaptive_tokens)
-    baseline_within_budget = all(tokens <= token_budget for tokens in baseline_tokens)
-    token_ratio = statistics.median(adaptive_tokens) / max(
-        1.0, statistics.median(baseline_tokens)
-    )
+    token_ratio = statistics.median(adaptive_tokens) / max(1.0, statistics.median(baseline_tokens))
     tool_latency_delta = _p95(adaptive_tool_latency) - _p95(baseline_tool_latency)
     engine_latency_delta = _p95(adaptive_engine_latency) - _p95(baseline_engine_latency)
     gates = {
@@ -444,14 +632,13 @@ def _summary(
         "all_tasks_measured": len(measured) == len(results),
         "pyright_requirement_met": not pyright_required or pyright_available,
         "baseline_nonempty": all(item["status"] == "ready" for item in baseline),
-        "baseline_within_budget": baseline_within_budget,
-        "baseline_target_rate_at_least_95pct": baseline_target_rate >= 0.95,
         "within_budget": within_budget,
-        "target_ready_rate_at_least_95pct": target_rate >= 0.95,
-        "slice_recall_at_least_95pct": recall >= 0.95,
-        "slice_precision_at_least_70pct": precision >= 0.70,
-        "median_tokens_no_greater_than_baseline": token_ratio <= 1.0,
-        "warm_tool_p95_latency_delta_at_most_150ms": tool_latency_delta <= 150.0,
+        "target_ready_rate_100pct": target_rate == 1.0,
+        "expected_status_rate_100pct": status_rate == 1.0,
+        "slice_recall_100pct": recall == 1.0,
+        "slice_precision_at_least_95pct": precision >= 0.95,
+        "median_token_ratio_at_most_35pct": token_ratio <= 0.35,
+        "engine_p95_overhead_below_100ms": engine_latency_delta < 100.0,
     }
     execution_results = [
         item["execution"]
@@ -466,8 +653,11 @@ def _summary(
         "task_count": len(results),
         "measured_task_count": len(measured),
         "target_ready_rate": round(target_rate, 4),
+        "expected_status_rate": round(status_rate, 4),
         "adaptive_recall": round(recall, 4),
         "adaptive_precision": round(precision, 4),
+        "adaptive_role_recall": round(role_recall, 4),
+        "adaptive_next_tool_rate": round(next_tool_rate, 4),
         "baseline_recall": round(baseline_recall, 4),
         "baseline_target_rate": round(baseline_target_rate, 4),
         "adaptive_median_tokens": statistics.median(adaptive_tokens),
@@ -498,9 +688,7 @@ def _provenance(
 ) -> dict[str, Any]:
     return {
         "csegraph_version": csegraph.__version__,
-        "runner_git_commit": _command_output(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD"]
-        ),
+        "runner_git_commit": _command_output(["git", "-C", str(repo_root), "rev-parse", "HEAD"]),
         "runner_git_dirty": bool(
             _command_output(["git", "-C", str(repo_root), "status", "--porcelain"])
         ),

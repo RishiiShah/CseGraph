@@ -8,14 +8,10 @@ from pathlib import Path
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
-    import tomlkit
+    import tomli as tomllib
 
 
-CORE_RUNTIME_DEPENDENCIES = [
-    "mcp>=1.0.0,<2",
-    "watchfiles>=1.0.0,<2",
-    "tomlkit>=0.12.0,<1",
-]
+CORE_RUNTIME_DEPENDENCIES = ["mcp>=1.0.0,<2"]
 
 
 CORE_LANGUAGE_DEPENDENCIES = [
@@ -28,60 +24,10 @@ CORE_LANGUAGE_DEPENDENCIES = [
 BENCHMARK_DEPENDENCIES = ["tiktoken>=0.13,<1"]
 
 
-OPTIONAL_LANGUAGE_DEPENDENCIES = {
-    "go": ["tree-sitter-go>=0.23"],
-    "rust": ["tree-sitter-rust>=0.23"],
-    "java": ["tree-sitter-java>=0.23"],
-    "c": ["tree-sitter-c>=0.23"],
-    "cpp": ["tree-sitter-cpp>=0.23"],
-    "ruby": ["tree-sitter-ruby>=0.23"],
-    "csharp": ["tree-sitter-c-sharp>=0.23"],
-    "kotlin": ["tree-sitter-kotlin>=0.23"],
-    "groovy": ["tree-sitter-groovy>=0.1.2"],
-    "scala": ["tree-sitter-scala>=0.23"],
-    "php": ["tree-sitter-php>=0.23"],
-    "swift": ["tree-sitter-swift>=0.7"],
-    "lua": ["tree-sitter-lua>=0.2"],
-    "zig": ["tree-sitter-zig>=0.1"],
-    "powershell": ["tree-sitter-powershell>=0.1"],
-    "elixir": ["tree-sitter-elixir>=0.3"],
-    "objc": ["tree-sitter-objc>=0.23"],
-    "julia": ["tree-sitter-julia>=0.23"],
-    "verilog": ["tree-sitter-verilog>=0.23"],
-    "fortran": ["tree-sitter-fortran>=0.6"],
-}
-
-
-ALL_OPTIONAL_LANGUAGE_DEPENDENCIES = [
-    "tree-sitter-go>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-java>=0.23",
-    "tree-sitter-c>=0.23",
-    "tree-sitter-cpp>=0.23",
-    "tree-sitter-ruby>=0.23",
-    "tree-sitter-c-sharp>=0.23",
-    "tree-sitter-kotlin>=0.23",
-    "tree-sitter-groovy>=0.1.2",
-    "tree-sitter-scala>=0.23",
-    "tree-sitter-php>=0.23",
-    "tree-sitter-swift>=0.7",
-    "tree-sitter-lua>=0.2",
-    "tree-sitter-zig>=0.1",
-    "tree-sitter-powershell>=0.1",
-    "tree-sitter-elixir>=0.3",
-    "tree-sitter-objc>=0.23",
-    "tree-sitter-julia>=0.23",
-    "tree-sitter-verilog>=0.23",
-    "tree-sitter-fortran>=0.6",
-]
-
-
 def _pyproject_data(path: Path) -> dict:
     pyproject = path / "pyproject.toml"
-    if "tomllib" in globals():
-        with pyproject.open("rb") as fh:
-            return tomllib.load(fh)
-    return tomlkit.parse(pyproject.read_text(encoding="utf-8"))
+    with pyproject.open("rb") as fh:
+        return tomllib.load(fh)
 
 
 def _project_metadata(path: Path) -> dict:
@@ -139,20 +85,10 @@ def test_one_distribution_package_layout_and_versions():
     assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
     optional_deps = root_project.get("optional-dependencies", {})
-    assert set(optional_deps) == {
-        "test",
-        "dev",
-        "docs",
-        "embeddings",
-        "benchmark",
-        "all",
-        *OPTIONAL_LANGUAGE_DEPENDENCIES,
-    }
-    for extra, dependencies in OPTIONAL_LANGUAGE_DEPENDENCIES.items():
-        assert optional_deps[extra] == dependencies
-    assert optional_deps["all"] == ALL_OPTIONAL_LANGUAGE_DEPENDENCIES
+    assert set(optional_deps) == {"test", "dev", "docs", "benchmark"}
     assert optional_deps["benchmark"] == BENCHMARK_DEPENDENCIES
     assert optional_deps["docs"] == ["mkdocs>=1.6", "mkdocs-material>=9.5"]
+    assert all("watchfiles" not in dependency for dependency in optional_deps["dev"])
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
     classifiers = set(root_project["classifiers"])
@@ -212,8 +148,10 @@ def test_root_install_exposes_cli_sdk_and_private_modules(tmp_path):
                 "import csegraph; "
                 "import csegraph._core; "
                 "import csegraph._cli; "
-                "from csegraph import ContextService; "
+                "from csegraph import ContextService, StatusResult, StatusService; "
                 "assert ContextService is not None; "
+                "assert StatusService is not None; "
+                "assert StatusResult is not None; "
                 "assert importlib.util.find_spec('csegraph.languages') is None"
             ),
         ],
@@ -237,10 +175,11 @@ def test_root_install_exposes_cli_sdk_and_private_modules(tmp_path):
         "index",
         "refresh",
         "context",
+        "graph",
+        "path",
         "status",
-        "postprocess",
+        "doctor",
         "install",
-        "watch",
         "serve",
     ]
     for command in base_commands:
@@ -290,76 +229,31 @@ def test_private_core_module_entrypoint_points_to_public_cli(tmp_path):
     assert "python -m csegraph._cli <command>" in proc.stderr
 
 
-def test_status_and_postprocess_exports():
-    from csegraph import PostprocessResult as SDKPostprocessResult
-    from csegraph import PostprocessService as SDKPostprocessService
-    from csegraph import StatusResult as SDKStatusResult
-    from csegraph import StatusService as SDKStatusService
-    from csegraph._core import PostprocessResult, PostprocessService, StatusResult, StatusService
-
-    assert StatusService is SDKStatusService
-    assert PostprocessService is SDKPostprocessService
-    assert StatusResult is SDKStatusResult
-    assert PostprocessResult is SDKPostprocessResult
-
-
-def test_sdk_exports_context_engine_facade_only():
+def test_sdk_exports_minimal_context_engine_facade():
     import csegraph
     import csegraph._core as core
 
     sdk_all = set(csegraph.__all__)
     expected = {
         "__version__",
-        "AsyncContextService",
-        "AsyncGraphQueryService",
-        "AsyncIndexService",
-        "AsyncRefreshService",
-        "BaseParser",
-        "ContextRelationship",
-        "ContextNode",
         "ContextRequest",
         "ContextResponse",
         "ContextSlice",
         "ContextStatus",
         "ContextTarget",
-        "ContextResult",
         "ContextService",
-        "DefaultTokenizer",
-        "GraphEdgeView",
-        "GraphNodeView",
         "GraphQueryService",
         "GraphResult",
+        "IndexRequiredError",
         "IndexResult",
         "IndexService",
-        "ImportPrelude",
-        "KeyEntity",
-        "LanguageConfig",
         "MinimalResult",
         "MinimalService",
-        "NextToolSuggestion",
-        "ParsedFile",
-        "ParsedSymbol",
-        "PathEdge",
         "PathResult",
-        "PathStep",
-        "POSTPROCESS_LEVELS",
-        "PostprocessResult",
-        "PostprocessService",
-        "PROFILES",
-        "ProfileConfig",
         "RefreshResult",
         "RefreshService",
-        "RelationshipOccurrence",
         "StatusResult",
         "StatusService",
-        "SufficiencyMetrics",
-        "SufficiencyResult",
-        "Tokenizer",
-        "VALID_REASONS",
-        "get_profile",
-        "load_profile",
-        "register_parser",
-        "register_tree_sitter_language",
         "to_dict",
     }
 
@@ -373,32 +267,49 @@ def test_sdk_exports_context_engine_facade_only():
         )
 
 
-def test_diagnostic_services_are_module_path_only():
-    import csegraph
-    import csegraph._core as core
-    from csegraph._core.benchmark import BenchmarkService
-    from csegraph._core.graph.review_questions import ReviewQuestionsService
-    from csegraph._core.graph.test_gaps import TestGapService
+def test_sdk_import_does_not_load_runtime_subsystems():
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import csegraph; "
+                "loaded = sorted(name for name in sys.modules if name.startswith('csegraph.')); "
+                "assert loaded == [], loaded"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
-    assert BenchmarkService is not None
-    assert TestGapService is not None
-    assert ReviewQuestionsService is not None
-    private_names = {
-        "ArchitectureService",
-        "BenchmarkService",
-        "ChangeDetectionService",
-        "EmbeddingService",
-        "FlowService",
-        "ReportService",
-        "ResolverService",
-        "ReviewEvalService",
-        "ReviewQuestionsService",
-        "TestGapService",
-        "VulnerabilityService",
+    assert proc.returncode == 0
+
+
+def test_index_required_error_has_typed_continuation():
+    from csegraph import IndexRequiredError
+
+    error = IndexRequiredError()
+
+    assert error.error_code == "index_required"
+    assert error.to_payload()["next"] == {
+        "tool": "csegraph_index",
+        "reason": "Build a fresh index before retrying this operation.",
     }
-    for name in private_names:
-        assert not hasattr(csegraph, name)
-        assert not hasattr(core, name)
+
+
+def test_removed_subsystems_are_not_packaged():
+    import importlib.util
+
+    for module in (
+        "csegraph._core.benchmark",
+        "csegraph._core.graph.embeddings",
+        "csegraph._core.graph.review_questions",
+        "csegraph._core.postprocess",
+        "csegraph._core.server.session",
+        "csegraph._core.watch",
+    ):
+        assert importlib.util.find_spec(module) is None
 
 
 def test_source_first_package_guard():
@@ -479,3 +390,12 @@ def test_release_hardening_files_and_vscode_audit_override():
     tmp_version = lock["packages"]["node_modules/tmp"]["version"]
     major, minor, patch = (int(part) for part in tmp_version.split("."))
     assert (major, minor, patch) >= (0, 2, 6)
+
+
+def test_release_workflow_uses_shared_nightly_corpus_and_v2_baseline():
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow = (repo_root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    assert "historical baseline" in workflow
+    assert "historical_tags" in workflow
+    assert "--corpus benchmarks/adaptive/nightly_tasks.json" in workflow

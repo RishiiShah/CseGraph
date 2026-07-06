@@ -9,6 +9,7 @@ from csegraph._core.core.models import ContextResponse
 from csegraph._core.core.serializer import to_dict
 
 SUPPORTED_ENCODINGS = ("o200k_base", "cl100k_base")
+DEFAULT_ENCODING = SUPPORTED_ENCODINGS[0]
 MIN_TOKEN_BUDGET = 256
 MAX_TOKEN_BUDGET = 16_384
 
@@ -45,9 +46,7 @@ def validate_token_budget(value: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError("token_budget must be an integer")
     if value < MIN_TOKEN_BUDGET or value > MAX_TOKEN_BUDGET:
-        raise ValueError(
-            f"token_budget must be between {MIN_TOKEN_BUDGET} and {MAX_TOKEN_BUDGET}"
-        )
+        raise ValueError(f"token_budget must be between {MIN_TOKEN_BUDGET} and {MAX_TOKEN_BUDGET}")
     return value
 
 
@@ -67,16 +66,4 @@ def count_text_tokens(text: str, encoding: str) -> int:
 
 
 def response_tokens(response: ContextResponse) -> int:
-    """Converge the self-reported token count to the serialized MCP payload."""
-    encoding = str(response.usage["encoding"])
-    response.usage["tokens"] = 0
-    for _ in range(8):
-        tokens = count_payload_tokens(to_dict(response), encoding)
-        if response.usage.get("tokens") == tokens:
-            return tokens
-        response.usage["tokens"] = tokens
-    return int(response.usage["tokens"])
-
-
-def response_bytes(response: ContextResponse) -> int:
-    return len(serialized_json(to_dict(response)).encode("utf-8"))
+    return count_payload_tokens(to_dict(response), DEFAULT_ENCODING)

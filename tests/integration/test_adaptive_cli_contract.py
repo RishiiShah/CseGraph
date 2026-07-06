@@ -1,22 +1,24 @@
 from csegraph._cli.renderer import render_context_markdown
 
 
-def test_adaptive_markdown_labels_token_measurement():
+def test_v5_markdown_renders_status_slices_and_continuation():
     rendered = render_context_markdown(
         {
-            "schema_version": "csegraph-context-v4",
-            "status": "ready",
-            "intent": "understand",
-            "target": {"id": "symbol::app.py::function::greet"},
-            "usage": {
-                "tokens": 123,
-                "budget": 800,
-                "encoding": "o200k_base",
-                "measurement": "estimated",
-            },
-            "freshness": {"state": "current", "revision": 4},
+            "schema_version": "csegraph-context-v5",
+            "status": "ambiguous",
             "slices": [],
+            "candidates": [
+                {"id": "symbol::app.py::function::run", "path": "app.py", "lines": [1, 2]}
+            ],
+            "next": {
+                "tool": "csegraph_context",
+                "arguments": {"target": "symbol::app.py::function::run"},
+                "reason": "Choose a target.",
+            },
         }
     )
 
-    assert "Tokens: 123 / 800 (`o200k_base`, estimated)" in rendered
+    assert "ambiguous" in rendered
+    assert "app.py" in rendered
+    assert "csegraph_context" in rendered
+    assert "Arguments" in rendered

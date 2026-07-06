@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterator, List, Optional, Sequence
 
-from csegraph._core.core.errors import UnsupportedSchemaError
+from csegraph._core.core.errors import IndexRequiredError
 from csegraph._core.core.ids import file_node_id
 from csegraph._core.index.schema import (
     METADATA_UPSERT,
@@ -26,63 +27,73 @@ class ProjectIndex:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         for pragma in (
+            "PRAGMA busy_timeout = 5000",
             "PRAGMA journal_mode = WAL",
             "PRAGMA synchronous = NORMAL",
             "PRAGMA foreign_keys = ON",
             "PRAGMA temp_store = MEMORY",
             "PRAGMA cache_size = -64000",
-            "PRAGMA busy_timeout = 5000",
         ):
-            self.conn.execute(pragma)
+            deadline = time.monotonic() + 5.0
+            while True:
+                try:
+                    self.conn.execute(pragma)
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                        self.conn.close()
+                        raise
+                    time.sleep(0.01)
+        self._in_transaction = False
 
     def close(self) -> None:
         self.conn.close()
 
-    def initialize_schema(self, *, reset_on_unsupported: bool = False) -> None:
+    @contextlib.contextmanager
+    def atomic_write(self) -> Iterator[None]:
+        if self._in_transaction:
+            yield
+            return
+
+        # Commit any implicitly started transaction by Python's DB-API
+        self.conn.commit()
+        self.conn.execute("BEGIN IMMEDIATE")
+        self._in_transaction = True
+        try:
+            yield
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        finally:
+            self._in_transaction = False
+
+    def _commit(self) -> None:
+        if not self._in_transaction:
+            self.conn.commit()
+
+    def initialize_schema(self) -> None:
         existing_version = self._existing_schema_version()
         if existing_version is None and self._has_csegraph_objects():
-            if not reset_on_unsupported:
-                raise UnsupportedSchemaError()
-            self._drop_csegraph_objects()
-            existing_version = None
+            raise IndexRequiredError()
         if existing_version is not None and existing_version != SCHEMA_VERSION:
-            if not reset_on_unsupported:
-                raise UnsupportedSchemaError()
-            self._drop_csegraph_objects()
-            existing_version = None
+            raise IndexRequiredError()
 
-        cur = self.conn.cursor()
-        cur.executescript(SCHEMA_DDL)
-        cur.execute(METADATA_UPSERT, (SCHEMA_VERSION,))
-        cur.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
-        self.conn.commit()
-
-    def _drop_csegraph_objects(self) -> None:
-        for name in (
-            "lexical_index",
-            "retrieval_context",
-            "retrieval_runs",
-            "retrieval_plan_cache",
-            "refresh_leases",
-            "embedding_cache",
-            "summaries",
-            "test_assertions",
-            "edge_occurrences",
-            "import_bindings",
-            "symbol_history",
-            "symbol_references",
-            "imports",
-            "relationships",
-            "edges",
-            "symbols",
-            "files",
-            "nodes",
-            "metadata",
-            "schema_meta",
-            "projects",
-        ):
-            self.conn.execute(f"DROP TABLE IF EXISTS {name}")
-        self.conn.commit()
+        # Keep first-use schema publication atomic. Without an explicit
+        # transaction, executescript can expose tables before schema_version,
+        # causing a concurrent opener to misclassify a valid build as outdated.
+        version_upsert = METADATA_UPSERT.replace("?", f"'{SCHEMA_VERSION}'", 1)
+        try:
+            self.conn.executescript(
+                "BEGIN EXCLUSIVE;\n"
+                f"{SCHEMA_DDL}\n"
+                f"{version_upsert};\n"
+                f"PRAGMA user_version = {SCHEMA_USER_VERSION};\n"
+                "COMMIT;\n"
+            )
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def _existing_schema_version(self) -> Optional[str]:
         for table_name in ("metadata", "schema_meta"):
@@ -122,8 +133,8 @@ class ProjectIndex:
     def set_metadata(
         self,
         root_dir: str,
-        profile: str,
         include_roots: Optional[Sequence[str]] = None,
+        indexed_untracked_paths: Optional[Sequence[str]] = None,
     ) -> None:
         now = time.time()
         existing = self.metadata(raise_if_empty=False)
@@ -132,7 +143,6 @@ class ProjectIndex:
         rows = {
             "schema_version": SCHEMA_VERSION,
             "root_dir": root_dir,
-            "active_profile": profile,
             "created_at": created_at,
             "updated_at": str(now),
             "built_branch": branch or "",
@@ -141,6 +151,11 @@ class ProjectIndex:
         }
         if include_roots is not None:
             rows["include_roots"] = json.dumps(list(include_roots), sort_keys=True)
+        if indexed_untracked_paths is not None:
+            rows["indexed_untracked_paths"] = json.dumps(
+                sorted(set(indexed_untracked_paths)),
+                separators=(",", ":"),
+            )
         self.conn.executemany(
             """
             INSERT INTO metadata(key, value)
@@ -149,7 +164,7 @@ class ProjectIndex:
             """,
             sorted(rows.items()),
         )
-        self.conn.commit()
+        self._commit()
 
     def index_revision(self) -> int:
         metadata = self.metadata(raise_if_empty=False)
@@ -168,7 +183,7 @@ class ProjectIndex:
             """,
             (str(revision),),
         )
-        self.conn.commit()
+        self._commit()
         return revision
 
     def checkpoint_git_state(self, root_dir: str) -> None:
@@ -186,7 +201,7 @@ class ProjectIndex:
                 ("updated_at", str(time.time())),
             ),
         )
-        self.conn.commit()
+        self._commit()
 
     def metadata(self, *, raise_if_empty: bool = True) -> Dict[str, str]:
         if not self._table_exists("metadata"):
@@ -203,25 +218,16 @@ class ProjectIndex:
         return values
 
     def clear_graph(self) -> None:
-        self.conn.execute("DELETE FROM retrieval_context")
-        self.conn.execute("DELETE FROM retrieval_runs")
-        self.conn.execute("DELETE FROM retrieval_plan_cache")
         self.conn.execute("DELETE FROM lexical_index")
         self.conn.execute("DELETE FROM summaries")
-        self.conn.execute("DELETE FROM embedding_cache")
-        self.conn.execute("DELETE FROM symbol_references")
-        self.conn.execute("DELETE FROM imports")
-        self.conn.execute("DELETE FROM relationships")
         self.conn.execute("DELETE FROM edges")
-        self.conn.execute("DELETE FROM symbols")
         self.conn.execute("DELETE FROM files")
-        self.conn.execute("DELETE FROM nodes")
-        self.conn.commit()
+        self._commit()
 
     def delete_file_payload(self, rel_path: str, remove_incoming: bool) -> List[str]:
         file_id = file_node_id(rel_path)
         file_row = self.conn.execute(
-            "SELECT id FROM nodes WHERE id = ?",
+            "SELECT id FROM files WHERE id = ?",
             (file_id,),
         ).fetchone()
         if file_row is None:
@@ -230,12 +236,8 @@ class ProjectIndex:
         symbol_ids = [
             row["id"]
             for row in self.conn.execute(
-                """
-                SELECT id FROM nodes
-                WHERE path = ?
-                  AND type IN ('class','function','method','test')
-                """,
-                (rel_path,),
+                "SELECT id FROM symbols WHERE file_id = ?",
+                (file_id,),
             )
         ]
         node_ids = [file_id, *symbol_ids]
@@ -245,25 +247,11 @@ class ProjectIndex:
             f"DELETE FROM edges WHERE source IN ({placeholders})",
             node_ids,
         )
-        self.conn.execute(
-            f"DELETE FROM relationships WHERE source IN ({placeholders})",
-            node_ids,
-        )
         if remove_incoming:
             self.conn.execute(
                 f"DELETE FROM edges WHERE target IN ({placeholders})",
                 node_ids,
             )
-            self.conn.execute(
-                f"DELETE FROM relationships WHERE target IN ({placeholders})",
-                node_ids,
-            )
-        self.conn.execute(
-            f"DELETE FROM symbol_references WHERE source_file_id = ? OR enclosing_symbol_id IN ({placeholders})",
-            [file_id, *node_ids],
-        )
-        self.conn.execute("DELETE FROM imports WHERE file_id = ?", (file_id,))
-        self.conn.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
         self.conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
         self.conn.execute(
             f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
@@ -273,119 +261,34 @@ class ProjectIndex:
             f"DELETE FROM summaries WHERE node_id IN ({placeholders})",
             node_ids,
         )
-        self.conn.execute(
-            f"DELETE FROM embedding_cache WHERE node_id IN ({placeholders})",
-            node_ids,
-        )
-        self.conn.execute(
-            f"DELETE FROM nodes WHERE id IN ({placeholders})",
-            node_ids,
-        )
-        self.conn.commit()
+        self._commit()
         return symbol_ids
 
     def cleanup_orphan_edges(self) -> None:
         self.conn.execute(
             """
             DELETE FROM edges
-             WHERE source NOT IN (SELECT id FROM nodes)
-                OR target NOT IN (SELECT id FROM nodes)
+             WHERE source NOT IN (SELECT id FROM entities)
+                OR target NOT IN (SELECT id FROM entities)
             """
         )
-        self.conn.execute(
-            """
-            DELETE FROM relationships
-             WHERE source NOT IN (SELECT id FROM nodes)
-                OR target NOT IN (SELECT id FROM nodes)
-            """
-        )
-        self.conn.commit()
+        self._commit()
 
-    def cleanup_orphan_folders(self) -> None:
-        """Drop folder nodes that no longer have descendants."""
-        while True:
-            removed = self.conn.execute(
-                """
-                DELETE FROM nodes
-                WHERE type = 'folder'
-                  AND id NOT IN (SELECT parent_id FROM nodes WHERE parent_id IS NOT NULL)
-                """
-            )
-            if removed.rowcount == 0:
-                break
-        self.conn.commit()
+    def verify_lease(self, repo_root: str, owner: str) -> bool:
+        row = self.conn.execute(
+            "SELECT owner, expires_at FROM refresh_leases WHERE repo_root = ?",
+            (repo_root,),
+        ).fetchone()
+        return row is not None and row["owner"] == owner and float(row["expires_at"]) > time.time()
 
-    def insert_retrieval_run(
-        self,
-        query: str,
-        target: str,
-        profile: str,
-        metrics: Dict[str, float],
-        sufficient: bool,
-    ) -> int:
-        cur = self.conn.execute(
-            """
-            INSERT INTO retrieval_runs(
-                query, target, profile,
-                dependency_completeness, entity_coverage, semantic_overlap,
-                model_confidence, sufficient, created_at
-            )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                query,
-                target,
-                profile,
-                metrics["dependency_completeness"],
-                metrics["entity_coverage"],
-                metrics["semantic_overlap"],
-                metrics["model_confidence"],
-                1 if sufficient else 0,
-                time.time(),
-            ),
-        )
-        self.conn.commit()
-        row_id = cur.lastrowid
-        if row_id is None:
-            raise RuntimeError("SQLite did not return a retrieval run id")
-        return int(row_id)
+    def validate_integrity(self) -> None:
+        foreign_key_errors = self.conn.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise RuntimeError(f"Foreign-key validation failed: {foreign_key_errors!r}")
+        integrity = self.conn.execute("PRAGMA integrity_check").fetchone()
+        if integrity is None or integrity[0] != "ok":
+            result = integrity[0] if integrity else "no result"
+            raise RuntimeError(f"SQLite integrity validation failed: {result}")
 
-    def insert_retrieval_context(
-        self,
-        run_id: int,
-        rows: Iterable[Dict[str, Any]],
-    ) -> None:
-        params = [
-            (
-                run_id,
-                row["node_id"],
-                row["rank"],
-                row["score"],
-                1 if row["raw_code"] else 0,
-                json.dumps(row["evidence"], sort_keys=True),
-            )
-            for row in rows
-        ]
-        if params:
-            self.conn.executemany(
-                """
-                INSERT OR REPLACE INTO retrieval_context(
-                    run_id, node_id, rank, score, raw_code, evidence
-                )
-                VALUES(?, ?, ?, ?, ?, ?)
-                """,
-                params,
-            )
-            self.conn.commit()
-
-
-def json_dumps(value: Optional[Dict[str, Any]]) -> str:
-    if value is None:
-        return "{}"
-    return json.dumps(value, sort_keys=True)
-
-
-def json_loads(value: Optional[str]) -> Dict[str, Any]:
-    if not value:
-        return {}
-    return json.loads(value)
+    def optimize(self) -> None:
+        self.conn.execute("PRAGMA optimize")

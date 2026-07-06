@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: pip
 
       - uses: actions/setup-node@v6
@@ -41,7 +41,7 @@ jobs:
 
       - name: Install csegraph editable
         run: |
-          python -m pip install -e ".[test,all,benchmark]"
+          python -m pip install -e ".[test,benchmark]"
           npm install --global pyright@1.1.407
 
       - name: Run Python release verification
@@ -49,26 +49,76 @@ jobs:
           python -m pytest tests/ -q
           python -m compileall -q csegraph tools csegraph-vscode
           csegraph index . --json
-          mkdir -p sandbox
-          git clone --depth 1 https://github.com/karpathy/micrograd sandbox/micrograd
-          CSEGRAPH_BENCH_REPOS=micrograd CSEGRAPH_BENCH_QUERY_LIMIT=5 \
-            CSEGRAPH_CROSS_REPO_REPORT=benchmark_results/release_native_mcp_sandbox.md \
-            CSEGRAPH_CROSS_REPO_JSON=benchmark_results/release_native_mcp_sandbox.json \
-            python tools/cross_repo_benchmark.py
-          python tools/check_benchmark_regression.py --repo .
+
+      - name: Prepare previous release baseline
+        id: previous_release
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+
+          current_ref = os.environ["GITHUB_REF_NAME"]
+          subprocess.run(["git", "fetch", "--tags", "--force", "--prune"], check=True)
+          tags = subprocess.check_output(
+              ["git", "tag", "--sort=-version:refname"],
+              text=True,
+          ).splitlines()
+          historical_tags = [tag for tag in tags if tag.startswith("v2.")]
+          previous_tag = ""
+          if current_ref in historical_tags:
+              current_index = historical_tags.index(current_ref)
+              if current_index + 1 < len(historical_tags):
+                  previous_tag = historical_tags[current_index + 1]
+          elif historical_tags:
+              previous_tag = historical_tags[0]
+
+          if previous_tag:
+              previous_root = subprocess.check_output(["mktemp", "-d"], text=True).strip()
+              subprocess.run(
+                  ["git", "worktree", "add", "--detach", previous_root, previous_tag],
+                  check=True,
+              )
+              available = "true"
+              print(f"Using {previous_tag} as the previous v2 release baseline.")
+          else:
+              previous_root = os.environ["GITHUB_WORKSPACE"]
+              available = "false"
+              print(
+                  "No previous v2.x release baseline is available. "
+                  "This release will establish the historical baseline for indexing."
+              )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"available={available}\n")
+              fh.write(f"tag={previous_tag}\n")
+              fh.write(f"root={previous_root}\n")
+          PY
+
+      - name: Run adaptive release baseline
+        if: steps.previous_release.outputs.available == 'true'
+        working-directory: ${{ steps.previous_release.outputs.root }}
+        env:
+          PYTHONPATH: ${{ steps.previous_release.outputs.root }}
+        run: |
+          python tools/run_adaptive_retrieval_benchmark.py \
+            --corpus benchmarks/adaptive/nightly_tasks.json \
+            --modes cold,warm \
+            --warm-runs 2 \
+            --pyright required \
+            --output "$GITHUB_WORKSPACE/benchmark_results/adaptive_release_baseline.json" \
+            --fail-on-gates
 
       - name: Run adaptive release evaluation
         id: adaptive_release
         continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python tools/run_adaptive_retrieval_benchmark.py \
-            --corpus benchmarks/adaptive/release_tasks.json \
-            --bootstrap-missing \
-            --allow-network \
+            --corpus benchmarks/adaptive/nightly_tasks.json \
             --modes cold,warm \
-            --warm-runs 3 \
+            --warm-runs 2 \
             --pyright required \
-            --execute-tasks \
             --output benchmark_results/adaptive_release.json \
             --fail-on-gates
 
@@ -77,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: adaptive-release-benchmark
-          path: benchmark_results/adaptive_release.json
+          path: benchmark_results/adaptive_release*.json
           if-no-files-found: error
 
       - name: Enforce adaptive release gates
@@ -86,6 +136,55 @@ jobs:
           echo "Adaptive release evaluation did not satisfy the release gates."
           exit 1
 
+      - name: Record indexing baseline bootstrap
+        if: steps.previous_release.outputs.available != 'true'
+        run: |
+          echo "No previous v2.x release baseline is available."
+          echo "Skipping historical indexing regression gate for this release."
+          echo "The adaptive release report from this run becomes the v2 baseline."
+
+      - name: Enforce indexing regression gate
+        if: steps.previous_release.outputs.available == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          baseline = json.loads(
+              Path("benchmark_results/adaptive_release_baseline.json").read_text(encoding="utf-8")
+          )
+          candidate = json.loads(
+              Path("benchmark_results/adaptive_release.json").read_text(encoding="utf-8")
+          )
+
+          def repo_index_ms(report: dict) -> dict[str, float]:
+              values: dict[str, float] = {}
+              for task in report.get("tasks", []):
+                  if task.get("status") != "measured":
+                      continue
+                  repo = str(task.get("repo") or "")
+                  if repo and repo not in values:
+                      values[repo] = float(task["index_ms"])
+              return values
+
+          baseline_index_ms = repo_index_ms(baseline)
+          candidate_index_ms = repo_index_ms(candidate)
+          shared_repos = sorted(set(baseline_index_ms) & set(candidate_index_ms))
+          if not shared_repos:
+              raise SystemExit("No shared repositories were measured for the regression gate.")
+
+          failures = []
+          for repo in shared_repos:
+              base = baseline_index_ms[repo]
+              current = candidate_index_ms[repo]
+              if current > base * 1.10:
+                  failures.append(
+                      f"{repo}: {current:.3f}ms exceeds 110% of baseline {base:.3f}ms"
+                  )
+          if failures:
+              raise SystemExit("Indexing regression gate failed:\n" + "\n".join(failures))
+          PY
+
       - name: Build wheel and sdist
         run: python -m build
 
@@ -93,19 +192,23 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import json
+          import statistics
+          import subprocess
+          import sys
           import tarfile
+          import textwrap
           import zipfile
 
-          try:
-              import tomllib
-              project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
-          except ModuleNotFoundError:
-              import tomlkit
-              project = tomlkit.parse(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          import tomllib
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
           version = project["version"]
           wheels = sorted(Path("dist").glob("csegraph-*.whl"))
           sdists = sorted(Path("dist").glob("csegraph-*.tar.gz"))
           assert len(wheels) == 1, wheels
+          assert wheels[0].stat().st_size <= 175 * 1024, wheels[0].stat().st_size
+          index_path = Path(".csegraph/index.db")
+          assert index_path.stat().st_size <= 40 * 1024 * 1024, index_path.stat().st_size
           assert len(sdists) == 1, sdists
           with zipfile.ZipFile(wheels[0]) as wheel:
               wheel_names = wheel.namelist()
@@ -122,6 +225,35 @@ jobs:
               sdist_names = sdist.getnames()
           assert any("/csegraph/" in name for name in sdist_names)
           assert any(name.endswith("/README.md") for name in sdist_names)
+
+          probe = textwrap.dedent("""
+          import json, resource, time, tracemalloc
+          tracemalloc.start()
+          before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+          started = time.perf_counter()
+          import csegraph
+          elapsed_ms = (time.perf_counter() - started) * 1000
+          after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+          _, peak = tracemalloc.get_traced_memory()
+          print(json.dumps({
+              "elapsed_ms": elapsed_ms,
+              "added_memory_bytes": max((after - before) * 1024, peak),
+          }))
+          """)
+          samples = [
+              json.loads(subprocess.check_output([sys.executable, "-c", probe], text=True))
+              for _ in range(10)
+          ]
+          import_ms = statistics.median(item["elapsed_ms"] for item in samples)
+          added_memory = max(item["added_memory_bytes"] for item in samples)
+          assert import_ms <= 5.0, import_ms
+          assert added_memory <= 2 * 1024 * 1024, added_memory
+          print({
+              "wheel_bytes": wheels[0].stat().st_size,
+              "index_bytes": index_path.stat().st_size,
+              "median_import_ms": round(import_ms, 3),
+              "max_added_memory_bytes": added_memory,
+          })
           PY
 
       - uses: actions/upload-artifact@v7

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from csegraph._core.benchmark_baseline import (
+from tools.adaptive_benchmark import (
     AdaptiveBenchmarkTask,
     BenchmarkRepository,
     PyrightLspProvider,
@@ -16,7 +16,6 @@ from csegraph._core.benchmark_baseline import (
     corpus_completeness,
     execute_benchmark_task,
     load_adaptive_corpus,
-    load_adaptive_tasks,
     prepare_benchmark_repository,
 )
 
@@ -25,8 +24,7 @@ def test_strong_baseline_uses_bounded_selective_reads(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "helpers.py").write_text(
-        "def clean_name(value: str) -> str:\n"
-        "    return value.strip().title()\n",
+        "def clean_name(value: str) -> str:\n    return value.strip().title()\n",
         encoding="utf-8",
     )
     (repo / "users.py").write_text(
@@ -54,57 +52,134 @@ def test_strong_baseline_final_metadata_remains_inside_budget(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text(
-        "def greet(name: str) -> str:\n"
-        "    return f'hello {name}'\n",
+        "def greet(name: str) -> str:\n    return f'hello {name}'\n",
         encoding="utf-8",
     )
 
     class UnavailableProvider:
         warning = "optional language server unavailable " * 20
         last_latency_ms = 0.0
+        calls: list[str] = []
 
         def definitions(self, *_args):
+            self.calls.append("definitions")
             return []
 
         def references(self, *_args):
+            self.calls.append("references")
             return []
 
-    result = StrongBaselineAdapter(
-        definition_provider=UnavailableProvider()
-    ).retrieve(
+    provider = UnavailableProvider()
+    result = StrongBaselineAdapter(definition_provider=provider).retrieve(
         repo,
         "Explain greet",
         target="greet",
+        task_kind="definition",
         token_budget=512,
     )
 
     assert result.slices
     assert result.slices[0].role == "target"
+    assert provider.calls == []
+    assert result.usage["lsp_calls"] == 0
     assert result.usage["tokens"] <= 512
 
 
-def test_pr_adaptive_corpus_has_twenty_versioned_tasks():
-    repo_root = Path(__file__).resolve().parents[2]
-    tasks = load_adaptive_tasks(repo_root / "benchmarks" / "adaptive" / "pr_tasks.json")
+def test_strong_baseline_uses_references_for_impact_task(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+        encoding="utf-8",
+    )
 
+    class RecordingProvider:
+        warning = None
+        last_latency_ms = 0.0
+
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def definitions(self, *_args):
+            self.calls.append("definitions")
+            return []
+
+        def references(self, *_args):
+            self.calls.append("references")
+            return []
+
+    provider = RecordingProvider()
+    result = StrongBaselineAdapter(definition_provider=provider).retrieve(
+        repo,
+        "Update greet and inspect its callers",
+        target="greet",
+        task_kind="cross-file",
+        token_budget=800,
+    )
+
+    assert provider.calls == ["references"]
+    assert result.usage["lsp_calls"] == 1
+
+
+def test_pr_adaptive_corpus_has_balanced_twenty_task_v2_fixture():
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus = load_adaptive_corpus(repo_root / "benchmarks" / "adaptive" / "pr_tasks.json")
+    tasks = list(corpus.tasks)
+
+    assert corpus.schema_version == "csegraph-adaptive-benchmark-v2"
     assert len(tasks) == 20
     assert len({task.id for task in tasks}) == 20
     assert all(len(task.commit) == 40 for task in tasks)
-    assert all(task.expected_locations for task in tasks)
+    assert sum(task.target is None for task in tasks) >= 8
+    assert sum(task.category == "ambiguous" for task in tasks) == 4
+    assert sum(task.category == "structural" for task in tasks) == 2
+    assert all(task.permitted_ranges for task in tasks)
+    assert all(
+        task.expected_target is not None for task in tasks if task.expected_status == "ready"
+    )
+    assert corpus_completeness(corpus)["complete"] is True
 
 
 def test_all_corpus_manifests_report_honest_completeness():
     repo_root = Path(__file__).resolve().parents[2]
     pr = load_adaptive_corpus(repo_root / "benchmarks/adaptive/pr_tasks.json")
     nightly = load_adaptive_corpus(repo_root / "benchmarks/adaptive/nightly_tasks.json")
-    release = load_adaptive_corpus(repo_root / "benchmarks/adaptive/release_tasks.json")
 
     assert corpus_completeness(pr)["complete"] is True
     assert len(nightly.tasks) == 60
+    assert nightly.status == "ready"
+    assert all(task.expected_status == "ready" for task in nightly.tasks)
+    assert {
+        category: sum(task.category == category for task in nightly.tasks)
+        for category in {"definition", "debug", "refactor", "cross-file", "test-impact"}
+    } == {
+        "definition": 12,
+        "debug": 12,
+        "refactor": 12,
+        "cross-file": 12,
+        "test-impact": 12,
+    }
+    assert sum(task.repo == "benchmarks/fixtures/adaptive_pr" for task in nightly.tasks) == 30
+    assert sum(task.repo == "benchmarks/fixtures/adaptive_js_ts" for task in nightly.tasks) == 30
     assert corpus_completeness(nightly)["complete"] is True
-    assert release.status == "blocked"
-    assert release.unsupported_reason
-    assert corpus_completeness(release)["complete"] is False
+
+
+def test_local_pr_fixture_revision_is_content_addressed(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/pr_tasks.json")
+    repository = corpus.repositories["benchmarks/fixtures/adaptive_pr"]
+
+    prepared = prepare_benchmark_repository(
+        repository,
+        repo_root=repo_root,
+        cache_root=tmp_path,
+        bootstrap_missing=False,
+    )
+
+    assert prepared.path == (repo_root / repository.path).resolve()
+    assert prepared.observed_commit == repository.commit
+    assert prepared.commit_matches is True
+    assert prepared.bootstrapped is False
 
 
 def test_corpus_loader_rejects_duplicate_task_ids(tmp_path: Path):
@@ -143,6 +218,38 @@ def test_corpus_loader_rejects_duplicate_task_ids(tmp_path: Path):
         load_adaptive_corpus(path)
 
 
+def test_v2_corpus_loader_rejects_file_only_expectations(tmp_path: Path):
+    corpus = {
+        "schema_version": "csegraph-adaptive-benchmark-v2",
+        "corpus_version": "test",
+        "tier": "pr",
+        "status": "ready",
+        "repositories": {
+            "fixture": {
+                "url": "fixture://local",
+                "commit": "a" * 40,
+            }
+        },
+        "tasks": [
+            {
+                "id": "file-only",
+                "repo": "fixture",
+                "commit": "a" * 40,
+                "category": "definition",
+                "task": "Explain greet",
+                "expected_status": "ready",
+                "expected_locations": ["app.py"],
+                "permitted_files": ["app.py"],
+            }
+        ],
+    }
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(corpus), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected_target"):
+        load_adaptive_corpus(path)
+
+
 def test_strong_baseline_normalizes_explicit_symbol_ids(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -153,9 +260,7 @@ def test_strong_baseline_normalizes_explicit_symbol_ids(tmp_path: Path):
         encoding="utf-8",
     )
     (repo / "model.py").write_text(
-        "class Attention:\n"
-        "    def forward(self, value):\n"
-        "        return value\n",
+        "class Attention:\n    def forward(self, value):\n        return value\n",
         encoding="utf-8",
     )
 
@@ -193,11 +298,11 @@ def test_lsp_locations_accepts_location_and_location_link():
 
 def test_pyright_provider_disables_version_mismatch(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
-        "csegraph._core.benchmark_baseline.shutil.which",
+        "tools.adaptive_benchmark.shutil.which",
         lambda command: f"/bin/{command}",
     )
     monkeypatch.setattr(
-        "csegraph._core.benchmark_baseline.subprocess.run",
+        "tools.adaptive_benchmark.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(
             args=args[0],
             returncode=0,
@@ -224,7 +329,10 @@ def test_repository_bootstrap_uses_pinned_local_commit(tmp_path: Path):
         ["git", "-C", str(source), "config", "user.name", "Benchmark"],
         check=True,
     )
-    (source / "app.py").write_text("def hello():\n    return 'hello'\n", encoding="utf-8")
+    (source / "app.py").write_text(
+        "def hello():\n    return 'hello'\n",
+        encoding="utf-8",
+    )
     subprocess.run(["git", "-C", str(source), "add", "app.py"], check=True)
     subprocess.run(["git", "-C", str(source), "commit", "-qm", "fixture"], check=True)
     commit = subprocess.check_output(
@@ -277,7 +385,7 @@ def test_agent_task_executor_runs_argv_checks_and_enforces_permitted_files(
         test_command=(
             sys.executable,
             "-c",
-            "from pathlib import Path; assert 'VALUE = 2' in Path('app.py').read_text()",
+            ("from pathlib import Path; assert 'VALUE = 2' in Path('app.py').read_text()"),
         ),
         hidden_checks=(
             (

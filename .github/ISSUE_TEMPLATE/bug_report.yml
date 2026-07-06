@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve CseGraph. Please do not include private code, `.csegraph/` databases, local registry files, logs, or generated artifacts unless they are essential to a minimal reproduction.
+        Thanks for helping improve CseGraph. Please do not include private code, `.csegraph/` databases, local client configs, or generated artifacts unless they are essential to a minimal reproduction.
   - type: dropdown
     id: surface
     attributes:
@@ -53,7 +53,7 @@ body:
     attributes:
       label: CseGraph version
       description: Output of `csegraph --version`, package version, or extension version.
-      placeholder: "csegraph 1.x.x"
+      placeholder: "csegraph 2.0.0"
     validations:
       required: true
   - type: input
@@ -78,4 +78,4 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: Mention language/framework, repository size, retrieval profile, MCP client, or extension settings if relevant.
+      description: Mention language/framework, repository size, MCP client, or extension settings if relevant.

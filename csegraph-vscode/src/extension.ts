@@ -41,7 +41,6 @@ export function activate(context: vscode.ExtensionContext): void {
     const ext = path.extname(doc.fileName).toLowerCase();
     const watched = new Set([
       ".py", ".ts", ".tsx", ".js", ".jsx",
-      ".go", ".rs", ".java", ".rb", ".c", ".cpp", ".h",
     ]);
     if (!watched.has(ext)) {
       return;
@@ -81,23 +80,15 @@ export function deactivate(): void {
 // ---------------------------------------------------------------------------
 
 function cmdIndex(): void {
-  runWithProgress(
-    "Building index...",
-    "index",
-    getProfileArgs(["--postprocess", "full"])
-  );
+  runWithProgress("Building index...", "index");
 }
 
 function cmdRefresh(): void {
-  runWithProgress(
-    "Refreshing...",
-    "refresh",
-    getProfileArgs(["--postprocess", "minimal"])
-  );
+  runWithProgress("Refreshing...", "refresh");
 }
 
 function cmdStatus(): void {
-  run("status", ["--verbose"]);
+  run("status");
 }
 
 async function cmdContext(): Promise<void> {
@@ -118,7 +109,7 @@ async function cmdContext(): Promise<void> {
       args.push("--target", symbol);
     }
   }
-  run("context", getProfileArgs(args));
+  run("context", args);
 }
 
 async function cmdInspect(): Promise<void> {
@@ -138,7 +129,7 @@ async function cmdInspect(): Promise<void> {
   if (!symbol) {
     return;
   }
-  run("inspect", [symbol, "--depth", "1", "--detail-level", "standard"]);
+  run("graph", [symbol, "--depth", "1"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +224,7 @@ function silentRefresh(): void {
   const cli = getCliCommand(root);
   execFile(
     cli,
-    ["refresh", ...getProfileArgs(["--postprocess", "minimal"])],
+    ["refresh"],
     { cwd: root, timeout: 60_000 },
     (_err, _stdout, _stderr) => {
       updateStatusBar();
@@ -308,12 +299,6 @@ function getWorkspaceRoot(): string | undefined {
     return undefined;
   }
   return folders[0].uri.fsPath;
-}
-
-function getProfileArgs(args: string[] = []): string[] {
-  const config = vscode.workspace.getConfiguration("csegraph");
-  const profile = config.get<string>("profile", "auto");
-  return [...args, "--profile", profile];
 }
 
 function appendCommandOutput(stdout: string, stderr: string): void {

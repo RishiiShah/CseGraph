@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import sqlite3
 import subprocess
 import threading
@@ -8,14 +9,16 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
-from csegraph._core.index.migrations import migrate_schema
+from csegraph._core.core.errors import IndexRequiredError
+from csegraph._core.core.models import RefreshResult
+from csegraph._core.ignore import load_ignore_filter
 from csegraph._core.index.repository import ProjectIndex
-from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.index.services import IndexService, RefreshService
 from csegraph._core.languages.base import sha256_text
-from csegraph._core.languages.registry import registry
+from csegraph._core.languages.registry import UnsupportedLanguageError, registry
+from csegraph._core.repo_state import git_tracked_paths
 
 AUTO_INDEX_FILE_LIMIT = 500
 AUTO_REFRESH_TIMEOUT_SECONDS = 5.0
@@ -24,6 +27,7 @@ _REFRESH_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=2,
     thread_name_prefix="csegraph-refresh",
 )
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -34,6 +38,26 @@ class FreshnessResult:
     status: str | None = None
     warnings: list[str] = field(default_factory=list)
     next: dict[str, Any] | None = None
+
+
+def _reused_refresh_result(
+    db_path: str,
+    repo_path: Path,
+) -> RefreshResult:
+    del db_path, repo_path
+    return RefreshResult(
+        files_indexed=0,
+        symbols_indexed=0,
+        edges_indexed=0,
+        cache_hits=0,
+        cache_misses=0,
+        unchanged_files=[],
+        changed_files=[],
+        deleted_files=[],
+        parse_errors={},
+        warnings=["Reused the revision published by another refresh process."],
+        timings_ms={},
+    )
 
 
 class FreshnessCoordinator:
@@ -52,9 +76,7 @@ class FreshnessCoordinator:
         self.lease_seconds = max(0.1, lease_seconds)
         default_renew_interval = min(5.0, self.lease_seconds / 3.0)
         requested_renew_interval = (
-            lease_renew_interval
-            if lease_renew_interval is not None
-            else default_renew_interval
+            lease_renew_interval if lease_renew_interval is not None else default_renew_interval
         )
         self.lease_renew_interval = min(
             max(0.02, requested_renew_interval),
@@ -70,9 +92,19 @@ class FreshnessCoordinator:
 
         index = ProjectIndex(self.db_path)
         try:
-            self._migrate(index)
-            index.initialize_schema()
-            metadata = index.metadata()
+            try:
+                index.initialize_schema()
+            except IndexRequiredError:
+                return self._index_required(
+                    "The existing index uses an unsupported schema and must be rebuilt."
+                )
+            metadata = index.metadata(raise_if_empty=False)
+            if "root_dir" not in metadata:
+                if repo_path is None:
+                    return self._index_required(
+                        "Repository path is required while the index is initializing."
+                    )
+                return self._bootstrap(repo_path)
             indexed_repo = Path(metadata["root_dir"]).resolve()
             if repo_path is not None and repo_path != indexed_repo:
                 return self._index_required(
@@ -82,19 +114,13 @@ class FreshnessCoordinator:
             revision = index.index_revision()
             changed_paths = _detect_changed_paths(index, repo_path, metadata)
             if not changed_paths:
-                current_commit = _run_git(
-                    repo_path, ["rev-parse", "--short=12", "HEAD"]
-                )
-                current_branch = _run_git(
-                    repo_path, ["rev-parse", "--abbrev-ref", "HEAD"]
-                )
-                if (
-                    metadata.get("built_commit", "") != (current_commit or "")
-                    or metadata.get("built_branch", "") != (current_branch or "")
-                ):
+                current_commit = _run_git(repo_path, ["rev-parse", "--short=12", "HEAD"])
+                current_branch = _run_git(repo_path, ["rev-parse", "--abbrev-ref", "HEAD"])
+                if metadata.get("built_commit", "") != (current_commit or "") or metadata.get(
+                    "built_branch", ""
+                ) != (current_branch or ""):
                     index.checkpoint_git_state(str(repo_path))
                 return FreshnessResult(state="current", revision=revision)
-            profile = metadata.get("active_profile") or "auto"
         finally:
             index.close()
 
@@ -106,7 +132,6 @@ class FreshnessCoordinator:
             self._refresh_and_release,
             str(repo_path),
             owner,
-            profile,
             changed_paths,
         )
         try:
@@ -137,6 +162,48 @@ class FreshnessCoordinator:
             )
         return result
 
+    def explicit_refresh(self, repo: str | Path) -> Any:
+        repo_path = Path(repo).resolve()
+
+        index = ProjectIndex(self.db_path)
+        try:
+            index.initialize_schema()
+            metadata = index.metadata()
+            indexed_repo = Path(metadata["root_dir"]).resolve()
+            if indexed_repo != repo_path:
+                raise ValueError("The supplied repository does not match the indexed repository.")
+            revision = index.index_revision()
+        finally:
+            index.close()
+
+        owner = uuid.uuid4().hex
+        if not self._acquire_lease(str(repo_path), owner):
+            result = self._wait_for_active_refresh(
+                str(repo_path),
+                revision,
+                timeout=self.lease_seconds,
+            )
+            if result.state == "current":
+                return _reused_refresh_result(self.db_path, repo_path)
+            if not self._acquire_lease(str(repo_path), owner):
+                raise RuntimeError("Another refresh is still in progress.")
+
+        index = ProjectIndex(self.db_path)
+        try:
+            metadata = index.metadata()
+            changed_paths = _detect_changed_paths(index, repo_path, metadata)
+        finally:
+            index.close()
+
+        future = _REFRESH_EXECUTOR.submit(
+            self._refresh_and_release,
+            str(repo_path),
+            owner,
+            changed_paths,
+            True,
+        )
+        return future.result()
+
     def _has_index(self) -> bool:
         db = Path(self.db_path)
         if not db.exists() or db.stat().st_size == 0:
@@ -158,9 +225,7 @@ class FreshnessCoordinator:
                 ).fetchone()
                 if metadata_exists is None:
                     return True
-                root = conn.execute(
-                    "SELECT 1 FROM metadata WHERE key='root_dir'"
-                ).fetchone()
+                root = conn.execute("SELECT 1 FROM metadata WHERE key='root_dir'").fetchone()
                 version = conn.execute(
                     "SELECT 1 FROM metadata WHERE key='schema_version'"
                 ).fetchone()
@@ -178,8 +243,39 @@ class FreshnessCoordinator:
                 return self._index_required(
                     f"Repository has more than {self.auto_index_file_limit} discoverable source files."
                 )
+        index = ProjectIndex(self.db_path)
         try:
-            IndexService(self.db_path).index(repo, profile="auto")
+            index.initialize_schema()
+            revision = index.index_revision()
+            metadata = index.metadata(raise_if_empty=False)
+            if metadata.get("root_dir") == str(repo) and revision > 0:
+                return FreshnessResult(
+                    state="current",
+                    revision=revision,
+                    refreshed_files=0,
+                )
+        finally:
+            index.close()
+
+        owner = uuid.uuid4().hex
+        if not self._acquire_lease(str(repo), owner):
+            waited = self._wait_for_active_refresh(str(repo), revision)
+            if waited.state == "current":
+                return waited
+            if not self._acquire_lease(str(repo), owner):
+                return FreshnessResult(
+                    state="initializing",
+                    revision=revision,
+                    status="refresh_required",
+                    warnings=["Another process is building the initial index."],
+                    next={
+                        "tool": "csegraph_context",
+                        "reason": "Retry after the active index build completes.",
+                    },
+                )
+
+        try:
+            result = self._index_and_release(str(repo), owner)
         except Exception as exc:
             return FreshnessResult(
                 state="missing",
@@ -187,15 +283,11 @@ class FreshnessCoordinator:
                 warnings=[f"Automatic index creation failed: {exc}"],
                 next={"tool": "csegraph_index", "reason": "Build the repository index."},
             )
-        index = ProjectIndex(self.db_path)
-        try:
-            return FreshnessResult(
-                state="indexed",
-                revision=index.index_revision(),
-                refreshed_files=file_count,
-            )
-        finally:
-            index.close()
+        return FreshnessResult(
+            state="indexed",
+            revision=result,
+            refreshed_files=file_count,
+        )
 
     def _index_required(self, reason: str) -> FreshnessResult:
         return FreshnessResult(
@@ -204,25 +296,6 @@ class FreshnessCoordinator:
             warnings=[reason],
             next={"tool": "csegraph_index", "reason": "Build the repository index."},
         )
-
-    def _migrate(self, index: ProjectIndex) -> None:
-        table = None
-        for candidate in ("metadata", "schema_meta"):
-            exists = index.conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                (candidate,),
-            ).fetchone()
-            if exists is not None:
-                table = candidate
-                break
-        if table is None:
-            return
-        row = index.conn.execute(
-            f"SELECT value FROM {table} WHERE key='schema_version'"
-        ).fetchone()
-        if row is not None and row["value"] != SCHEMA_VERSION:
-            migrate_schema(index.conn, str(row["value"]))
-            index.conn.commit()
 
     def _acquire_lease(self, repo_root: str, owner: str) -> bool:
         index = ProjectIndex(self.db_path)
@@ -279,9 +352,65 @@ class FreshnessCoordinator:
         self,
         repo_root: str,
         owner: str,
-        profile: str,
-        changed_paths: list[Path],
-    ) -> FreshnessResult:
+        changed_paths: list[Path] | None,
+        return_full_result: bool = False,
+    ) -> Any:
+        def operation() -> Any:
+            result = RefreshService(self.db_path).refresh(
+                changed_paths=changed_paths,
+                lease_owner=owner,
+            )
+            index = ProjectIndex(self.db_path)
+            try:
+                revision = index.index_revision()
+            finally:
+                index.close()
+
+            if return_full_result:
+                return result
+            return FreshnessResult(
+                state="refreshed",
+                revision=revision,
+                refreshed_files=len(set(result.changed_files) | set(result.deleted_files)),
+                warnings=list(result.warnings),
+            )
+
+        return self._run_with_renewed_lease(
+            repo_root,
+            owner,
+            "Refresh",
+            operation,
+        )
+
+    def _index_and_release(self, repo_root: str, owner: str) -> int:
+        def operation() -> int:
+            IndexService(self.db_path).index(
+                repo_root,
+                lease_owner=owner,
+            )
+            index = ProjectIndex(self.db_path)
+            try:
+                return index.index_revision()
+            finally:
+                index.close()
+
+        return self._run_with_renewed_lease(
+            repo_root,
+            owner,
+            "Index",
+            operation,
+            replaces_database=True,
+        )
+
+    def _run_with_renewed_lease(
+        self,
+        repo_root: str,
+        owner: str,
+        operation_name: str,
+        operation: Callable[[], _T],
+        *,
+        replaces_database: bool = False,
+    ) -> _T:
         stop_renewal = threading.Event()
         lease_lost = threading.Event()
         confirmed_until = [time.time() + self.lease_seconds]
@@ -294,43 +423,26 @@ class FreshnessCoordinator:
                         return
                     confirmed_until[0] = time.time() + self.lease_seconds
                 except sqlite3.Error:
-                    # A short-lived writer may delay renewal. Once the last
-                    # confirmed lease window has elapsed, however, this owner
-                    # must be fenced out even if SQLite remained busy.
                     if time.time() >= confirmed_until[0]:
                         lease_lost.set()
                         return
 
         renewal_thread = threading.Thread(
             target=renew_lease,
-            name=f"csegraph-refresh-lease-{owner[:8]}",
+            name=f"csegraph-{operation_name.lower()}-lease-{owner[:8]}",
             daemon=True,
         )
         renewal_thread.start()
         try:
             if not self._renew_lease(repo_root, owner):
-                raise RuntimeError("Refresh lease ownership was lost before refresh.")
+                raise RuntimeError(f"{operation_name} lease ownership was lost before starting.")
             confirmed_until[0] = time.time() + self.lease_seconds
-            result = RefreshService(self.db_path).refresh(
-                profile=profile,
-                changed_paths=changed_paths,
-            )
-            # This synchronous renewal is also the final ownership fence. It
-            # prevents an expired or replaced owner from reporting successful
-            # freshness even if its refresh call happened to finish.
-            if lease_lost.is_set() or not self._renew_lease(repo_root, owner):
-                raise RuntimeError("Refresh lease ownership was lost before completion.")
-            index = ProjectIndex(self.db_path)
-            try:
-                revision = index.index_revision()
-            finally:
-                index.close()
-            return FreshnessResult(
-                state="refreshed",
-                revision=revision,
-                refreshed_files=len(set(result.changed_files) | set(result.deleted_files)),
-                warnings=list(result.warnings),
-            )
+            result = operation()
+            if not replaces_database and (
+                lease_lost.is_set() or not self._renew_lease(repo_root, owner)
+            ):
+                raise RuntimeError(f"{operation_name} lease ownership was lost before completion.")
+            return result
         finally:
             stop_renewal.set()
             renewal_thread.join(timeout=max(1.0, self.lease_renew_interval * 2.0))
@@ -340,8 +452,10 @@ class FreshnessCoordinator:
         self,
         repo_root: str,
         previous_revision: int,
+        timeout: float | None = None,
     ) -> FreshnessResult:
-        deadline = time.monotonic() + self.refresh_timeout
+        timeout = timeout if timeout is not None else self.refresh_timeout
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             index = ProjectIndex(self.db_path)
             try:
@@ -387,10 +501,10 @@ def _git_changed_paths(repo: Path, built_commit: str | None) -> list[Path] | Non
 
     commands: list[list[str]] = []
     if built_commit and not head.startswith(built_commit):
-        commands.append(["diff", "--name-only", "-z", built_commit, "HEAD", "--"])
+        commands.append(["diff", "--name-only", "--no-renames", "-z", built_commit, "HEAD", "--"])
     commands.extend(
         [
-            ["diff", "--name-only", "-z", "HEAD", "--"],
+            ["diff", "--name-only", "--no-renames", "-z", "HEAD", "--"],
             ["ls-files", "--others", "--exclude-standard", "-z"],
         ]
     )
@@ -477,14 +591,58 @@ def _filter_indexed_content(
     repo: Path,
     paths: list[Path],
 ) -> list[Path]:
-    stored = {
-        str(row["path"]): str(row["sha256"])
-        for row in index.conn.execute("SELECT path, sha256 FROM files")
-    }
+    metadata = index.metadata(raise_if_empty=False)
+    ignore = load_ignore_filter(repo)
+    try:
+        include_roots = tuple(
+            str(value).strip("/")
+            for value in json.loads(metadata.get("include_roots", "[]"))
+            if isinstance(value, str)
+        )
+    except (TypeError, json.JSONDecodeError):
+        include_roots = ()
+    raw_untracked = metadata.get("indexed_untracked_paths")
+    if raw_untracked is None:
+        stored = {
+            str(row["path"]): str(row["sha256"])
+            for row in index.conn.execute("SELECT path, sha256 FROM files")
+        }
+        tracked = git_tracked_paths(str(repo))
+        if tracked is not None:
+            indexed_untracked = sorted(set(stored) - tracked)
+            index.conn.execute(
+                """
+                INSERT INTO metadata(key, value)
+                VALUES('indexed_untracked_paths', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (json.dumps(indexed_untracked, separators=(",", ":")),),
+            )
+            index.conn.commit()
+        else:
+            indexed_untracked = list(stored)
+    else:
+        try:
+            decoded = json.loads(raw_untracked)
+        except (TypeError, json.JSONDecodeError):
+            decoded = []
+        indexed_untracked = (
+            [str(path) for path in decoded if isinstance(path, str)]
+            if isinstance(decoded, list)
+            else []
+        )
+        candidate_rel_paths = set(indexed_untracked)
+        for path in paths:
+            try:
+                candidate_rel_paths.add(path.resolve().relative_to(repo).as_posix())
+            except ValueError:
+                continue
+        stored = _stored_file_hashes(index, candidate_rel_paths)
+
     changed: set[Path] = {
         repo / rel_path
-        for rel_path in stored
-        if not (repo / rel_path).exists()
+        for rel_path in indexed_untracked
+        if rel_path in stored and not (repo / rel_path).exists()
     }
     for path in paths:
         try:
@@ -492,7 +650,19 @@ def _filter_indexed_content(
         except ValueError:
             continue
         expected = stored.get(rel)
-        if expected is None or not path.exists():
+        if not path.exists():
+            changed.add(path)
+            continue
+        if expected is None:
+            if ignore.is_ignored(rel) or (
+                include_roots
+                and not any(rel == root or rel.startswith(f"{root}/") for root in include_roots)
+            ):
+                continue
+            try:
+                registry.for_extension(path.suffix)
+            except UnsupportedLanguageError:
+                continue
             changed.add(path)
             continue
         try:
@@ -503,3 +673,24 @@ def _filter_indexed_content(
         if current != expected:
             changed.add(path)
     return sorted(changed)
+
+
+def _stored_file_hashes(
+    index: ProjectIndex,
+    rel_paths: set[str],
+) -> dict[str, str]:
+    stored: dict[str, str] = {}
+    ordered = sorted(rel_paths)
+    for offset in range(0, len(ordered), 400):
+        batch = ordered[offset : offset + 400]
+        placeholders = ",".join("?" for _ in batch)
+        stored.update(
+            {
+                str(row["path"]): str(row["sha256"])
+                for row in index.conn.execute(
+                    f"SELECT path, sha256 FROM files WHERE path IN ({placeholders})",
+                    tuple(batch),
+                )
+            }
+        )
+    return stored

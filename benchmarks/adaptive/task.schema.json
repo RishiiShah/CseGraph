@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://csegraph.dev/schemas/adaptive-benchmark-task-v1.json",
+  "$id": "https://csegraph.dev/schemas/adaptive-benchmark-task-v2.json",
   "title": "CseGraph adaptive benchmark corpus",
   "type": "object",
   "required": [
@@ -13,7 +13,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "csegraph-adaptive-benchmark-v1"
+      "enum": [
+        "csegraph-adaptive-benchmark-v1",
+        "csegraph-adaptive-benchmark-v2"
+      ]
     },
     "corpus_version": {"type": "string", "minLength": 1},
     "tier": {"enum": ["pr", "nightly", "release"]},
@@ -41,10 +44,68 @@
           "repo": {"type": "string", "minLength": 1},
           "commit": {"type": "string", "minLength": 7},
           "category": {
-            "enum": ["definition", "ambiguous", "cross-file", "debug", "refactor"]
+            "enum": [
+              "definition",
+              "ambiguous",
+              "cross-file",
+              "debug",
+              "refactor",
+              "structural",
+              "test-impact"
+            ]
           },
           "task": {"type": "string", "minLength": 1},
           "target": {"type": ["string", "null"]},
+          "expected_status": {
+            "enum": [
+              "ready",
+              "ambiguous",
+              "insufficient",
+              "index_required",
+              "refresh_required"
+            ]
+          },
+          "expected_target": {
+            "$ref": "#/$defs/targetExpectation"
+          },
+          "expected_candidates": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/targetExpectation"}
+          },
+          "required_evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "line"],
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "line": {"type": "integer", "minimum": 1},
+                "role": {"type": "string", "minLength": 1}
+              },
+              "additionalProperties": false
+            }
+          },
+          "permitted_ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "lines"],
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "lines": {
+                  "type": "array",
+                  "prefixItems": [
+                    {"type": "integer", "minimum": 1},
+                    {"type": "integer", "minimum": 1}
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "expected_next_tool": {"type": "string", "minLength": 1},
           "expected_locations": {
             "type": "array",
             "items": {"type": "string"}
@@ -88,5 +149,63 @@
       }
     }
   },
+  "$defs": {
+    "targetExpectation": {
+      "type": "object",
+      "required": ["path", "line"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "name": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {"const": "csegraph-adaptive-benchmark-v2"}
+        }
+      },
+      "then": {
+        "properties": {
+          "tasks": {
+            "items": {
+              "required": [
+                "expected_status",
+                "required_evidence",
+                "permitted_ranges"
+              ],
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "expected_status": {"const": "ready"}
+                    }
+                  },
+                  "then": {"required": ["expected_target"]}
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "expected_status": {"const": "ambiguous"}
+                    }
+                  },
+                  "then": {
+                    "required": ["expected_candidates"],
+                    "properties": {
+                      "expected_candidates": {"minItems": 2}
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

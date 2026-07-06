@@ -1,27 +1,52 @@
-# CseGraph Product Vision & Roadmap
+# CseGraph 2.0 Roadmap
 
-## The Core Principle
-**CseGraph should degrade gracefully into an excellent indexed search tool on easy tasks, then reveal its graph advantage only when the task becomes structurally difficult.**
+The 2.0 direction is a hard compatibility cutoff around one adaptive retrieval
+path and focused structural escalation.
 
-The current iteration of CseGraph exposes too much machinery by default, paying the full graph overhead (latency and token bloat) even for trivial tasks on small repositories. The next generation of CseGraph must shift from being specialized graph infrastructure to an adaptive search engine that competes with a strong, reproducible `rg` plus selective-read workflow across all scales.
+## 1. Freeze public contracts
 
-## Strategic Roadmap
+- Lock the CLI to `index`, `refresh`, `context`, `graph`, `path`, `status`,
+  `doctor`, `install`, and `serve`.
+- Lock MCP to `csegraph_index`, `csegraph_refresh`, `csegraph_minimal`,
+  `csegraph_context`, `csegraph_graph`, and `csegraph_path`.
+- Reject unknown MCP arguments.
+- Make `csegraph-context-v5` the only context response.
+- Use a boolean `diagnostic` request field.
+- Standardize continuations as `{tool, arguments?, reason?}`.
 
-| Area | Current Behavior | Target Behavior | Success Criterion |
-|---|---|---|---|
-| **Primary Competitor** | Naive full-repository reading | Strong `rg` + selective reads + LSP baseline | Beats realistic agent workflows |
-| **Easy Queries** | Pays full graph and formatting overhead | Use fast lexical/symbol lookup | Similar latency and tokens to `rg` |
-| **Tool Workflow** | Multiple mandatory routing/context calls | One call for ordinary tasks; progressive escalation | Most tasks resolved in one call |
-| **`csegraph_minimal`** | Returns a routing card | Return the useful code slice directly | Immediately actionable output |
-| **Graph Usage** | Graph structure appears by default | Use graph internally for ranking | Users pay only for relevant code |
-| **Graph Expansion** | Broad/static expansion | Expand only when ambiguity or dependencies justify it | Fewer irrelevant symbols |
-| **Output Format** | Verbose structural Markdown | Compact paths, line ranges, snippets, and relevance reasons | Minimal formatting overhead |
-| **Token Control** | Output size determined implicitly | Add strict token/snippet budgets | Typical retrieval under 300–800 tokens |
-| **Duplicate Context** | Information can recur across calls | Deduplicate previously returned symbols and snippets | Lower cumulative task tokens |
-| **Ambiguous Symbols** | Metadata-heavy context | Rank using scope, imports, references, and graph proximity | Correct target ranks first |
-| **Structural Questions**| Mixed into normal retrieval | Reserve graph/path output for explicit structural requests | No graph tax on simple edits |
-| **Index Freshness** | Staleness can interrupt the workflow | Incremental refresh with explicit freshness metadata | Near-zero stale retrieval failures |
-| **Multi-Agent Use** | Agents independently request overlapping context | Shared index and reusable retrieval cache | Reduced aggregate retrieval cost |
-| **Benchmark Unit** | Retrieval output measured in isolation | Measure complete coding tasks | Comparable end-to-end evidence |
-| **Benchmark Metrics** | Tokens, latency, and CseGraph accuracy | Total tokens, wall time, tool calls, success rate, edit correctness, refresh cost | Clear performance frontier |
-| **Product Positioning** | Specialized graph infrastructure | Adaptive search that becomes graph-aware only when useful | Valuable on small, medium, and large repositories |
+## 2. Rebuild the index
+
+- Require `csegraph-sqlite-v11`.
+- Keep canonical `files` and `symbols` records.
+- Use the zero-storage `entities` view for graph and path queries.
+- Retain only metadata, files, symbols, relationships, imports, bindings,
+  occurrence evidence, summaries, lexical data, and refresh leases.
+- Require a fresh `csegraph index` for every non-v11 database; provide no
+  migration path.
+- Build beside the active database, validate, close, and atomically replace it.
+
+## 3. Keep retrieval compact
+
+- Call context directly for ordinary work.
+- Reserve minimal for explicit health or orientation requests.
+- Use bounded lexical, resolution, summary, and one-hop relationship evidence.
+- Escalate to graph or path only for focused structural work.
+- Keep diagnostic data inside the whole-response token budget.
+- Index only Python, JavaScript, and TypeScript.
+
+## 4. Enforce release gates
+
+- Pass `pytest -q`, Ruff, and mypy.
+- Contract-test all context statuses, JSON/Markdown parity, budgeting,
+  diagnostics, continuations, graph/path serializers, CLI help, strict MCP
+  schemas, and the Python facade.
+- Test fresh indexing, mandatory reindex recovery, atomic replacement,
+  replacement-failure preservation, changed/deleted-file refresh, and database
+  integrity.
+- Hold the 20-task adaptive corpus to 100% target/status/recall, at least 95%
+  precision, at most 35% median token ratio, and sub-100 ms p95 CseGraph
+  overhead.
+- Run a balanced 60-task nightly corpus split evenly between Python and
+  JavaScript/TypeScript.
+- Dogfood a fresh v11 index against the database, wheel, import, memory, and
+  indexing limits documented in [benchmarks.md](benchmarks.md).

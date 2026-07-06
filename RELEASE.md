@@ -5,11 +5,28 @@
 Run from the repository root:
 
 ```bash
-env/bin/python -m pip install -e ".[test]"
+env/bin/python -m pip install -e ".[test,dev,benchmark,docs]"
 env/bin/python -m pytest tests/ -q
+env/bin/python -m ruff format --check .
+env/bin/python -m ruff check csegraph tools tests
+env/bin/python -m mypy csegraph tools
 env/bin/python -m compileall -q csegraph tools csegraph-vscode
 env/bin/csegraph index . --json
-env/bin/python tools/csegraph_dev.py benchmark . --corpus benchmarks/context_quality/csegraph_self.json --json
+env/bin/python tools/run_adaptive_retrieval_benchmark.py \
+  --corpus benchmarks/adaptive/pr_tasks.json \
+  --modes cold,warm \
+  --warm-runs 2 \
+  --pyright required \
+  --output benchmark_results/adaptive_pr.json \
+  --fail-on-gates
+env/bin/python tools/run_adaptive_retrieval_benchmark.py \
+  --corpus benchmarks/adaptive/nightly_tasks.json \
+  --modes cold,warm \
+  --warm-runs 2 \
+  --pyright required \
+  --output benchmark_results/adaptive_nightly.json \
+  --fail-on-gates
+env/bin/python -m mkdocs build --strict
 ```
 
 Run from `csegraph-vscode/`:
@@ -56,6 +73,9 @@ PY
 ```
 
 Publish to PyPI only from the GitHub release workflow using trusted publishing.
+The first v2 release records the adaptive release report as the historical
+indexing baseline when no earlier v2 tag exists. Later v2 releases compare
+indexing measurements against the previous v2 tag.
 
 ## VS Code Extension
 
@@ -85,6 +105,6 @@ Publish to the VS Code Marketplace only from the GitHub release workflow when
 
 - `pip install csegraph` installs the new version.
 - `csegraph --help` works.
-- `python -c "from csegraph import ContextService"` works.
+- `python -c "from csegraph import ContextService, StatusService"` works.
 - Only the `csegraph` distribution is installed for this project.
 - VS Code lists `rishiishah.csegraph-vscode` at the released version.

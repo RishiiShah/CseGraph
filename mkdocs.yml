@@ -16,6 +16,7 @@ nav:
   - Command And SDK Reference: csegraph.md
   - Architecture: architecture.md
   - Agent Context Benchmarks: benchmarks.md
+  - Roadmap: roadmap.md
 
 markdown_extensions:
   - admonition

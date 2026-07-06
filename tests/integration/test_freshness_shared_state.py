@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import multiprocessing
 import os
 import subprocess
@@ -15,6 +16,7 @@ from csegraph._core.languages.base import sha256_text
 from csegraph._core.retrieval import freshness as freshness_module
 from csegraph._core.retrieval.freshness import (
     FreshnessCoordinator,
+    _detect_changed_paths,
     _filesystem_changed_paths,
 )
 
@@ -29,6 +31,36 @@ def _git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def test_concurrent_first_use_builds_one_index(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+    db = repo / ".csegraph" / "index.db"
+    real_index = IndexService.index
+    calls = 0
+    lock = threading.Lock()
+
+    def delayed_index(service, *args, **kwargs):
+        nonlocal calls
+        with lock:
+            calls += 1
+        time.sleep(0.1)
+        return real_index(service, *args, **kwargs)
+
+    with patch.object(IndexService, "index", delayed_index):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(
+                executor.map(
+                    lambda _: FreshnessCoordinator(db).ensure_current(repo),
+                    range(2),
+                )
+            )
+
+    assert calls == 1
+    assert {result.revision for result in results} == {1}
+    assert {result.state for result in results} <= {"indexed", "current"}
+
+
 def _git_repo(tmp_path: Path) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -39,7 +71,7 @@ def _git_repo(tmp_path: Path) -> tuple[Path, Path]:
     _git(repo, "add", "app.py")
     _git(repo, "commit", "-qm", "initial")
     db = tmp_path / "index.db"
-    IndexService(db).index(repo, profile="small")
+    IndexService(db).index(repo)
     return repo, db
 
 
@@ -205,9 +237,7 @@ def test_concurrent_process_refreshes_once_and_share_the_new_revision(
         "refreshed",
     }
     assert {status for _state, status, _revision in outcomes} == {None}
-    assert {revision for _state, _status, revision in outcomes} == {
-        initial_revision + 1
-    }
+    assert {revision for _state, _status, revision in outcomes} == {initial_revision + 1}
     index = ProjectIndex(db)
     try:
         assert index.index_revision() == initial_revision + 1
@@ -385,9 +415,7 @@ def test_git_freshness_handles_modified_added_renamed_deleted_and_committed_file
     assert committed_without_content_change.state == "current"
     index = ProjectIndex(db)
     try:
-        assert index.metadata()["built_commit"] == _git(
-            repo, "rev-parse", "--short=12", "HEAD"
-        )
+        assert index.metadata()["built_commit"] == _git(repo, "rev-parse", "--short=12", "HEAD")
     finally:
         index.close()
 
@@ -411,6 +439,25 @@ def test_git_freshness_handles_modified_added_renamed_deleted_and_committed_file
     finally:
         index.close()
     assert "extra.py" not in paths
+
+
+def test_git_freshness_queries_only_changed_and_untracked_paths(tmp_path: Path) -> None:
+    repo, db = _git_repo(tmp_path)
+    (repo / "app.py").write_text("def value():\n    return 99\n", encoding="utf-8")
+    statements: list[str] = []
+    index = ProjectIndex(db)
+    try:
+        index.conn.set_trace_callback(statements.append)
+        changed = _detect_changed_paths(index, repo, index.metadata())
+    finally:
+        index.close()
+
+    assert changed == [repo / "app.py"]
+    file_queries = [
+        statement for statement in statements if "SELECT path, sha256 FROM files" in statement
+    ]
+    assert file_queries
+    assert all(" WHERE path IN " in statement for statement in file_queries)
 
 
 def test_git_branch_switch_refreshes_back_to_the_checked_out_content(tmp_path: Path) -> None:
@@ -477,7 +524,7 @@ def test_non_git_freshness_hashes_only_suspected_metadata_changes(
     source = repo / "plain.py"
     source.write_text("VALUE = 'aa'\n", encoding="utf-8")
     db = tmp_path / "plain.db"
-    IndexService(db).index(repo, profile="small")
+    IndexService(db).index(repo)
 
     index = ProjectIndex(db)
     try:

@@ -19,6 +19,7 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
+site/
 .tox/
 build/
 dist/
@@ -71,5 +72,5 @@ CODEX.md
 .kiro/
 .mcp.json
 
-# Local maintainer scripts (not shipped; use tools/csegraph_dev.py)
+# Local maintainer scripts (not shipped; keep reusable tools under tools/)
 scripts/

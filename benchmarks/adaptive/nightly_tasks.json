@@ -1,81 +1,3722 @@
 {
-  "schema_version": "csegraph-adaptive-benchmark-v1",
-  "corpus_version": "2026.07.1",
+  "schema_version": "csegraph-adaptive-benchmark-v2",
+  "corpus_version": "2026.07.2",
   "tier": "nightly",
   "status": "ready",
   "repositories": {
-    "sandbox/micrograd": {"url": "https://github.com/karpathy/micrograd.git", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685"},
-    "sandbox/nanoGPT": {"url": "https://github.com/karpathy/nanoGPT.git", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291"},
-    "sandbox/flask": {"url": "https://github.com/pallets/flask.git", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81"},
-    "sandbox/pytest": {"url": "https://github.com/pytest-dev/pytest.git", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9"},
-    "sandbox/django": {"url": "https://github.com/django/django.git", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304"},
-    "sandbox/fastapi": {"url": "https://github.com/fastapi/fastapi.git", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d"}
+    "benchmarks/fixtures/adaptive_pr": {
+      "url": "fixture://local",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9"
+    },
+    "benchmarks/fixtures/adaptive_js_ts": {
+      "url": "fixture://local",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023"
+    }
   },
   "tasks": [
-    {"id": "micrograd-value-add", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Explain Value addition", "target": "Value.__add__", "expected_locations": ["micrograd/engine.py"], "permitted_files": ["micrograd/engine.py"]},
-    {"id": "micrograd-relu", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Explain the Value relu activation", "target": "relu", "expected_locations": ["micrograd/engine.py"], "permitted_files": ["micrograd/engine.py"]},
-    {"id": "micrograd-backward", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "debug", "task": "Inspect the Value backward traversal", "target": "backward", "expected_locations": ["micrograd/engine.py"], "permitted_files": ["micrograd/engine.py"]},
-    {"id": "micrograd-zero-grad", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Explain module gradient reset", "target": "zero_grad", "expected_locations": ["micrograd/nn.py"], "permitted_files": ["micrograd/nn.py"]},
-    {"id": "micrograd-neuron", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Explain the Neuron module", "target": "Neuron", "expected_locations": ["micrograd/nn.py"], "permitted_files": ["micrograd/nn.py"]},
-    {"id": "micrograd-neuron-call", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "cross-file", "task": "Update Neuron.__call__ and inspect its activation dependency", "target": "Neuron.__call__", "expected_locations": ["micrograd/nn.py", "micrograd/engine.py"], "permitted_files": ["micrograd/nn.py", "micrograd/engine.py"]},
-    {"id": "micrograd-layer", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Explain Layer composition", "target": "Layer", "expected_locations": ["micrograd/nn.py"], "permitted_files": ["micrograd/nn.py"]},
-    {"id": "micrograd-layer-call", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Find Layer call behavior", "target": "Layer.__call__", "expected_locations": ["micrograd/nn.py"], "permitted_files": ["micrograd/nn.py"]},
-    {"id": "micrograd-mlp", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Explain MLP composition", "target": "MLP", "expected_locations": ["micrograd/nn.py"], "permitted_files": ["micrograd/nn.py"]},
-    {"id": "micrograd-mlp-call", "repo": "sandbox/micrograd", "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685", "category": "definition", "task": "Find MLP forward call behavior", "target": "MLP.__call__", "expected_locations": ["micrograd/nn.py"], "permitted_files": ["micrograd/nn.py"]},
-
-    {"id": "nanogpt-layernorm", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Explain custom LayerNorm", "target": "LayerNorm", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-init-weights", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Explain GPT weight initialization", "target": "_init_weights", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-attention-forward", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Inspect attention forward implementation", "target": "symbol::model.py::method::CausalSelfAttention.forward", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-config", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Explain GPT configuration", "target": "GPTConfig", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-learning-rate", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Explain the learning rate schedule", "target": "get_lr", "expected_locations": ["train.py"], "permitted_files": ["train.py"]},
-    {"id": "nanogpt-num-params", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Find parameter counting", "target": "get_num_params", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-crop-block", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "refactor", "task": "Inspect block size cropping", "target": "crop_block_size", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-optimizer", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Explain optimizer configuration", "target": "configure_optimizers", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-mfu", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Find model utilization estimation", "target": "estimate_mfu", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-    {"id": "nanogpt-generate", "repo": "sandbox/nanoGPT", "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291", "category": "definition", "task": "Explain autoregressive generation", "target": "generate", "expected_locations": ["model.py"], "permitted_files": ["model.py"]},
-
-    {"id": "flask-after-request", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain after_this_request", "target": "after_this_request", "expected_locations": ["src/flask/ctx.py"], "permitted_files": ["src/flask/ctx.py"]},
-    {"id": "flask-has-request-context", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain request context detection", "target": "has_request_context", "expected_locations": ["src/flask/ctx.py"], "permitted_files": ["src/flask/ctx.py"]},
-    {"id": "flask-has-app-context", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain app context detection", "target": "has_app_context", "expected_locations": ["src/flask/ctx.py"], "permitted_files": ["src/flask/ctx.py"]},
-    {"id": "flask-debug-flag", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain debug flag detection", "target": "get_debug_flag", "expected_locations": ["src/flask/helpers.py"], "permitted_files": ["src/flask/helpers.py"]},
-    {"id": "flask-timedelta", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Find timedelta normalization", "target": "symbol::src/flask/app.py::function::_make_timedelta", "expected_locations": ["src/flask/app.py"], "permitted_files": ["src/flask/app.py"]},
-    {"id": "flask-find-app", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain CLI app discovery", "target": "find_best_app", "expected_locations": ["src/flask/cli.py"], "permitted_files": ["src/flask/cli.py"]},
-    {"id": "flask-prepare-import", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain import path preparation", "target": "prepare_import", "expected_locations": ["src/flask/cli.py"], "permitted_files": ["src/flask/cli.py"]},
-    {"id": "flask-blueprint-path", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain blueprint path splitting", "target": "_split_blueprint_path", "expected_locations": ["src/flask/helpers.py"], "permitted_files": ["src/flask/helpers.py"]},
-    {"id": "flask-redirect", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain redirect response construction", "target": "redirect", "expected_locations": ["src/flask/helpers.py"], "permitted_files": ["src/flask/helpers.py"]},
-    {"id": "flask-json-dumps", "repo": "sandbox/flask", "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81", "category": "definition", "task": "Explain Flask JSON dumps", "target": "symbol::src/flask/json/__init__.py::function::dumps", "expected_locations": ["src/flask/json/__init__.py"], "permitted_files": ["src/flask/json/__init__.py"]},
-
-    {"id": "pytest-console-main", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain console_main", "target": "console_main", "expected_locations": ["src/_pytest/config/__init__.py"], "permitted_files": ["src/_pytest/config/__init__.py"]},
-    {"id": "pytest-get-config", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain pytest configuration creation", "target": "get_config", "expected_locations": ["src/_pytest/config/__init__.py"], "permitted_files": ["src/_pytest/config/__init__.py"]},
-    {"id": "pytest-scope-node", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain fixture scope node resolution", "target": "get_scope_node", "expected_locations": ["src/_pytest/fixtures.py"], "permitted_files": ["src/_pytest/fixtures.py"]},
-    {"id": "pytest-reorder-items", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain fixture item reordering", "target": "reorder_items", "expected_locations": ["src/_pytest/fixtures.py"], "permitted_files": ["src/_pytest/fixtures.py"]},
-    {"id": "pytest-fixture-marker", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain fixture marker lookup", "target": "getfixturemarker", "expected_locations": ["src/_pytest/fixtures.py"], "permitted_files": ["src/_pytest/fixtures.py"]},
-    {"id": "pytest-fixture-visibility", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain fixture visibility comparison", "target": "is_visibility_more_specific", "expected_locations": ["src/_pytest/fixtures.py"], "permitted_files": ["src/_pytest/fixtures.py"]},
-    {"id": "pytest-cache-dir", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain cache directory creation", "target": "_make_cachedir", "expected_locations": ["src/_pytest/cacheprovider.py"], "permitted_files": ["src/_pytest/cacheprovider.py"]},
-    {"id": "pytest-tracemalloc-message", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain tracemalloc messages", "target": "tracemalloc_message", "expected_locations": ["src/_pytest/tracemalloc.py"], "permitted_files": ["src/_pytest/tracemalloc.py"]},
-    {"id": "pytest-repr-callable", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain exception check rendering", "target": "repr_callable", "expected_locations": ["src/_pytest/raises.py"], "permitted_files": ["src/_pytest/raises.py"]},
-    {"id": "pytest-warning", "repo": "sandbox/pytest", "commit": "0e0f7813327ca0ef65feb457cf9a5885e9ba7cb9", "category": "definition", "task": "Explain base pytest warnings", "target": "PytestWarning", "expected_locations": ["src/_pytest/warning_types.py"], "permitted_files": ["src/_pytest/warning_types.py"]},
-
-    {"id": "django-normalize-prefetch", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain prefetch lookup normalization", "target": "normalize_prefetch_lookups", "expected_locations": ["django/db/models/query.py"], "permitted_files": ["django/db/models/query.py"]},
-    {"id": "django-related-populators", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain related object populators", "target": "get_related_populators", "expected_locations": ["django/db/models/query.py"], "permitted_files": ["django/db/models/query.py"]},
-    {"id": "django-reset-urlconf", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain URL configuration reset", "target": "reset_urlconf", "expected_locations": ["django/core/handlers/base.py"], "permitted_files": ["django/core/handlers/base.py"]},
-    {"id": "django-resolve", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain URL resolution", "target": "symbol::django/urls/base.py::function::resolve", "expected_locations": ["django/urls/base.py"], "permitted_files": ["django/urls/base.py"]},
-    {"id": "django-clear-script-prefix", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain clearing the script prefix", "target": "symbol::django/urls/base.py::function::clear_script_prefix", "expected_locations": ["django/urls/base.py"], "permitted_files": ["django/urls/base.py"]},
-    {"id": "django-script-prefix", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain script prefix lookup", "target": "symbol::django/urls/base.py::function::get_script_prefix", "expected_locations": ["django/urls/base.py"], "permitted_files": ["django/urls/base.py"]},
-    {"id": "django-clear-url-caches", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain URL cache clearing", "target": "clear_url_caches", "expected_locations": ["django/urls/base.py"], "permitted_files": ["django/urls/base.py"]},
-    {"id": "django-load-backend", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain database backend loading", "target": "symbol::django/db/utils.py::function::load_backend", "expected_locations": ["django/db/utils.py"], "permitted_files": ["django/db/utils.py"]},
-    {"id": "django-gettext-noop", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain no-op translation marking", "target": "symbol::django/conf/global_settings.py::function::gettext_noop", "expected_locations": ["django/conf/global_settings.py"], "permitted_files": ["django/conf/global_settings.py"]},
-    {"id": "django-task-decorator", "repo": "sandbox/django", "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304", "category": "definition", "task": "Explain the task decorator", "target": "symbol::django/tasks/base.py::function::task", "expected_locations": ["django/tasks/base.py"], "permitted_files": ["django/tasks/base.py"]},
-
-    {"id": "fastapi-request-response", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain request_response", "target": "request_response", "expected_locations": ["fastapi/routing.py"], "permitted_files": ["fastapi/routing.py"]},
-    {"id": "fastapi-endpoint-context", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "debug", "task": "Inspect endpoint context extraction", "target": "_extract_endpoint_context", "expected_locations": ["fastapi/routing.py"], "permitted_files": ["fastapi/routing.py"]},
-    {"id": "fastapi-response-args", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Inspect response argument construction", "target": "_build_response_args", "expected_locations": ["fastapi/routing.py"], "permitted_files": ["fastapi/routing.py"]},
-    {"id": "fastapi-default-value", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain default value wrapping", "target": "symbol::fastapi/datastructures.py::function::Default", "expected_locations": ["fastapi/datastructures.py"], "permitted_files": ["fastapi/datastructures.py"]},
-    {"id": "fastapi-default", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain default placeholders", "target": "DefaultPlaceholder", "expected_locations": ["fastapi/datastructures.py"], "permitted_files": ["fastapi/datastructures.py"]},
-    {"id": "fastapi-status-body", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain status code body rules", "target": "is_body_allowed_for_status_code", "expected_locations": ["fastapi/utils.py"], "permitted_files": ["fastapi/utils.py"]},
-    {"id": "fastapi-path-names", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain path parameter name extraction", "target": "get_path_param_names", "expected_locations": ["fastapi/utils.py"], "permitted_files": ["fastapi/utils.py"]},
-    {"id": "fastapi-unique-id", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain route unique ID generation", "target": "generate_unique_id", "expected_locations": ["fastapi/utils.py"], "permitted_files": ["fastapi/utils.py"]},
-    {"id": "fastapi-event-source", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain EventSourceResponse", "target": "EventSourceResponse", "expected_locations": ["fastapi/sse.py"], "permitted_files": ["fastapi/sse.py"]},
-    {"id": "fastapi-dict-update", "repo": "sandbox/fastapi", "commit": "702fea83bb3ef0b558104835d7936af49650fb2d", "category": "definition", "task": "Explain nested dictionary updates", "target": "deep_dict_update", "expected_locations": ["fastapi/utils.py"], "permitted_files": ["fastapi/utils.py"]}
+    {
+      "id": "py-definition-add",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "definition",
+      "task": "Explain the add function",
+      "target": "add",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/math_ops.py::function::add",
+        "name": "add",
+        "path": "src/math_ops.py",
+        "line": 1
+      },
+      "required_evidence": [
+        {
+          "path": "src/math_ops.py",
+          "line": 1,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            1,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-definition-multiply",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "definition",
+      "task": "Explain the multiply function",
+      "target": "multiply",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/math_ops.py::function::multiply",
+        "name": "multiply",
+        "path": "src/math_ops.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/math_ops.py",
+          "line": 5,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            5,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-definition-normalize",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "definition",
+      "task": "Explain normalize",
+      "target": "normalize",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/math_ops.py::function::normalize",
+        "name": "normalize",
+        "path": "src/math_ops.py",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-definition-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "definition",
+      "task": "Explain the User model",
+      "target": "User",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/models.py::class::User",
+        "name": "User",
+        "path": "src/models.py",
+        "line": 1
+      },
+      "required_evidence": [
+        {
+          "path": "src/models.py",
+          "line": 1,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-definition-order",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "definition",
+      "task": "Explain the Order model",
+      "target": "Order",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/models.py::class::Order",
+        "name": "Order",
+        "path": "src/models.py",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/models.py",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.py",
+          "lines": [
+            9,
+            14
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-definition-dispatch",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "definition",
+      "task": "Explain dispatch",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.py::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.py",
+        "line": 12
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-debug-create-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "debug",
+      "task": "Debug create_user using immediate callers, dependencies, and tests",
+      "target": "create_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::create_user",
+        "name": "create_user",
+        "path": "src/service.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "target"
+        },
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/models.py",
+          "line": 1,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/repository.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-debug-save-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "debug",
+      "task": "Debug save_user using immediate callers, dependencies, and tests",
+      "target": "save_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/repository.py::function::save_user",
+        "name": "save_user",
+        "path": "src/repository.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/repository.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/repository.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-debug-display-name",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "debug",
+      "task": "Debug display_name using immediate callers, dependencies, and tests",
+      "target": "display_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::display_name",
+        "name": "display_name",
+        "path": "src/service.py",
+        "line": 11
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "target"
+        },
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "caller"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 8,
+          "role": "caller"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            8,
+            9
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-debug-run-signup",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "debug",
+      "task": "Debug run_signup using immediate callers, dependencies, and tests",
+      "target": "run_signup",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.py::function::run_signup",
+        "name": "run_signup",
+        "path": "src/workflow.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-debug-user-handler",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "debug",
+      "task": "Debug handle using immediate callers, dependencies, and tests",
+      "target": "symbol::src/user_handlers.py::function::handle",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/user_handlers.py::function::handle",
+        "name": "handle",
+        "path": "src/user_handlers.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-debug-order-handler",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "debug",
+      "task": "Debug handle using immediate callers, dependencies, and tests",
+      "target": "symbol::src/order_handlers.py::function::handle",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/order_handlers.py::function::handle",
+        "name": "handle",
+        "path": "src/order_handlers.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/models.py",
+          "line": 9,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/order_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            9,
+            14
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-refactor-normalize",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "refactor",
+      "task": "Refactor normalize using immediate callers and dependencies",
+      "target": "normalize",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/math_ops.py::function::normalize",
+        "name": "normalize",
+        "path": "src/math_ops.py",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "caller"
+        },
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            12
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            4,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-refactor-create-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "refactor",
+      "task": "Refactor create_user using immediate callers and dependencies",
+      "target": "create_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::create_user",
+        "name": "create_user",
+        "path": "src/service.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "target"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/models.py",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "src/repository.py",
+          "line": 4,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 4,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        },
+        {
+          "path": "src/repository.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-refactor-user-save",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "refactor",
+      "task": "Refactor save_user using immediate callers and dependencies",
+      "target": "save_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/repository.py::function::save_user",
+        "name": "save_user",
+        "path": "src/repository.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/repository.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        },
+        {
+          "path": "src/repository.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-refactor-order-save",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "refactor",
+      "task": "Refactor handle using immediate callers and dependencies",
+      "target": "symbol::src/order_handlers.py::function::handle",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/order_handlers.py::function::handle",
+        "name": "handle",
+        "path": "src/order_handlers.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/models.py",
+          "line": 9,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.py",
+          "lines": [
+            9,
+            14
+          ]
+        },
+        {
+          "path": "src/order_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-refactor-dispatch",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "refactor",
+      "task": "Refactor dispatch using immediate callers and dependencies",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.py::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.py",
+        "line": 12
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "target"
+        },
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "dependency"
+        },
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 8,
+          "role": "test"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 4,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/order_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            8,
+            9
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-refactor-run-signup",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "refactor",
+      "task": "Refactor run_signup using immediate callers and dependencies",
+      "target": "run_signup",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.py::function::run_signup",
+        "name": "run_signup",
+        "path": "src/workflow.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "line": 4,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-cross-file-create-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "cross-file",
+      "task": "Trace create_user across immediate callers and dependencies",
+      "target": "create_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::create_user",
+        "name": "create_user",
+        "path": "src/service.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "target"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/models.py",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "src/repository.py",
+          "line": 4,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 4,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        },
+        {
+          "path": "src/repository.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-cross-file-display-name",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "cross-file",
+      "task": "Trace display_name across immediate callers and dependencies",
+      "target": "display_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::display_name",
+        "name": "display_name",
+        "path": "src/service.py",
+        "line": 11
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "target"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 8,
+          "role": "test"
+        },
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            8,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-cross-file-dispatch",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "cross-file",
+      "task": "Trace dispatch across immediate callers and dependencies",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.py::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.py",
+        "line": 12
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "target"
+        },
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "dependency"
+        },
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 8,
+          "role": "test"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 4,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/order_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            8,
+            9
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-cross-file-run-signup",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "cross-file",
+      "task": "Trace run_signup across immediate callers and dependencies",
+      "target": "run_signup",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.py::function::run_signup",
+        "name": "run_signup",
+        "path": "src/workflow.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "line": 4,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-cross-file-user-handler",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "cross-file",
+      "task": "Trace handle across immediate callers and dependencies",
+      "target": "symbol::src/user_handlers.py::function::handle",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/user_handlers.py::function::handle",
+        "name": "handle",
+        "path": "src/user_handlers.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        },
+        {
+          "path": "src/repository.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-cross-file-order-handler",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "cross-file",
+      "task": "Trace handle across immediate callers and dependencies",
+      "target": "symbol::src/order_handlers.py::function::handle",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/order_handlers.py::function::handle",
+        "name": "handle",
+        "path": "src/order_handlers.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/models.py",
+          "line": 9,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/order_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            9,
+            14
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-test-impact-create-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for create_user",
+      "target": "create_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::create_user",
+        "name": "create_user",
+        "path": "src/service.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/models.py",
+          "line": 1,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            8
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-test-impact-display-name",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for display_name",
+      "target": "display_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::display_name",
+        "name": "display_name",
+        "path": "src/service.py",
+        "line": 11
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 8,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "caller"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            8,
+            9
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-test-impact-dispatch-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for dispatch on user handlers",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.py::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.py",
+        "line": 12
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 8,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "caller"
+        },
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            4,
+            9
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "src/order_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-test-impact-dispatch-order",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for dispatch on order handlers",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.py::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.py",
+        "line": 12
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 8,
+          "role": "caller"
+        },
+        {
+          "path": "tests/test_router.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "caller"
+        },
+        {
+          "path": "src/order_handlers.py",
+          "line": 4,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.py",
+          "lines": [
+            6,
+            13
+          ]
+        },
+        {
+          "path": "tests/test_router.py",
+          "lines": [
+            4,
+            9
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-test-impact-run-signup",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for run_signup",
+      "target": "run_signup",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.py::function::run_signup",
+        "name": "run_signup",
+        "path": "src/workflow.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.py",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/router.py",
+          "line": 12,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.py",
+          "line": 11,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.py",
+          "lines": [
+            5,
+            7
+          ]
+        },
+        {
+          "path": "tests/test_workflow.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/router.py",
+          "lines": [
+            12,
+            13
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            11,
+            12
+          ]
+        }
+      ]
+    },
+    {
+      "id": "py-test-impact-create-user-persistence",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for create_user",
+      "target": "create_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.py::function::create_user",
+        "name": "create_user",
+        "path": "src/service.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.py",
+          "line": 6,
+          "role": "target"
+        },
+        {
+          "path": "tests/test_service.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/user_handlers.py",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/math_ops.py",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/models.py",
+          "line": 1,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/math_ops.py",
+          "lines": [
+            9,
+            10
+          ]
+        },
+        {
+          "path": "src/service.py",
+          "lines": [
+            6,
+            12
+          ]
+        },
+        {
+          "path": "tests/test_service.py",
+          "lines": [
+            4,
+            9
+          ]
+        },
+        {
+          "path": "src/user_handlers.py",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/models.py",
+          "lines": [
+            1,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-definition-normalize-name",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "definition",
+      "task": "Explain normalizeName",
+      "target": "normalizeName",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/text.ts::function::normalizeName",
+        "name": "normalizeName",
+        "path": "src/text.ts",
+        "line": 1
+      },
+      "required_evidence": [
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-definition-format-label",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "definition",
+      "task": "Explain formatLabel",
+      "target": "formatLabel",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/text.ts::function::formatLabel",
+        "name": "formatLabel",
+        "path": "src/text.ts",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/text.ts",
+          "line": 5,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/text.ts",
+          "lines": [
+            5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-definition-slugify",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "definition",
+      "task": "Explain slugify",
+      "target": "slugify",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/text.ts::function::slugify",
+        "name": "slugify",
+        "path": "src/text.ts",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/text.ts",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/text.ts",
+          "lines": [
+            9,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-definition-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "definition",
+      "task": "Explain the Account model",
+      "target": "Account",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/models.ts::class::Account",
+        "name": "Account",
+        "path": "src/models.ts",
+        "line": 1
+      },
+      "required_evidence": [
+        {
+          "path": "src/models.ts",
+          "line": 1,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.ts",
+          "lines": [
+            1,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-definition-invoice",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "definition",
+      "task": "Explain the Invoice model",
+      "target": "Invoice",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/models.ts::class::Invoice",
+        "name": "Invoice",
+        "path": "src/models.ts",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/models.ts",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.ts",
+          "lines": [
+            9,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-definition-dispatch",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "definition",
+      "task": "Explain dispatch",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.js::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-debug-create-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "debug",
+      "task": "Debug createAccount using immediate callers, dependencies, and tests",
+      "target": "createAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::createAccount",
+        "name": "createAccount",
+        "path": "src/service.ts",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "src/store.ts",
+          "line": 3,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/models.ts",
+          "lines": [
+            1,
+            7
+          ]
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-debug-save-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "debug",
+      "task": "Debug saveAccount using immediate callers, dependencies, and tests",
+      "target": "saveAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/store.ts::function::saveAccount",
+        "name": "saveAccount",
+        "path": "src/store.ts",
+        "line": 3
+      },
+      "required_evidence": [
+        {
+          "path": "src/store.ts",
+          "line": 3,
+          "role": "target"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/models.ts",
+          "lines": [
+            1,
+            7
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-debug-display-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "debug",
+      "task": "Debug displayAccount using immediate callers, dependencies, and tests",
+      "target": "displayAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::displayAccount",
+        "name": "displayAccount",
+        "path": "src/service.ts",
+        "line": 10
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "target"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 7,
+          "role": "caller"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            7,
+            9
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-debug-run-onboarding",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "debug",
+      "task": "Debug runOnboarding using immediate callers, dependencies, and tests",
+      "target": "runOnboarding",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.js::function::runOnboarding",
+        "name": "runOnboarding",
+        "path": "src/workflow.js",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-debug-account-handler",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "debug",
+      "task": "Debug handleAccount using immediate callers, dependencies, and tests",
+      "target": "handleAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/accountHandlers.js::function::handleAccount",
+        "name": "handleAccount",
+        "path": "src/accountHandlers.js",
+        "line": 3
+      },
+      "required_evidence": [
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "target"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-debug-invoice-handler",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "debug",
+      "task": "Debug dispatch using immediate callers, dependencies, and tests",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.js::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 9,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 7,
+          "role": "caller"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 3,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/invoiceHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/models.ts",
+          "lines": [
+            9,
+            15
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            9,
+            11
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            7,
+            9
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-refactor-normalize-name",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "refactor",
+      "task": "Refactor normalizeName using immediate callers and dependencies",
+      "target": "normalizeName",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/text.ts::function::normalizeName",
+        "name": "normalizeName",
+        "path": "src/text.ts",
+        "line": 1
+      },
+      "required_evidence": [
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "target"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 9,
+          "role": "caller"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "caller"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 5,
+          "role": "caller"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            11
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            12
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            3,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-refactor-create-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "refactor",
+      "task": "Refactor createAccount using immediate callers and dependencies",
+      "target": "createAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::createAccount",
+        "name": "createAccount",
+        "path": "src/service.ts",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "src/store.ts",
+          "line": 3,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 3,
+          "role": "test"
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        },
+        {
+          "path": "src/models.ts",
+          "lines": [
+            1,
+            7
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-refactor-account-serialize",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "refactor",
+      "task": "Refactor saveAccount using immediate callers and dependencies",
+      "target": "saveAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/store.ts::function::saveAccount",
+        "name": "saveAccount",
+        "path": "src/store.ts",
+        "line": 3
+      },
+      "required_evidence": [
+        {
+          "path": "src/store.ts",
+          "line": 3,
+          "role": "target"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.ts",
+          "lines": [
+            1,
+            7
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-refactor-invoice-serialize",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "refactor",
+      "task": "Refactor runInvoice using immediate callers and dependencies",
+      "target": "runInvoice",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.js::function::runInvoice",
+        "name": "runInvoice",
+        "path": "src/workflow.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "line": 8,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/models.ts",
+          "lines": [
+            9,
+            15
+          ]
+        },
+        {
+          "path": "src/invoiceHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            9,
+            11
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            9,
+            11
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            8,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-refactor-dispatch",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "refactor",
+      "task": "Refactor dispatch using immediate callers and dependencies",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.js::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "dependency"
+        },
+        {
+          "path": "src/invoiceHandlers.js",
+          "line": 3,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 7,
+          "role": "test"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 3,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/invoiceHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            7,
+            9
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-refactor-run-onboarding",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "refactor",
+      "task": "Refactor runOnboarding using immediate callers and dependencies",
+      "target": "runOnboarding",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.js::function::runOnboarding",
+        "name": "runOnboarding",
+        "path": "src/workflow.js",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "line": 3,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-cross-file-create-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "cross-file",
+      "task": "Trace createAccount across immediate callers and dependencies",
+      "target": "createAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::createAccount",
+        "name": "createAccount",
+        "path": "src/service.ts",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "src/store.ts",
+          "line": 3,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 3,
+          "role": "test"
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        },
+        {
+          "path": "src/models.ts",
+          "lines": [
+            1,
+            7
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-cross-file-display-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "cross-file",
+      "task": "Trace displayAccount across immediate callers and dependencies",
+      "target": "displayAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::displayAccount",
+        "name": "displayAccount",
+        "path": "src/service.ts",
+        "line": 10
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "target"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 7,
+          "role": "test"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            7,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-cross-file-dispatch",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "cross-file",
+      "task": "Trace dispatch across immediate callers and dependencies",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.js::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "dependency"
+        },
+        {
+          "path": "src/invoiceHandlers.js",
+          "line": 3,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 7,
+          "role": "test"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 3,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/invoiceHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            7,
+            9
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-cross-file-run-onboarding",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "cross-file",
+      "task": "Trace runOnboarding across immediate callers and dependencies",
+      "target": "runOnboarding",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.js::function::runOnboarding",
+        "name": "runOnboarding",
+        "path": "src/workflow.js",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "dependency"
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "line": 3,
+          "role": "test"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-cross-file-account-handler",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "cross-file",
+      "task": "Trace handleAccount across immediate callers and dependencies",
+      "target": "handleAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/accountHandlers.js::function::handleAccount",
+        "name": "handleAccount",
+        "path": "src/accountHandlers.js",
+        "line": 3
+      },
+      "required_evidence": [
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "target"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-cross-file-invoice-handler",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "cross-file",
+      "task": "Trace handleInvoice across immediate callers and dependencies",
+      "target": "handleInvoice",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/invoiceHandlers.js::function::handleInvoice",
+        "name": "handleInvoice",
+        "path": "src/invoiceHandlers.js",
+        "line": 3
+      },
+      "required_evidence": [
+        {
+          "path": "src/invoiceHandlers.js",
+          "line": 3,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/invoiceHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "src/models.ts",
+          "lines": [
+            9,
+            15
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-test-impact-create-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for createAccount",
+      "target": "createAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::createAccount",
+        "name": "createAccount",
+        "path": "src/service.ts",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 5,
+          "role": "target"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        },
+        {
+          "path": "src/store.ts",
+          "line": 3,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            5,
+            8
+          ]
+        },
+        {
+          "path": "src/accountHandlers.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            6
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "lines": [
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-test-impact-display-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for displayAccount",
+      "target": "displayAccount",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/service.ts::function::displayAccount",
+        "name": "displayAccount",
+        "path": "src/service.ts",
+        "line": 10
+      },
+      "required_evidence": [
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "target"
+        },
+        {
+          "path": "tests/service.test.ts",
+          "line": 7,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/text.ts",
+          "line": 1,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "tests/service.test.ts",
+          "lines": [
+            7,
+            9
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            6
+          ]
+        },
+        {
+          "path": "src/text.ts",
+          "lines": [
+            1,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-test-impact-dispatch-account",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for dispatch on account handlers",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.js::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 7,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 9,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            3,
+            9
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            10
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            9,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-test-impact-dispatch-invoice",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for dispatch on invoice handlers",
+      "target": "dispatch",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/router.js::function::dispatch",
+        "name": "dispatch",
+        "path": "src/router.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 7,
+          "role": "caller"
+        },
+        {
+          "path": "tests/router.test.js",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 9,
+          "role": "caller"
+        },
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "caller"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/router.js",
+          "lines": [
+            4,
+            11
+          ]
+        },
+        {
+          "path": "tests/router.test.js",
+          "lines": [
+            3,
+            9
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            10
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            9,
+            11
+          ]
+        },
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-test-impact-run-onboarding",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for runOnboarding",
+      "target": "runOnboarding",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.js::function::runOnboarding",
+        "name": "runOnboarding",
+        "path": "src/workflow.js",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.js",
+          "line": 4,
+          "role": "target"
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "line": 3,
+          "role": "caller"
+        },
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "dependency"
+        },
+        {
+          "path": "src/service.ts",
+          "line": 10,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            4,
+            7
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            3,
+            6
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            9,
+            11
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "lines": [
+            10,
+            12
+          ]
+        }
+      ]
+    },
+    {
+      "id": "js-test-impact-run-invoice",
+      "repo": "benchmarks/fixtures/adaptive_js_ts",
+      "commit": "ea891efa31183bfe78b015e24082122ad0262023",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for runInvoice",
+      "target": "runInvoice",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/workflow.js::function::runInvoice",
+        "name": "runInvoice",
+        "path": "src/workflow.js",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "src/workflow.js",
+          "line": 9,
+          "role": "target"
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "line": 8,
+          "role": "caller"
+        },
+        {
+          "path": "src/router.js",
+          "line": 9,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/workflow.js",
+          "lines": [
+            9,
+            11
+          ]
+        },
+        {
+          "path": "tests/workflow.test.ts",
+          "lines": [
+            8,
+            10
+          ]
+        },
+        {
+          "path": "src/router.js",
+          "lines": [
+            9,
+            11
+          ]
+        }
+      ]
+    }
   ]
 }

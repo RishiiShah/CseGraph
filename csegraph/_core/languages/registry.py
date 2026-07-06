@@ -77,3 +77,19 @@ class LanguageRegistry:
 
 
 registry = LanguageRegistry()
+
+
+def _register_builtin_languages() -> None:
+    from csegraph._core.languages.base import DefaultTokenizer
+    from csegraph._core.languages.treesitter.languages import LANGUAGE_FACTORIES
+    from csegraph._core.languages.treesitter.parser import TreeSitterParser
+
+    for factory in LANGUAGE_FACTORIES:
+        registry.register(TreeSitterParser(factory()), DefaultTokenizer())
+
+
+_register_builtin_languages()
+
+
+def __getattr__(name: str):
+    return getattr(registry, name)

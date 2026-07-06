@@ -1,326 +1,155 @@
-<h1 align="center">CseGraph</h1>
+# CseGraph
 
-<p align="center">
-  <strong>Give coding agents the code they need—not the whole repository.</strong>
-</p>
+CseGraph is a local-first context system for coding agents. It indexes a
+repository into SQLite, retrieves the smallest useful code slices for a task,
+and exposes focused graph expansion only when structural evidence is needed.
 
-<p align="center">
-  <a href="https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml"><img src="https://github.com/RishiiShah/CseGraph/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pypi.org/project/csegraph/"><img src="https://img.shields.io/pypi/v/csegraph?style=flat-square&color=blue" alt="PyPI"></a>
-  <a href="https://pypi.org/project/csegraph/"><img src="https://img.shields.io/pypi/pyversions/csegraph?style=flat-square" alt="Python"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/pypi/l/csegraph?style=flat-square" alt="License"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode"><img src="https://img.shields.io/visual-studio-marketplace/i/rishiishah.csegraph-vscode?style=flat-square&label=VS%20Code" alt="VS Code installs"></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-compatible-green?style=flat-square" alt="MCP compatible"></a>
-</p>
+CseGraph 2.0 is a hard compatibility cutoff:
 
-<p align="center">
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#install">Install</a> ·
-  <a href="#set-up-your-coding-agent">Agent Setup</a> ·
-  <a href="#how-it-works">How It Works</a> ·
-  <a href="#benchmarks">Benchmarks</a> ·
-  <a href="docs/csegraph.md">CLI & MCP Reference</a>
-</p>
-
-<br>
-
-Coding agents often spend time and tokens searching broadly, reading entire
-files, and repeating lookups. CseGraph builds a local dependency graph of your
-repository and returns a small, task-specific context bundle containing the
-relevant code, dependencies, imports, nearby tests, and selection reasons.
-
-## Quick Start
-
-```bash
-pip install csegraph                         # or: uv tool install csegraph
-cd /path/to/your/repository
-csegraph install --platform auto             # configure supported MCP clients
-csegraph index                               # parse your codebase
-```
-
-One command sets up your coding agent integrations. `install` detects supported
-MCP clients, writes the correct platform config, adds local agent instructions
-and verifies the generated MCP launcher. Freshness uses one persistent,
-debounced watcher plus one lightweight safety refresh at the end of an agent
-turn—never a refresh or status command after every tool call. Restart your editor
-or coding tool after installing.
-
-Then ask your agent to use CseGraph, or query it directly:
-
-```bash
-csegraph context "explain how authentication refresh works" \
-  --detail-level auto \
-  --format markdown
-```
-
-The local index is stored at `.csegraph/index.db` and should not be committed.
+- the index schema is `csegraph-sqlite-v11`;
+- an index created by another schema must be rebuilt with `csegraph index`;
+- there is no schema migration path;
+- indexed source languages are Python, JavaScript, and TypeScript;
+- the public surface is nine CLI commands and six strict MCP tools.
 
 ## Install
 
-CseGraph requires Python 3.10 or newer. Install it from PyPI:
+CseGraph requires Python 3.10 or newer.
 
 ```bash
-pip install csegraph
+python -m pip install csegraph
 ```
 
-Prefer an isolated CLI tool install? Use one of these instead:
+Create a fresh index:
 
 ```bash
-uv tool install csegraph
-pipx install csegraph
+csegraph index /path/to/repository
 ```
 
-On Windows, install [Python 3.10 or newer](https://www.python.org/downloads/windows/),
-then use PowerShell:
-
-```powershell
-py -m pip install csegraph
-```
-
-If your shell cannot find `csegraph` after a pip install, add Python's scripts
-directory to your `PATH`, use `python3 -m pip install --user csegraph` on
-macOS/Linux, or use `uv tool install csegraph`.
-
-To run without a persistent install:
+Retrieve task-specific context:
 
 ```bash
-uvx csegraph --help
+csegraph context "Fix stale cache invalidation" \
+  --repo /path/to/repository \
+  --target Cache.invalidate \
+  --token-budget 800 \
+  --format markdown
 ```
 
-Verify the install:
+Register the MCP server for a supported coding client:
 
 ```bash
-csegraph --help
+csegraph install /path/to/repository --platform codex
 ```
 
-The base package includes Python, JavaScript, and TypeScript grammars. Add more
-grammars or pin the current release like this:
+## CLI
 
-```bash
-pip install "csegraph[go,rust]"
-pip install "csegraph[all]"
-pip install csegraph==1.8.1
-```
+The CLI has exactly nine commands:
 
-## Set Up Your Coding Agent
-
-Run the matching command from the root of the repository you want CseGraph to
-index:
-
-| Platform | Command |
+| Command | Purpose |
 |---|---|
-| All supported MCP clients | `csegraph install --platform auto` |
-| Codex | `csegraph install --platform codex` |
-| Cursor | `csegraph install --platform cursor` |
-| Claude Code | `csegraph install --platform claude-code` |
-| Gemini CLI | `csegraph install --platform gemini-cli` |
-| Kiro | `csegraph install --platform kiro` |
-| Antigravity CLI | `csegraph install --platform antigravity-cli` |
-| Antigravity IDE global config | `csegraph install --platform antigravity-ide` |
-| GitHub Copilot | `csegraph install --platform copilot` |
-| VS Code project files | `csegraph install --platform vscode` |
+| `csegraph index` | Build and atomically install a fresh v11 index. |
+| `csegraph refresh` | Apply changed and deleted files to an existing v11 index. |
+| `csegraph context` | Retrieve compact, budgeted task context. |
+| `csegraph graph` | Inspect a focused graph neighborhood. |
+| `csegraph path` | Find a focused dependency path. |
+| `csegraph status` | Report index health and freshness. |
+| `csegraph doctor` | Diagnose MCP client setup. |
+| `csegraph install` | Register CseGraph with an MCP client. |
+| `csegraph serve` | Start the MCP stdio server. |
 
-The installer configures the MCP server, writes platform-scoped agent
-instructions, installs a lightweight end-of-turn refresh hook, verifies the
-generated `csegraph serve --repo <repo> --platform <client>` MCP launcher, and
-adds generated local files to `.gitignore`. Use `csegraph daemon start` for
-continuous freshness and `--no-hooks` to disable the safety refresh. Hook
-refreshes are bounded to git-detected changed paths, so they avoid full-repo
-scans during agent turns. Each client gets its own platform tag, so a Cursor MCP
-call is not treated as Codex setup. Antigravity IDE writes user-global config
-only when explicitly selected. Preview the changes without writing files:
+See [the CLI and MCP reference](docs/csegraph.md) for all accepted arguments.
 
-On macOS, Linux, and Windows, generated MCP configs use a native absolute
-`csegraph` executable path. Windows virtualenv and pipx installs are resolved
-to `Scripts\csegraph.exe`, `.cmd`, or `.bat` automatically, so you should not
-need to edit `.mcp.json`, `.cursor/mcp.json`, or other generated MCP files by
-hand after installation. Python user installs are handled too: if `pip install
---user csegraph` places the CLI under `%APPDATA%\Python\PythonXY\Scripts` on
-Windows or `~/.local/bin` on Linux, the installer can still write that absolute
-launcher path even when the folder is not on your terminal `PATH`.
+## Agent workflow
 
-```bash
-csegraph install --platform codex --dry-run
-```
+Call `csegraph_context` directly for ordinary coding tasks. Use
+`csegraph_minimal` only for explicit index-health or repository-orientation
+requests. Escalate to `csegraph_graph` or `csegraph_path` only when the compact
+response recommends that focused structural operation.
 
-Use `--hooks` to install hooks for every supported agent, or
-`--no-hooks`, `--no-instructions`, `--no-gitignore`, or `--no-verify` to
-customize setup. Diagnose a platform with:
-
-```bash
-csegraph doctor --platform auto --json
-csegraph doctor --platform codex --require-observed-call --json
-```
-
-`doctor --platform auto` checks every project-scoped client config and reports
-which are missing, protocol-verified, or still waiting for real host use. After
-installing, open that client's MCP/tools settings and enable or approve the
-`csegraph` server so the six CseGraph tools are visible. A `.csegraph` index or
-another client's config is not enough; Codex, Cursor, Claude Code, and the other
-hosts each need their own enabled MCP entry. Agents should not query
-`.csegraph/index.db` directly or use CLI context commands as a substitute for
-that platform's MCP server.
-
-## How It Works
-
-```mermaid
-flowchart TD
-    A["Your repository"] --> B["Tree-sitter indexer"]
-    B --> C["Local SQLite<br/>dependency graph"]
-    C --> D["Adaptive lexical retrieval"]
-    D --> E["Graph reranking when needed"]
-    E --> F["Exact-budget code slices"]
-    F --> G["Coding agent"]
-```
-
-1. `csegraph index` parses supported source files into symbols, imports, calls,
-   inheritance relationships, and test links.
-2. The `csegraph_context` MCP tool performs indexed lexical retrieval first,
-   uses graph relationships only when ambiguity or impact requires them, and
-   packages the result under a whole-response token budget.
-3. The optional `csegraph_minimal` tool reports index health and repository
-   entry points without being required before ordinary context retrieval.
-4. `csegraph refresh` updates changed and deleted files without rebuilding
-   everything.
-
-For structural questions, CseGraph can inspect graph neighborhoods or find the
-shortest dependency path between two symbols.
-
-## Common Commands
-
-```bash
-# Build the initial index
-csegraph index
-
-# Refresh changed files
-csegraph refresh
-
-# Watch the repository and refresh automatically
-csegraph watch
-
-# Check index health
-csegraph status --verbose
-
-# Retrieve context for a task
-csegraph context "fix auth token refresh" --target refresh_token
-
-# Inspect callers, callees, imports, and test relationships
-csegraph inspect ContextService.build_context --depth 1
-
-# Find a dependency path
-csegraph path IndexService.index ContextService.build_context
-
-# Export an interactive graph
-csegraph export --format html --output graph.html
-```
-
-See the [CLI and MCP reference](docs/csegraph.md) for every command and flag.
-
-## Features
-
-| Feature | What it provides |
-|---|---|
-| Minimal context retrieval | Task-specific code, relationships, imports, tests, and selection reasons |
-| Incremental refresh | Re-indexes changed and deleted files instead of rebuilding the whole graph |
-| MCP integration | Six focused tools for indexing, refreshing, routing, context, neighborhoods, and paths |
-| Local-first storage | Repository indexes stay in `.csegraph/index.db` |
-| Monorepo scoping | Repeatable `--include-root` options limit indexing to selected subtrees |
-| Local context includes | `.csegraphinclude` safely opts selected ignored code or internal docs into the local index |
-| Multiple profiles | `auto`, `small`, `medium`, and `large` retrieval profiles |
-| Graph export | HTML, tree, JSON, GraphML, and Obsidian output |
-| Editor support | MCP setup for major coding agents plus a VS Code extension |
-| Public Python API | Sync and async services for custom integrations |
-
-## Language Support
-
-The base package includes:
-
-- Python
-- JavaScript
-- TypeScript and TSX
-
-Optional grammars include Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Groovy,
-Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Verilog,
-and Fortran.
-
-Install selected extras such as `csegraph[go,rust]`, or use `csegraph[all]` for
-every available grammar.
-
-## MCP Tools
+The MCP server exposes exactly six tools:
 
 | Tool | Purpose |
 |---|---|
-| `csegraph_index` | Build a repository graph |
-| `csegraph_refresh` | Refresh changed and deleted files |
-| `csegraph_minimal` | Optional index-health and repository-orientation card |
-| `csegraph_context` | Retrieve budgeted adaptive code slices in one call |
-| `csegraph_graph` | Inspect a graph neighborhood |
-| `csegraph_path` | Find the shortest path between two nodes |
+| `csegraph_index` | Build a fresh repository index. |
+| `csegraph_refresh` | Refresh changed and deleted files. |
+| `csegraph_minimal` | Return a small health or orientation summary. |
+| `csegraph_context` | Return compact task-specific code slices. |
+| `csegraph_graph` | Return a focused neighborhood. |
+| `csegraph_path` | Return a focused dependency path. |
 
-Agents should call `csegraph_context` directly for task-specific code. Use
-`csegraph_minimal` only for health or orientation, and use graph/path only when
-the compact response recommends structural escalation.
+Every MCP input schema rejects unknown properties.
+
+## Compact context v5
+
+`csegraph_context` accepts `task`, `repo`, `target`, `task_kind`,
+`token_budget`, `source_mode`, and `diagnostic`. The first two are required.
+`diagnostic` is a boolean and defaults to `false`.
+
+The only context response contract is `csegraph-context-v5`:
+
+```json
+{
+  "schema_version": "csegraph-context-v5",
+  "status": "ready",
+  "slices": [
+    {
+      "path": "package/cache.py",
+      "lines": [42, 61],
+      "symbol": "Cache.invalidate",
+      "role": "target",
+      "code": "..."
+    }
+  ]
+}
+```
+
+Depending on status and request, the response may also contain `candidates`,
+`missing`, `next`, `warnings`, or `diagnostics`. Diagnostics are included only
+when requested and remain inside the same whole-response token budget.
+
+Every continuation has one shape:
+
+```json
+{
+  "tool": "csegraph_graph",
+  "arguments": {"repo": "/path/to/repository", "node": "Cache.invalidate"},
+  "reason": "Inspect direct dependents."
+}
+```
+
+`tool` is required; `arguments` and `reason` are optional.
+
+## Index lifecycle
+
+The repository index is stored at `.csegraph/index.db`. `csegraph index` builds
+and validates a new database beside the active database, then replaces the
+active database atomically. A failed build leaves the active database intact.
+Successful replacement leaves no backup or migration artifact.
+
+Commands that encounter a missing or non-v11 index report `index_required` and
+direct the caller to `csegraph_index` or `csegraph index`.
 
 ## Benchmarks
 
-CseGraph 2.0 is evaluated against a strong, reproducible `rg` plus selective
-read baseline rather than a full-repository-read strawman. The baseline ranks
-JSON ripgrep matches, reads bounded 80-line windows, follows imports once, and
-uses the same token estimator and budget as adaptive retrieval.
+Benchmark runners are maintainer tools under `tools/`; benchmarking is not a
+product CLI or MCP operation. The tracked release gates and commands are
+documented in [Agent Context Benchmarks](docs/benchmarks.md).
+
+## Development
 
 ```bash
-env/bin/python tools/run_adaptive_retrieval_benchmark.py \
-  --corpus benchmarks/adaptive/pr_tasks.json \
-  --modes cold,warm \
-  --fail-on-gates
+python -m pip install -e ".[test,dev]"
+pytest -q
+ruff check .
+mypy
 ```
-
-The report measures target resolution, required-slice recall and precision,
-whole-response tokens, cold/warm engine and tool latency, tool calls, cache
-state, corpus completeness, and provenance. CI bootstraps the pinned
-repositories and requires Pyright `1.1.407`; local runs may use
-`--bootstrap-missing --allow-network --pyright required`. See
-[Agent Context Benchmarks](docs/benchmarks.md) for methodology and release gates.
-
-Adaptive responses label `usage.measurement` as `exact` when the optional
-benchmark tokenizer is installed and `estimated` when the dependency-free
-chars/4 fallback is used. `max_bytes` remains an exact transport ceiling in
-both modes.
-
-## VS Code
-
-Install the
-[CseGraph extension from the Marketplace](https://marketplace.visualstudio.com/items?itemName=rishiishah.csegraph-vscode),
-then run:
-
-```bash
-csegraph install --platform vscode
-```
-
-Open the repository in VS Code and run **CseGraph: Build Index** from the
-command palette. See the [extension guide](csegraph-vscode/README.md) for
-commands, settings, keybindings, and troubleshooting.
 
 ## Privacy
 
-Normal indexing, retrieval, refresh, MCP, and VS Code operations run locally.
-Repository indexes are written under `.csegraph/`; registry and daemon metadata
-are stored under `~/.csegraph/`.
-
-No network request is required for normal operation. Optional embeddings can
-call an OpenAI-compatible endpoint only when explicitly configured and allowed
-with `CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS`.
-
-## Documentation
-
-- [CLI, MCP, and SDK reference](docs/csegraph.md)
-- [Architecture](docs/architecture.md)
-- [Benchmarks](docs/benchmarks.md)
-- [Contributing](CONTRIBUTING.md)
-- [Support](SUPPORT.md)
-- [Security](SECURITY.md)
-- [Changelog](CHANGELOG.md)
+Indexing, retrieval, refresh, and MCP operation run locally. CseGraph does not
+execute indexed code and normal operation requires no network request.
 
 ## License
 
-CseGraph is released under the [MIT License](LICENSE).
+MIT

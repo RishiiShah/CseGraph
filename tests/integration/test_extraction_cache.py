@@ -125,7 +125,7 @@ class TestCacheIntegration:
         repo.mkdir()
         (repo / "app.py").write_text("def hello(): pass\n", encoding="utf-8")
         db = str(tmp_path / "index.db")
-        result = IndexService(db).index(str(repo), profile="small")
+        result = IndexService(db).index(str(repo))
         assert result.cache_hits == 0
         assert result.cache_misses == 1
         cache_path = tmp_path / "parse_cache.db"
@@ -136,8 +136,8 @@ class TestCacheIntegration:
         repo.mkdir()
         (repo / "app.py").write_text("def hello(): pass\n", encoding="utf-8")
         db = str(tmp_path / "index.db")
-        IndexService(db).index(str(repo), profile="small")
-        result = IndexService(db).index(str(repo), profile="small")
+        IndexService(db).index(str(repo))
+        result = IndexService(db).index(str(repo))
         assert result.files_indexed >= 1
         assert result.cache_hits == 1
         assert result.cache_misses == 0
@@ -147,8 +147,8 @@ class TestCacheIntegration:
         repo.mkdir()
         (repo / "app.py").write_text("def hello(): pass\n", encoding="utf-8")
         db = str(tmp_path / "index.db")
-        IndexService(db).index(str(repo), profile="small")
-        result = RefreshService(db).refresh(profile="small")
+        IndexService(db).index(str(repo))
+        result = RefreshService(db).refresh()
         assert result.files_indexed == 0
         assert result.cache_hits == 1
         assert result.cache_misses == 0
