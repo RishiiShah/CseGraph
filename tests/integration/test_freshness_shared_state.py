@@ -331,6 +331,45 @@ def test_refresh_that_loses_ownership_cannot_report_current(
     assert lease["owner"] == "replacement-owner"
 
 
+def test_refresh_that_runs_longer_than_the_lease_can_still_succeed_when_ownership_is_unchanged(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    (repo / "app.py").write_text("def value():\n    return 11\n", encoding="utf-8")
+
+    class SlowWriteRefresh:
+        def __init__(self, db_path: str | Path) -> None:
+            self.db_path = db_path
+
+        def refresh(self, **_kwargs):
+            index = ProjectIndex(self.db_path)
+            try:
+                with index.atomic_write():
+                    time.sleep(0.25)
+                    revision = index.bump_index_revision()
+            finally:
+                index.close()
+            return SimpleNamespace(
+                changed_files=["app.py"],
+                deleted_files=[],
+                warnings=[],
+                revision=revision,
+            )
+
+    monkeypatch.setattr(freshness_module, "RefreshService", SlowWriteRefresh)
+    result = FreshnessCoordinator(
+        db,
+        refresh_timeout=1.0,
+        lease_seconds=0.12,
+        lease_renew_interval=0.03,
+    ).ensure_current(repo)
+
+    assert result.state == "refreshed"
+    assert result.status is None
+    assert result.revision == 2
+
+
 def test_refresh_timeout_returns_requirement_until_background_refresh_finishes(
     tmp_path: Path,
     monkeypatch,

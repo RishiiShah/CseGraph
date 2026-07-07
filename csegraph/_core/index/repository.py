@@ -281,6 +281,13 @@ class ProjectIndex:
         ).fetchone()
         return row is not None and row["owner"] == owner and float(row["expires_at"]) > time.time()
 
+    def lease_owner(self, repo_root: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT owner FROM refresh_leases WHERE repo_root = ?",
+            (repo_root,),
+        ).fetchone()
+        return None if row is None else str(row["owner"])
+
     def validate_integrity(self) -> None:
         foreign_key_errors = self.conn.execute("PRAGMA foreign_key_check").fetchall()
         if foreign_key_errors:

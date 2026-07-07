@@ -371,7 +371,7 @@ class RefreshService:
                     include_roots=include_prefixes,
                     indexed_untracked_paths=indexed_untracked,
                 )
-                if lease_owner and not index.verify_lease(str(repo_root), lease_owner):
+                if lease_owner and index.lease_owner(str(repo_root)) != lease_owner:
                     raise RuntimeError("Lease ownership was lost before commit.")
                 index.bump_index_revision()
             changed_symbols.extend(changed_symbols_deleted)

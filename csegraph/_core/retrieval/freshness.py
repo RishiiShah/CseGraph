@@ -328,9 +328,9 @@ class FreshnessCoordinator:
                 """
                 UPDATE refresh_leases
                 SET expires_at = ?
-                WHERE repo_root = ? AND owner = ? AND expires_at > ?
+                WHERE repo_root = ? AND owner = ?
                 """,
-                (now + self.lease_seconds, repo_root, owner, now),
+                (now + self.lease_seconds, repo_root, owner),
             )
             index.conn.commit()
             return cursor.rowcount == 1
@@ -412,20 +412,14 @@ class FreshnessCoordinator:
         replaces_database: bool = False,
     ) -> _T:
         stop_renewal = threading.Event()
-        lease_lost = threading.Event()
-        confirmed_until = [time.time() + self.lease_seconds]
 
         def renew_lease() -> None:
             while not stop_renewal.wait(self.lease_renew_interval):
                 try:
                     if not self._renew_lease(repo_root, owner):
-                        lease_lost.set()
                         return
-                    confirmed_until[0] = time.time() + self.lease_seconds
                 except sqlite3.Error:
-                    if time.time() >= confirmed_until[0]:
-                        lease_lost.set()
-                        return
+                    continue
 
         renewal_thread = threading.Thread(
             target=renew_lease,
@@ -436,11 +430,8 @@ class FreshnessCoordinator:
         try:
             if not self._renew_lease(repo_root, owner):
                 raise RuntimeError(f"{operation_name} lease ownership was lost before starting.")
-            confirmed_until[0] = time.time() + self.lease_seconds
             result = operation()
-            if not replaces_database and (
-                lease_lost.is_set() or not self._renew_lease(repo_root, owner)
-            ):
+            if not replaces_database and not self._renew_lease(repo_root, owner):
                 raise RuntimeError(f"{operation_name} lease ownership was lost before completion.")
             return result
         finally:
