@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import os
 import sqlite3
 import subprocess
 import threading
@@ -9,25 +10,38 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterator, TypeVar
 
 from csegraph._core.core.errors import IndexRequiredError
 from csegraph._core.core.models import RefreshResult
-from csegraph._core.ignore import load_ignore_filter
+from csegraph._core.ignore import (
+    GITIGNORE_FILENAME,
+    IGNORE_FILENAME,
+    IgnoreFilter,
+    _rules_from_file,
+    load_ignore_filter,
+)
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.services import IndexService, RefreshService
-from csegraph._core.languages.base import sha256_text
+from csegraph._core.languages.base import EXCLUDED_DIRS, sha256_text
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 from csegraph._core.repo_state import git_tracked_paths
 
 AUTO_INDEX_FILE_LIMIT = 500
 AUTO_REFRESH_TIMEOUT_SECONDS = 5.0
 REFRESH_LEASE_SECONDS = 30.0
+TINY_FRESHNESS_FILE_LIMIT = 256
+TINY_FRESHNESS_INDEXED_BYTES_LIMIT = 16 * 1024 * 1024
+TINY_FRESHNESS_SCAN_FILE_LIMIT = TINY_FRESHNESS_FILE_LIMIT * 2
 _REFRESH_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=2,
     thread_name_prefix="csegraph-refresh",
 )
 _T = TypeVar("_T")
+
+
+class _TinyScanFallback(Exception):
+    pass
 
 
 @dataclass
@@ -114,12 +128,14 @@ class FreshnessCoordinator:
             revision = index.index_revision()
             changed_paths = _detect_changed_paths(index, repo_path, metadata)
             if not changed_paths:
-                current_commit = _run_git(repo_path, ["rev-parse", "--short=12", "HEAD"])
-                current_branch = _run_git(repo_path, ["rev-parse", "--abbrev-ref", "HEAD"])
+                current_branch, current_commit = _git_head_state(repo_path)
                 if metadata.get("built_commit", "") != (current_commit or "") or metadata.get(
                     "built_branch", ""
                 ) != (current_branch or ""):
-                    index.checkpoint_git_state(str(repo_path))
+                    if current_commit is None and current_branch is None:
+                        index.checkpoint_git_state(str(repo_path))
+                    else:
+                        _checkpoint_git_state(index, current_branch, current_commit)
                 return FreshnessResult(state="current", revision=revision)
         finally:
             index.close()
@@ -479,10 +495,153 @@ def _detect_changed_paths(
     repo: Path,
     metadata: dict[str, str],
 ) -> list[Path]:
+    if _is_tiny_index(index):
+        filesystem_paths = _tiny_filesystem_changed_paths(index, repo, metadata)
+        if filesystem_paths is not None:
+            return filesystem_paths
     git_paths = _git_changed_paths(repo, metadata.get("built_commit"))
     if git_paths is not None:
         return _filter_indexed_content(index, repo, git_paths)
     return _filesystem_changed_paths(index, repo)
+
+
+def _is_tiny_index(index: ProjectIndex) -> bool:
+    row = index.conn.execute(
+        """
+        SELECT COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_bytes
+        FROM files
+        """
+    ).fetchone()
+    if row is None:
+        return False
+    return (
+        int(row["file_count"]) <= TINY_FRESHNESS_FILE_LIMIT
+        and int(row["total_bytes"]) <= TINY_FRESHNESS_INDEXED_BYTES_LIMIT
+    )
+
+
+def _tiny_filesystem_changed_paths(
+    index: ProjectIndex,
+    repo: Path,
+    metadata: dict[str, str],
+) -> list[Path] | None:
+    stored = {
+        str(row["path"]): (int(row["size"]), str(row["sha256"]))
+        for row in index.conn.execute("SELECT path, size, sha256 FROM files")
+    }
+    include_roots = _include_roots_from_metadata(metadata)
+    changed: set[Path] = set()
+
+    for rel, previous in stored.items():
+        path = repo / rel
+        try:
+            stat = path.stat()
+        except OSError:
+            changed.add(path)
+            continue
+        if not path.is_file() or path.is_symlink():
+            changed.add(path)
+            continue
+        if int(stat.st_size) != previous[0]:
+            changed.add(path)
+            continue
+        try:
+            current_hash = sha256_text(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError):
+            changed.add(path)
+            continue
+        if current_hash != previous[1]:
+            changed.add(path)
+
+    scan_limit = max(TINY_FRESHNESS_SCAN_FILE_LIMIT, len(stored) + TINY_FRESHNESS_FILE_LIMIT)
+    discovered = 0
+    try:
+        for rel in _iter_tiny_filesystem_source_paths(repo, include_roots):
+            discovered += 1
+            if discovered > scan_limit:
+                return None
+            if rel not in stored:
+                changed.add(repo / rel)
+    except _TinyScanFallback:
+        return None
+    return sorted(changed)
+
+
+def _iter_tiny_filesystem_source_paths(
+    repo: Path,
+    include_roots: tuple[str, ...],
+) -> Iterator[str]:
+    if (repo / ".csegraphinclude").exists():
+        raise _TinyScanFallback()
+    ignore = _tiny_ignore_filter(repo)
+    resolved_repo = repo.resolve()
+    for dirpath, dirnames, filenames in os.walk(resolved_repo):
+        rel_root = Path(dirpath).resolve().relative_to(resolved_repo).as_posix()
+        if rel_root != "." and ".gitignore" in filenames:
+            raise _TinyScanFallback()
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if name not in EXCLUDED_DIRS
+            and not name.startswith(".")
+            and _dir_may_contain_include(
+                f"{rel_root}/{name}" if rel_root != "." else name,
+                include_roots,
+            )
+            and ignore.should_descend(f"{rel_root}/{name}" if rel_root != "." else name)
+        )
+        for filename in sorted(filenames):
+            rel = f"{rel_root}/{filename}" if rel_root != "." else filename
+            if include_roots and not _is_included_rel_path(rel, include_roots):
+                continue
+            try:
+                parser = registry.for_extension(Path(filename).suffix)
+            except UnsupportedLanguageError:
+                continue
+            if ignore.is_ignored(rel):
+                raise _TinyScanFallback()
+            if parser.excludes_rel_path(rel):
+                continue
+            path = resolved_repo / rel
+            if path.is_file() and not path.is_symlink():
+                yield rel
+
+
+def _tiny_ignore_filter(repo: Path) -> IgnoreFilter:
+    rules = [
+        *_rules_from_file(repo / GITIGNORE_FILENAME, "gitignore"),
+        *_rules_from_file(repo / IGNORE_FILENAME, "csegraphignore"),
+    ]
+    return IgnoreFilter(rules, root=repo.resolve())
+
+
+def _include_roots_from_metadata(metadata: dict[str, str]) -> tuple[str, ...]:
+    try:
+        decoded = json.loads(metadata.get("include_roots", "[]"))
+    except (TypeError, json.JSONDecodeError):
+        return ()
+    if not isinstance(decoded, list):
+        return ()
+    return tuple(str(value).strip("/") for value in decoded if isinstance(value, str))
+
+
+def _is_included_rel_path(rel_path: str, include_roots: tuple[str, ...]) -> bool:
+    if not include_roots:
+        return True
+    normalized = rel_path.strip("/")
+    return any(normalized == root or normalized.startswith(f"{root}/") for root in include_roots)
+
+
+def _dir_may_contain_include(rel_dir: str, include_roots: tuple[str, ...]) -> bool:
+    if not include_roots:
+        return True
+    normalized = rel_dir.strip("/")
+    return any(
+        normalized == root
+        or normalized.startswith(f"{root}/")
+        or root.startswith(f"{normalized}/")
+        for root in include_roots
+    )
 
 
 def _git_changed_paths(repo: Path, built_commit: str | None) -> list[Path] | None:
@@ -537,6 +696,118 @@ def _run_git_bytes(repo: Path, args: list[str]) -> bytes | None:
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return None
     return result.stdout if result.returncode == 0 else None
+
+
+def _git_head_state(repo: Path) -> tuple[str | None, str | None]:
+    state = _git_head_state_from_files(repo)
+    if state is not None:
+        return state
+    current_commit = _run_git(repo, ["rev-parse", "--short=12", "HEAD"])
+    current_branch = _run_git(repo, ["rev-parse", "--abbrev-ref", "HEAD"])
+    return current_branch, current_commit
+
+
+def _git_head_state_from_files(repo: Path) -> tuple[str | None, str | None] | None:
+    git_dir = _git_dir(repo)
+    if git_dir is None:
+        return None
+    head_path = git_dir / "HEAD"
+    try:
+        head = head_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not head:
+        return None
+
+    if not head.startswith("ref: "):
+        return "HEAD", head[:12]
+
+    ref = head[5:].strip()
+    commit = _read_git_ref(git_dir, ref)
+    if commit is None:
+        return None
+    branch = ref.removeprefix("refs/heads/")
+    return branch, commit[:12]
+
+
+def _git_dir(repo: Path) -> Path | None:
+    dot_git = repo / ".git"
+    if dot_git.is_dir():
+        return dot_git
+    if not dot_git.is_file():
+        return None
+    try:
+        text = dot_git.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    prefix = "gitdir:"
+    if not text.lower().startswith(prefix):
+        return None
+    raw_path = text[len(prefix) :].strip()
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = dot_git.parent / path
+    return path.resolve()
+
+
+def _read_git_ref(git_dir: Path, ref: str) -> str | None:
+    for base in _git_ref_bases(git_dir):
+        ref_path = base / ref
+        try:
+            commit = ref_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if commit:
+            return commit
+    for base in _git_ref_bases(git_dir):
+        packed = base / "packed-refs"
+        try:
+            lines = packed.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        suffix = f" {ref}"
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("#", "^")):
+                continue
+            if stripped.endswith(suffix):
+                return stripped.split(" ", 1)[0]
+    return None
+
+
+def _git_ref_bases(git_dir: Path) -> tuple[Path, ...]:
+    common_dir_file = git_dir / "commondir"
+    try:
+        raw_common_dir = common_dir_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return (git_dir,)
+    if not raw_common_dir:
+        return (git_dir,)
+    common_dir = Path(raw_common_dir)
+    if not common_dir.is_absolute():
+        common_dir = git_dir / common_dir
+    common_dir = common_dir.resolve()
+    return (git_dir, common_dir) if common_dir != git_dir else (git_dir,)
+
+
+def _checkpoint_git_state(
+    index: ProjectIndex,
+    branch: str | None,
+    commit: str | None,
+) -> None:
+    index.conn.executemany(
+        """
+        INSERT INTO metadata(key, value)
+        VALUES(?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (
+            ("built_branch", branch or ""),
+            ("built_commit", commit or ""),
+            ("updated_at", str(time.time())),
+        ),
+    )
+    index.conn.commit()
 
 
 def _filesystem_changed_paths(index: ProjectIndex, repo: Path) -> list[Path]:

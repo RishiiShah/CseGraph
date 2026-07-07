@@ -486,6 +486,8 @@ def test_git_freshness_queries_only_changed_and_untracked_paths(tmp_path: Path) 
     statements: list[str] = []
     index = ProjectIndex(db)
     try:
+        index.conn.execute("UPDATE files SET size = ?", (17 * 1024 * 1024,))
+        index.conn.commit()
         index.conn.set_trace_callback(statements.append)
         changed = _detect_changed_paths(index, repo, index.metadata())
     finally:
@@ -497,6 +499,227 @@ def test_git_freshness_queries_only_changed_and_untracked_paths(tmp_path: Path) 
     ]
     assert file_queries
     assert all(" WHERE path IN " in statement for statement in file_queries)
+
+
+def test_tiny_git_freshness_skips_git_change_detection_when_current(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+
+    def fail_git_change_detection(*args, **kwargs):
+        raise AssertionError("tiny current repos should not use Git change detection")
+
+    monkeypatch.setattr(
+        freshness_module,
+        "_git_changed_paths",
+        fail_git_change_detection,
+    )
+    monkeypatch.setattr(
+        freshness_module,
+        "_run_git",
+        fail_git_change_detection,
+    )
+
+    result = FreshnessCoordinator(db).ensure_current(repo)
+
+    assert result.state == "current"
+
+
+def test_tiny_git_freshness_hashes_same_size_preserved_mtime_edit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    source = repo / "app.py"
+    index = ProjectIndex(db)
+    try:
+        row = index.conn.execute(
+            "SELECT mtime, sha256 FROM files WHERE path = 'app.py'"
+        ).fetchone()
+        stored_mtime = float(row["mtime"])
+        original_hash = str(row["sha256"])
+    finally:
+        index.close()
+    replacement = "def value():\n    return 2\n"
+    assert len(replacement) == len(source.read_text(encoding="utf-8"))
+    source.write_text(replacement, encoding="utf-8")
+    os.utime(source, (stored_mtime, stored_mtime))
+
+    def fail_git_change_detection(*args, **kwargs):
+        raise AssertionError("tiny same-size edits should be detected without Git")
+
+    monkeypatch.setattr(
+        freshness_module,
+        "_git_changed_paths",
+        fail_git_change_detection,
+    )
+
+    result = FreshnessCoordinator(db).ensure_current(repo)
+
+    assert result.state == "refreshed"
+    index = ProjectIndex(db)
+    try:
+        updated_hash = index.conn.execute(
+            "SELECT sha256 FROM files WHERE path = 'app.py'"
+        ).fetchone()["sha256"]
+    finally:
+        index.close()
+    assert updated_hash != original_hash
+    assert updated_hash == sha256_text(source.read_text(encoding="utf-8"))
+
+
+def test_tiny_git_freshness_treats_size_mismatch_as_changed_without_hashing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    source = repo / "app.py"
+    source.write_text("def value():\n    return 100\n", encoding="utf-8")
+
+    def fail_git_change_detection(*args, **kwargs):
+        raise AssertionError("tiny size changes should be detected without Git")
+
+    def fail_freshness_hash(*args, **kwargs):
+        raise AssertionError("size mismatch proves content changed before hashing")
+
+    monkeypatch.setattr(freshness_module, "_git_changed_paths", fail_git_change_detection)
+    monkeypatch.setattr(freshness_module, "sha256_text", fail_freshness_hash)
+
+    result = FreshnessCoordinator(db).ensure_current(repo)
+
+    assert result.state == "refreshed"
+
+
+def test_tiny_git_freshness_uses_byte_budget_not_symbol_count(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    index = ProjectIndex(db)
+    try:
+        index.conn.execute(
+            "UPDATE metadata SET value = '1000000' WHERE key = 'symbol_count'"
+        )
+        index.conn.commit()
+    finally:
+        index.close()
+
+    def fail_git_change_detection(*args, **kwargs):
+        raise AssertionError("symbol count should not gate tiny freshness")
+
+    monkeypatch.setattr(freshness_module, "_git_changed_paths", fail_git_change_detection)
+
+    result = FreshnessCoordinator(db).ensure_current(repo)
+
+    assert result.state == "current"
+
+
+def test_tiny_git_freshness_falls_back_when_indexed_bytes_exceed_budget(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    index = ProjectIndex(db)
+    try:
+        index.conn.execute("UPDATE files SET size = ?", (17 * 1024 * 1024,))
+        index.conn.commit()
+    finally:
+        index.close()
+
+    def fail_tiny_detector(*args, **kwargs):
+        raise AssertionError("large indexed bytes should not use the tiny detector")
+
+    monkeypatch.setattr(freshness_module, "_tiny_filesystem_changed_paths", fail_tiny_detector)
+    monkeypatch.setattr(freshness_module, "_git_changed_paths", lambda *args, **kwargs: [])
+
+    index = ProjectIndex(db)
+    try:
+        changed = _detect_changed_paths(index, repo, index.metadata())
+    finally:
+        index.close()
+
+    assert changed == []
+
+
+def test_tiny_git_freshness_detects_untracked_source_without_git_change_detection(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    (repo / "extra.py").write_text("EXTRA = True\n", encoding="utf-8")
+
+    def fail_git_change_detection(*args, **kwargs):
+        raise AssertionError("tiny repos should find source additions without Git change detection")
+
+    monkeypatch.setattr(
+        freshness_module,
+        "_git_changed_paths",
+        fail_git_change_detection,
+    )
+
+    result = FreshnessCoordinator(db).ensure_current(repo)
+
+    assert result.state == "refreshed"
+    index = ProjectIndex(db)
+    try:
+        paths = {row["path"] for row in index.conn.execute("SELECT path FROM files")}
+    finally:
+        index.close()
+    assert "extra.py" in paths
+
+
+def test_tiny_git_freshness_ignores_gitignored_untracked_source(
+    tmp_path: Path,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    (repo / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    (repo / "ignored.py").write_text("IGNORED = True\n", encoding="utf-8")
+
+    result = FreshnessCoordinator(db).ensure_current(repo)
+
+    assert result.state == "current"
+    index = ProjectIndex(db)
+    try:
+        paths = {row["path"] for row in index.conn.execute("SELECT path FROM files")}
+    finally:
+        index.close()
+    assert "ignored.py" not in paths
+
+
+def test_tiny_git_freshness_checkpoints_committed_current_content_without_git_subprocess(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    coordinator = FreshnessCoordinator(db)
+
+    (repo / "app.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    refreshed = coordinator.ensure_current(repo)
+    assert refreshed.state == "refreshed"
+    _git(repo, "add", "app.py")
+    _git(repo, "commit", "-qm", "content already indexed")
+    expected_commit = _git(repo, "rev-parse", "--short=12", "HEAD")
+
+    def fail_git_subprocess(*args, **kwargs):
+        raise AssertionError("tiny current repos should checkpoint without subprocess Git")
+
+    monkeypatch.setattr(freshness_module, "_git_changed_paths", fail_git_subprocess)
+    monkeypatch.setattr(freshness_module, "_run_git", fail_git_subprocess)
+    monkeypatch.setattr(
+        "csegraph._core.index.repository.git_head_state",
+        fail_git_subprocess,
+    )
+
+    current = coordinator.ensure_current(repo)
+
+    assert current.state == "current"
+    index = ProjectIndex(db)
+    try:
+        metadata = index.metadata()
+    finally:
+        index.close()
+    assert metadata["built_commit"] == expected_commit
 
 
 def test_git_branch_switch_refreshes_back_to_the_checked_out_content(tmp_path: Path) -> None:
