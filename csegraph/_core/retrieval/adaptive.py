@@ -14,6 +14,7 @@ from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.retrieval.adaptive_discovery import (
     _discover_candidates,
     _load_candidate_rows,
+    _target_candidate_rows,
 )
 from csegraph._core.retrieval.adaptive_expansion import (
     _ambiguous_response,
@@ -48,6 +49,8 @@ from .adaptive_constants import (
     MAX_SLICES,
     TARGET_CONFIDENCE_THRESHOLD,
     TARGET_MARGIN_THRESHOLD,
+    TINY_REPO_FILE_LIMIT,
+    TINY_REPO_SYMBOL_LIMIT,
 )
 
 
@@ -68,15 +71,20 @@ class ContextService:
             metadata = index.metadata()
             repo_root = str(Path(metadata["root_dir"]).resolve())
             revision = index.index_revision()
+            tiny_repo = _is_tiny_repo(metadata)
             intent = _infer_intent(request.task, request.task_kind)
             plan_mode = _plan_mode(request.task, intent)
             compress_target_source = plan_mode == "impact" and intent != "edit"
             cache_state = "disabled"
-            ranked, exact = _discover_candidates(
-                index,
-                request.task,
-                request.target,
-            )
+            ranked: list[dict[str, Any]] = []
+            exact = False
+            if tiny_repo and request.target:
+                fast_path = _tiny_target_candidates(index, request.target)
+                if fast_path is not None:
+                    ranked, exact = fast_path
+            if not ranked:
+                ranked, exact = _discover_candidates(index, request.task, request.target)
+            slice_limit = MAX_SLICES
             confidence, margin = _target_confidence(ranked, exact=exact)
             resolved = bool(
                 ranked
@@ -218,7 +226,7 @@ class ContextService:
             target_already_emitted = _slice_key(target_row) in emitted
             target_slice_required = request.source_mode != "never" and not target_already_emitted
             for row in ordered:
-                if len(response.slices) >= MAX_SLICES:
+                if len(response.slices) >= slice_limit:
                     break
                 if _slice_key(row) in emitted:
                     continue
@@ -301,6 +309,31 @@ def _validate_request(request: ContextRequest) -> None:
         raise ValueError("task_kind must be one of: auto, edit, understand, review, test-impact")
     if not isinstance(request.diagnostic, bool):
         raise TypeError("diagnostic must be a boolean")
+
+
+def _is_tiny_repo(metadata: dict[str, str]) -> bool:
+    file_count = metadata.get("file_count")
+    symbol_count = metadata.get("symbol_count")
+    if file_count is None or symbol_count is None:
+        return False
+    return (
+        int(file_count) <= TINY_REPO_FILE_LIMIT
+        and int(symbol_count) <= TINY_REPO_SYMBOL_LIMIT
+    )
+
+
+def _tiny_target_candidates(
+    index: ProjectIndex,
+    target: str,
+) -> tuple[list[dict[str, Any]], bool] | None:
+    target_rows, exact = _target_candidate_rows(index, target)
+    if not exact or len(target_rows) != 1:
+        return None
+    target_id = str(target_rows[0]["id"])
+    rows = _load_candidate_rows(index, [target_id])
+    if target_id not in rows:
+        return None
+    return [rows[target_id]], True
 
 
 def _terminal_freshness_response(

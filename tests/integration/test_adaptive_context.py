@@ -103,3 +103,24 @@ def test_ambiguous_response_has_standard_continuation_shape(tmp_path: Path):
     assert len(payload["candidates"]) == 2
     assert set(payload["next"]) <= {"tool", "arguments", "reason"}
     assert "args" not in payload["next"]
+
+
+def test_tiny_repo_exact_target_skips_full_candidate_discovery(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, db = _repo(tmp_path)
+
+    def explode(*args, **kwargs):
+        raise AssertionError("tiny repos should not need full candidate discovery")
+
+    monkeypatch.setattr("csegraph._core.retrieval.adaptive._discover_candidates", explode)
+
+    payload = to_dict(
+        ContextService(db).retrieve(
+            ContextRequest(repo=str(repo), task="Explain greet", target="greet")
+        )
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["slices"][0]["symbol"] == "greet"

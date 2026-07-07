@@ -18,7 +18,10 @@ def _discover_candidates(
     index: ProjectIndex,
     task: str,
     target: str | None,
+    *,
+    candidate_limit: int = MAX_CANDIDATES,
 ) -> tuple[list[dict[str, Any]], bool]:
+    candidate_limit = max(1, int(candidate_limit))
     candidate_scores: dict[str, float] = {}
     candidate_precedence: dict[str, int] = {}
     candidate_fts_rank: dict[str, int] = {}
@@ -39,7 +42,7 @@ def _discover_candidates(
             if exact:
                 exact_ids.add(node_id)
 
-    fts_ids = _fts_candidate_ids(index, task, MAX_CANDIDATES)
+    fts_ids = _fts_candidate_ids(index, task, candidate_limit)
     for position, node_id in enumerate(fts_ids):
         candidate_scores[node_id] = max(
             candidate_scores.get(node_id, 0.0),
@@ -47,7 +50,7 @@ def _discover_candidates(
         )
         candidate_precedence[node_id] = min(candidate_precedence.get(node_id, 9), 3)
         candidate_fts_rank[node_id] = min(
-            candidate_fts_rank.get(node_id, MAX_CANDIDATES),
+            candidate_fts_rank.get(node_id, candidate_limit),
             position,
         )
         candidate_reasons.setdefault(node_id, []).append("full-text match")
@@ -71,7 +74,7 @@ def _discover_candidates(
             WHERE LOWER(name) IN ({placeholders})
             LIMIT ?
             """,
-            (*exact_task_names, MAX_CANDIDATES),
+            (*exact_task_names, candidate_limit),
         ).fetchall()
         for row in rows:
             node_id = str(row["id"])
@@ -146,7 +149,7 @@ def _discover_candidates(
             candidate_reasons.setdefault(node_id, []).append("generated/vendor penalty")
         row["_score"] = score
         row["_precedence"] = candidate_precedence.get(node_id, 9)
-        row["_fts_rank"] = candidate_fts_rank.get(node_id, MAX_CANDIDATES)
+        row["_fts_rank"] = candidate_fts_rank.get(node_id, candidate_limit)
         row["_rank_reasons"] = list(dict.fromkeys(candidate_reasons.get(node_id, [])))
 
     ranked = sorted(rows_by_id.values(), key=_candidate_sort_key)
@@ -161,7 +164,7 @@ def _discover_candidates(
             )
         )
     )
-    return _deduplicate_ranked_rows(ranked)[:MAX_CANDIDATES], exact
+    return _deduplicate_ranked_rows(ranked)[:candidate_limit], exact
 
 
 def _target_candidate_rows(

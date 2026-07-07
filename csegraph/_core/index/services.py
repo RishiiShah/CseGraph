@@ -97,6 +97,7 @@ class IndexService:
             if untracked is not None
             else None
         )
+        symbol_count = sum(len(parsed.symbols) for parsed in parsed_files)
 
         target_path = Path(self.db_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +113,8 @@ class IndexService:
                     repo_root,
                     include_roots=include_prefixes,
                     indexed_untracked_paths=indexed_untracked,
+                    file_count=len(parsed_files),
+                    symbol_count=symbol_count,
                 )
                 timings_ms["initialize_schema"] = _elapsed_ms(start)
 
@@ -266,10 +269,18 @@ class RefreshService:
                     indexed_untracked = (
                         _existing_indexed_paths(index, untracked) if untracked is not None else None
                     )
+                    file_count = int(
+                        index.conn.execute("SELECT COUNT(*) AS c FROM files").fetchone()["c"]
+                    )
+                    symbol_count = int(
+                        index.conn.execute("SELECT COUNT(*) AS c FROM symbols").fetchone()["c"]
+                    )
                     index.set_metadata(
                         str(repo_root),
                         include_roots=include_prefixes,
                         indexed_untracked_paths=indexed_untracked,
+                        file_count=file_count,
+                        symbol_count=symbol_count,
                     )
                     if lease_owner and not index.verify_lease(str(repo_root), lease_owner):
                         raise RuntimeError("Lease ownership was lost before commit.")
@@ -366,10 +377,16 @@ class RefreshService:
                 indexed_untracked = (
                     _existing_indexed_paths(index, untracked) if untracked is not None else None
                 )
+                file_count = int(index.conn.execute("SELECT COUNT(*) AS c FROM files").fetchone()["c"])
+                symbol_count = int(
+                    index.conn.execute("SELECT COUNT(*) AS c FROM symbols").fetchone()["c"]
+                )
                 index.set_metadata(
                     str(repo_root),
                     include_roots=include_prefixes,
                     indexed_untracked_paths=indexed_untracked,
+                    file_count=file_count,
+                    symbol_count=symbol_count,
                 )
                 if lease_owner and index.lease_owner(str(repo_root)) != lease_owner:
                     raise RuntimeError("Lease ownership was lost before commit.")

@@ -135,6 +135,8 @@ class ProjectIndex:
         root_dir: str,
         include_roots: Optional[Sequence[str]] = None,
         indexed_untracked_paths: Optional[Sequence[str]] = None,
+        file_count: int | None = None,
+        symbol_count: int | None = None,
     ) -> None:
         now = time.time()
         existing = self.metadata(raise_if_empty=False)
@@ -156,6 +158,10 @@ class ProjectIndex:
                 sorted(set(indexed_untracked_paths)),
                 separators=(",", ":"),
             )
+        if file_count is not None:
+            rows["file_count"] = str(int(file_count))
+        if symbol_count is not None:
+            rows["symbol_count"] = str(int(symbol_count))
         self.conn.executemany(
             """
             INSERT INTO metadata(key, value)
