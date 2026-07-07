@@ -47,12 +47,11 @@ dev = [
     "pre-commit>=4.0",
     "ruff>=0.8",
 ]
-docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"
 Issues = "https://github.com/RishiiShah/CseGraph/issues"
-Documentation = "https://github.com/RishiiShah/CseGraph/tree/main/docs"
+Documentation = "https://github.com/RishiiShah/CseGraph#readme"
 Changelog = "https://github.com/RishiiShah/CseGraph/blob/main/CHANGELOG.md"
 
 [project.scripts]

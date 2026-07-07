@@ -58,7 +58,7 @@ The CLI has exactly nine commands:
 | `csegraph install` | Register CseGraph with an MCP client. |
 | `csegraph serve` | Start the MCP stdio server. |
 
-See [the CLI and MCP reference](docs/csegraph.md) for all accepted arguments.
+Run `csegraph --help` or `csegraph <command> --help` for accepted arguments.
 
 ## Agent workflow
 
@@ -133,8 +133,8 @@ direct the caller to `csegraph_index` or `csegraph index`.
 ## Benchmarks
 
 Benchmark runners are maintainer tools under `tools/`; benchmarking is not a
-product CLI or MCP operation. The tracked release gates and commands are
-documented in [Agent Context Benchmarks](docs/benchmarks.md).
+product CLI or MCP operation. Benchmark evidence is tracked in
+`benchmark_results/` and summarized in [Benchmark Evidence](docs/benchmarks.md).
 
 ## Development
 

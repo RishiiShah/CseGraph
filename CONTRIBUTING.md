@@ -166,19 +166,12 @@ in the Python package.
 
 ## Documentation
 
-Install the documentation dependencies and build the site:
+Keep documentation focused and in its intended location:
 
-```bash
-python -m pip install -e ".[docs]"
-python -m mkdocs build --strict
-```
-
-Keep documentation in its intended location:
-
-- `README.md`: public overview, installation, and quick start
+- `README.md`: public overview, installation, quick start, and public surface
 - `CONTRIBUTING.md`: contributor workflow
-- `docs/csegraph.md`: CLI, MCP, and SDK reference
 - `docs/architecture.md`: internal architecture and data flow
+- `docs/benchmarks.md`: index of benchmark evidence in `benchmark_results/`
 - `RELEASE.md`: release process
 
 ## Reporting Issues

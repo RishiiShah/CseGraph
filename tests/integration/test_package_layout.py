@@ -85,9 +85,8 @@ def test_one_distribution_package_layout_and_versions():
     assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES
     optional_deps = root_project.get("optional-dependencies", {})
-    assert set(optional_deps) == {"test", "dev", "docs", "benchmark"}
+    assert set(optional_deps) == {"test", "dev", "benchmark"}
     assert optional_deps["benchmark"] == BENCHMARK_DEPENDENCIES
-    assert optional_deps["docs"] == ["mkdocs>=1.6", "mkdocs-material>=9.5"]
     assert all("watchfiles" not in dependency for dependency in optional_deps["dev"])
     assert "context engine" in root_project["description"]
     assert root_project["scripts"] == {"csegraph": "csegraph._cli.main:main"}
@@ -104,7 +103,7 @@ def test_one_distribution_package_layout_and_versions():
     assert root_project["urls"] == {
         "Repository": "https://github.com/RishiiShah/CseGraph",
         "Issues": "https://github.com/RishiiShah/CseGraph/issues",
-        "Documentation": "https://github.com/RishiiShah/CseGraph/tree/main/docs",
+        "Documentation": "https://github.com/RishiiShah/CseGraph#readme",
         "Changelog": "https://github.com/RishiiShah/CseGraph/blob/main/CHANGELOG.md",
     }
 
@@ -378,7 +377,7 @@ def test_release_hardening_files_and_vscode_audit_override():
         "RELEASE.md",
         "SUPPORT.md",
         "docs/architecture.md",
-        "docs/csegraph.md",
+        "docs/benchmarks.md",
     ]
     for rel_path in expected_files:
         assert (repo_root / rel_path).exists(), rel_path

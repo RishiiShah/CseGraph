@@ -5,7 +5,7 @@
 Run from the repository root:
 
 ```bash
-env/bin/python -m pip install -e ".[test,dev,benchmark,docs]"
+env/bin/python -m pip install -e ".[test,dev,benchmark]"
 env/bin/python -m pytest tests/ -q
 env/bin/python -m ruff format --check .
 env/bin/python -m ruff check csegraph tools tests
@@ -26,7 +26,6 @@ env/bin/python tools/run_adaptive_retrieval_benchmark.py \
   --pyright required \
   --output benchmark_results/adaptive_nightly.json \
   --fail-on-gates
-env/bin/python -m mkdocs build --strict
 ```
 
 Run from `csegraph-vscode/`:

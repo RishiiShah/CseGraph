@@ -85,6 +85,6 @@ def test_runtime_dependencies_and_mcp_docs_match_contract():
         "tree-sitter-typescript",
     }
 
-    documented = (ROOT / "docs" / "csegraph.md").read_text(encoding="utf-8")
+    documented = (ROOT / "README.md").read_text(encoding="utf-8")
     tool_names = {tool.name for tool in TOOLS}
-    assert set(re.findall(r"^### `(csegraph_[a-z_]+)`$", documented, re.MULTILINE)) == tool_names
+    assert set(re.findall(r"\| `(csegraph_[a-z_]+)` \|", documented)) == tool_names
