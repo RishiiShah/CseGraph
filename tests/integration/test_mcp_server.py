@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
+from mcp.types import CallToolRequest, CallToolRequestParams
 
-from csegraph._core.server.app import _handle_tool
+from csegraph._core.server.app import _handle_tool, create_server
 from csegraph._core.server.tools import CORE_MCP_TOOL_NAMES, TOOLS
 
 
@@ -46,3 +48,39 @@ def test_index_and_context_dispatch_use_compact_v5(tmp_path: Path):
     assert indexed["files_indexed"] == 1
     assert set(context) == {"schema_version", "status", "slices"}
     assert context["schema_version"] == "csegraph-context-v5"
+
+
+def test_all_public_tool_handlers_dispatch_through_worker_threads(tmp_path: Path, monkeypatch):
+    calls: list[str] = []
+
+    async def recording_to_thread(func, name, arguments, **kwargs):
+        calls.append(name)
+        return {"tool": name}
+
+    monkeypatch.setattr(
+        "csegraph._core.server.app.asyncio.to_thread",
+        recording_to_thread,
+    )
+    server = create_server()
+    handler = server.request_handlers[CallToolRequest]
+    repo = str(tmp_path)
+    arguments_by_tool = {
+        "csegraph_index": {"repo": repo},
+        "csegraph_refresh": {"repo": repo},
+        "csegraph_minimal": {"repo": repo},
+        "csegraph_context": {"repo": repo, "task": "Explain"},
+        "csegraph_graph": {"repo": repo, "node": "app.py"},
+        "csegraph_path": {"repo": repo, "source": "a", "target": "b"},
+    }
+
+    async def exercise_handlers() -> None:
+        for name, arguments in arguments_by_tool.items():
+            await handler(
+                CallToolRequest(
+                    params=CallToolRequestParams(name=name, arguments=arguments),
+                )
+            )
+
+    asyncio.run(exercise_handlers())
+
+    assert calls == list(arguments_by_tool)

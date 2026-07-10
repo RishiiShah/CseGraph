@@ -26,7 +26,7 @@ EXPECTED_MCP_TOOL_NAMES = frozenset(
 # Baseline measured from the list_tools payload; fail CI if exceeded.
 MAX_MCP_TOOL_SCHEMA_BYTES = 5_000
 
-_BLOCKING_MCP_TOOLS = frozenset({"csegraph_index", "csegraph_refresh"})
+_BLOCKING_MCP_TOOLS = EXPECTED_MCP_TOOL_NAMES
 
 
 def is_blocking_mcp_tool(name: str) -> bool:

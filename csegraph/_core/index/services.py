@@ -9,7 +9,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from hashlib import blake2b
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, TypeVar, overload
 
 from csegraph._core.core.ids import file_node_id
 from csegraph._core.core.models import IndexResult, RefreshResult
@@ -27,12 +27,132 @@ from csegraph._core.repo_state import git_untracked_paths
 
 _STRUCTURAL_LANGUAGE = "non_code"
 _EXTRACTED = "EXTRACTED"
+_DefaultT = TypeVar("_DefaultT")
+
+
+class _LazySymbolLookup(dict[str, List[str]]):
+    def __init__(
+        self,
+        index: ProjectIndex,
+        node_to_file_node: Dict[str, str],
+        node_kind_by_id: Dict[str, str],
+    ) -> None:
+        super().__init__()
+        self.index = index
+        self.node_to_file_node = node_to_file_node
+        self.node_kind_by_id = node_kind_by_id
+
+    def _load(self, lookup_name: str) -> List[str]:
+        if dict.__contains__(self, lookup_name):
+            return dict.__getitem__(self, lookup_name)
+        rows = self.index.conn.execute(
+            """
+            SELECT lookup.symbol_id, symbol.file_id, symbol.kind
+            FROM symbol_lookup AS lookup
+            JOIN symbols AS symbol ON symbol.id = lookup.symbol_id
+            WHERE lookup.lookup_name = ?
+            ORDER BY lookup.symbol_id
+            """,
+            (lookup_name,),
+        ).fetchall()
+        candidates = [str(row["symbol_id"]) for row in rows]
+        for row in rows:
+            node_id = str(row["symbol_id"])
+            self.node_to_file_node[node_id] = str(row["file_id"])
+            self.node_kind_by_id[node_id] = str(row["kind"])
+        dict.__setitem__(self, lookup_name, candidates)
+        return candidates
+
+    def __getitem__(self, lookup_name: str) -> List[str]:
+        candidates = self._load(lookup_name)
+        if not candidates:
+            raise KeyError(lookup_name)
+        return candidates
+
+    def __contains__(self, lookup_name: object) -> bool:
+        if not isinstance(lookup_name, str):
+            return False
+        return bool(self._load(lookup_name))
+
+    def add_candidate(self, lookup_name: str, symbol_id: str) -> None:
+        if dict.__contains__(self, lookup_name):
+            dict.__getitem__(self, lookup_name).append(symbol_id)
+
+    @overload
+    def get(self, lookup_name: str, default: None = None, /) -> Optional[List[str]]: ...
+
+    @overload
+    def get(self, lookup_name: str, default: List[str], /) -> List[str]: ...
+
+    @overload
+    def get(self, lookup_name: str, default: _DefaultT, /) -> List[str] | _DefaultT: ...
+
+    def get(
+        self,
+        lookup_name: str,
+        default: Any = None,
+        /,
+    ) -> Any:
+        candidates = self._load(lookup_name)
+        if candidates:
+            return candidates
+        return default
+
+
+class _LazyModuleLookup(dict[str, str]):
+    def __init__(self, index: ProjectIndex) -> None:
+        super().__init__()
+        self.index = index
+        self.loaded: set[str] = set()
+
+    def _load(self, module_name: str) -> Optional[str]:
+        if module_name in self.loaded:
+            return dict.get(self, module_name)
+        row = self.index.conn.execute(
+            """
+            SELECT module_lookup.file_id
+            FROM module_lookup
+            JOIN files ON files.id = module_lookup.file_id
+            WHERE module_name = ?
+            ORDER BY files.path DESC
+            LIMIT 1
+            """,
+            (module_name,),
+        ).fetchone()
+        self.loaded.add(module_name)
+        if row is None:
+            return None
+        file_id = str(row["file_id"])
+        dict.__setitem__(self, module_name, file_id)
+        return file_id
+
+    def __contains__(self, module_name: object) -> bool:
+        if not isinstance(module_name, str):
+            return False
+        return self._load(module_name) is not None
+
+    def __getitem__(self, module_name: str) -> str:
+        file_id = self._load(module_name)
+        if file_id is None:
+            raise KeyError(module_name)
+        return file_id
+
+    @overload
+    def get(self, module_name: str, default: None = None, /) -> Optional[str]: ...
+
+    @overload
+    def get(self, module_name: str, default: str, /) -> str: ...
+
+    @overload
+    def get(self, module_name: str, default: _DefaultT, /) -> str | _DefaultT: ...
+
+    def get(self, module_name: str, default: Any = None, /) -> Any:
+        return self._load(module_name) or default
 
 
 @dataclass
 class _WriteBatch:
     summary_rows: List[tuple] = field(default_factory=list)
-    lexical_delete_ids: List[tuple] = field(default_factory=list)
     lexical_rows: List[tuple] = field(default_factory=list)
     symbol_by_name: Dict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
     node_to_file_node: Dict[str, str] = field(default_factory=dict)
@@ -81,15 +201,16 @@ class IndexService:
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
         cache = ExtractionCache(cache_path)
         start = time.perf_counter()
-        parsed_files = _parse_with_cache(
-            _filter_included_files(
-                registry.iter_files(repo_root_path, exclude_patterns=exclude_patterns),
+        with cache.batch_writes():
+            parsed_files = _parse_with_cache(
+                _filter_included_files(
+                    registry.iter_files(repo_root_path, exclude_patterns=exclude_patterns),
+                    repo_root_path,
+                    include_prefixes,
+                ),
                 repo_root_path,
-                include_prefixes,
-            ),
-            repo_root_path,
-            cache,
-        )
+                cache,
+            )
         timings_ms["discover_parse"] = _elapsed_ms(start)
         untracked = git_untracked_paths(repo_root)
         indexed_untracked = (
@@ -105,8 +226,11 @@ class IndexService:
         index = ProjectIndex(build_path)
         replaced = False
         try:
+            index.begin_disposable_build()
             start = time.perf_counter()
             index.initialize_schema()
+            index.begin_bulk_lexical_write()
+            index.begin_bulk_secondary_index_write()
 
             with index.atomic_write():
                 index.set_metadata(
@@ -120,6 +244,8 @@ class IndexService:
 
                 start = time.perf_counter()
                 stats = _write_parsed_files(index, repo_root, parsed_files)
+                index.finish_bulk_lexical_write()
+                index.finish_bulk_secondary_index_write()
                 timings_ms["write_graph"] = _elapsed_ms(start)
 
                 start = time.perf_counter()
@@ -130,6 +256,7 @@ class IndexService:
                 }
                 index.bump_index_revision()
                 timings_ms["parse_errors"] = _elapsed_ms(start)
+            index.finish_disposable_build()
             index.validate_integrity()
             index.optimize()
             index.close()
@@ -181,29 +308,26 @@ class RefreshService:
                 if include_roots is not None
                 else _include_roots_from_metadata(metadata)
             )
-            untracked = git_untracked_paths(str(repo_root))
+            untracked: Optional[set[str]] = None
+            candidate_indexed_untracked: Optional[List[str]] = None
             start = time.perf_counter()
             if changed_paths is not None:
                 ignore = load_ignore_filter(repo_root, exclude_patterns=exclude_patterns)
-                changed_abs_set = set()
+                candidates: Dict[Path, str] = {}
                 for p in changed_paths:
                     try:
                         resolved_p = Path(p).resolve()
                         if resolved_p.is_relative_to(repo_root):
-                            changed_abs_set.add(resolved_p)
+                            candidates[resolved_p] = resolved_p.relative_to(repo_root).as_posix()
                     except Exception:
                         pass
 
-                stored = {
-                    row["path"]: row["sha256"]
-                    for row in index.conn.execute("SELECT path, sha256 FROM files")
-                }
+                stored = _stored_file_hashes(index, candidates.values())
 
                 current_files = {}
                 deleted = []
-                for path in changed_abs_set:
+                for path, rel in candidates.items():
                     if path.exists() and path.is_file():
-                        rel = path.relative_to(repo_root).as_posix()
                         # ``changed_paths`` explicitly includes untracked
                         # files. Ordinary Git discovery intentionally limits
                         # itself to tracked paths, but applying that rule here
@@ -221,15 +345,20 @@ class RefreshService:
                             current_files[rel] = (parser, path)
                         except UnsupportedLanguageError:
                             pass
+                    elif rel in stored and _is_included_rel_path(rel, include_prefixes):
+                        deleted.append(rel)
 
-                for path in changed_abs_set:
-                    if not path.exists():
-                        try:
-                            rel = path.relative_to(repo_root).as_posix()
-                            if rel in stored and _is_included_rel_path(rel, include_prefixes):
-                                deleted.append(rel)
-                        except Exception:
-                            pass
+                previous_indexed_untracked = _indexed_untracked_from_metadata(metadata)
+                new_candidates = set(current_files) - set(stored)
+                new_untracked = (
+                    git_untracked_paths(str(repo_root), new_candidates) if new_candidates else set()
+                )
+                if previous_indexed_untracked is not None or new_untracked is not None:
+                    updated_untracked = set(previous_indexed_untracked or ())
+                    updated_untracked.difference_update(deleted)
+                    if new_untracked is not None:
+                        updated_untracked.update(new_untracked & set(current_files))
+                    candidate_indexed_untracked = sorted(updated_untracked)
             else:
                 current_files = {
                     path.resolve().relative_to(repo_root).as_posix(): (parser, path)
@@ -249,25 +378,33 @@ class RefreshService:
                     )
                 }
                 deleted = sorted(path for path in stored if path not in current_files)
+                untracked = git_untracked_paths(str(repo_root))
             timings_ms["detect_changes"] = _elapsed_ms(start)
 
             start = time.perf_counter()
             changed: List[str] = []
             parsed_changed: List[ParsedFile] = []
-            for rel_path, (parser, path) in sorted(current_files.items()):
-                try:
-                    parsed = _parse_one_cached(parser, path, repo_root, cache)
-                    if stored.get(rel_path) != parsed.sha256:
-                        changed.append(rel_path)
-                        parsed_changed.append(parsed)
-                except ValueError:
-                    pass
+            with cache.batch_writes():
+                for rel_path, (parser, path) in sorted(current_files.items()):
+                    try:
+                        parsed = _parse_one_cached(parser, path, repo_root, cache)
+                        if stored.get(rel_path) != parsed.sha256:
+                            changed.append(rel_path)
+                            parsed_changed.append(parsed)
+                    except ValueError:
+                        pass
             timings_ms["parse_changed"] = _elapsed_ms(start)
 
             if not changed and not deleted:
                 with index.atomic_write():
-                    indexed_untracked = (
-                        _existing_indexed_paths(index, untracked) if untracked is not None else None
+                    indexed_untracked_paths = (
+                        candidate_indexed_untracked
+                        if changed_paths is not None
+                        else (
+                            _existing_indexed_paths(index, untracked)
+                            if untracked is not None
+                            else None
+                        )
                     )
                     file_count = int(
                         index.conn.execute("SELECT COUNT(*) AS c FROM files").fetchone()["c"]
@@ -278,7 +415,7 @@ class RefreshService:
                     index.set_metadata(
                         str(repo_root),
                         include_roots=include_prefixes,
-                        indexed_untracked_paths=indexed_untracked,
+                        indexed_untracked_paths=indexed_untracked_paths,
                         file_count=file_count,
                         symbol_count=symbol_count,
                     )
@@ -297,12 +434,16 @@ class RefreshService:
             start = time.perf_counter()
             impact_snapshot = _read_refresh_impact(index, [*changed, *deleted])
             old_symbol_ids = [str(row["symbol_id"]) for row in impact_snapshot]
+            old_node_ids = [
+                *(file_node_id(rel_path) for rel_path in [*changed, *deleted]),
+                *old_symbol_ids,
+            ]
             pre_dependents: List[str] = []
             pre_dependents_cap_hit = False
-            if old_symbol_ids and dependents_limit > 0:
+            if old_node_ids and dependents_limit > 0:
                 pre_dependents, pre_dependents_cap_hit = _find_dependent_files(
                     index,
-                    old_symbol_ids,
+                    old_node_ids,
                     set(changed) | set(deleted),
                     dependents_limit,
                 )
@@ -310,17 +451,21 @@ class RefreshService:
             changed_symbols = [
                 symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols
             ]
+            changed_node_ids = [
+                *(file_node_id(parsed.rel_path) for parsed in parsed_changed),
+                *changed_symbols,
+            ]
 
             # --- P5-4: bounded dependent expansion ---
             dependents_expanded = 0
             dependents_cap_hit = pre_dependents_cap_hit
             dep_files = list(pre_dependents)
-            if changed_symbols and dependents_limit > 0:
+            if changed_node_ids and dependents_limit > 0:
                 remaining = max(0, dependents_limit - len(dep_files))
                 if remaining and not dependents_cap_hit:
                     post_files, cap_hit = _find_dependent_files(
                         index,
-                        changed_symbols,
+                        changed_node_ids,
                         set(changed) | set(deleted) | set(dep_files),
                         remaining,
                     )
@@ -329,16 +474,17 @@ class RefreshService:
 
             dep_parsed: List[ParsedFile] = []
             if dep_files:
-                for rel_path in dep_files:
-                    full = repo_root / rel_path
-                    if not full.exists():
-                        continue
-                    try:
-                        parser = registry.for_extension(full.suffix)
-                        parsed = _parse_one_cached(parser, full, repo_root, cache)
-                        dep_parsed.append(parsed)
-                    except (UnsupportedLanguageError, ValueError):
-                        continue
+                with cache.batch_writes():
+                    for rel_path in dep_files:
+                        full = repo_root / rel_path
+                        if not full.exists():
+                            continue
+                        try:
+                            parser = registry.for_extension(full.suffix)
+                            parsed = _parse_one_cached(parser, full, repo_root, cache)
+                            dep_parsed.append(parsed)
+                        except (UnsupportedLanguageError, ValueError):
+                            continue
             timings_ms["dependent_expansion"] = _elapsed_ms(start)
 
             start = time.perf_counter()
@@ -353,20 +499,22 @@ class RefreshService:
                     changed_symbols_deleted.extend(
                         index.delete_file_payload(rel_path, remove_incoming=False)
                     )
+                cleanup_symbol_ids = list(changed_symbols_deleted)
+                for parsed in dep_parsed:
+                    cleanup_symbol_ids.extend(
+                        index.delete_file_payload(parsed.rel_path, remove_incoming=False)
+                    )
+                dependents_expanded = len(dep_parsed)
                 timings_ms["delete_old"] = _elapsed_ms(start)
 
                 start = time.perf_counter()
-                stats = _write_parsed_files(index, str(repo_root), parsed_changed)
+                stats = _write_parsed_files(
+                    index,
+                    str(repo_root),
+                    [*parsed_changed, *dep_parsed],
+                )
 
-                if dep_parsed:
-                    for parsed in dep_parsed:
-                        index.delete_file_payload(parsed.rel_path, remove_incoming=False)
-                    dep_stats = _write_parsed_files(index, str(repo_root), dep_parsed)
-                    dependents_expanded = len(dep_parsed)
-                    stats["symbols"] += dep_stats["symbols"]
-                    stats["edges"] = dep_stats["edges"]
-
-                index.cleanup_orphan_edges()
+                index.cleanup_removed_symbol_edges(cleanup_symbol_ids)
                 timings_ms["write_graph"] = _elapsed_ms(start)
 
                 parse_errors = {
@@ -374,17 +522,23 @@ class RefreshService:
                     for parsed in [*parsed_changed, *dep_parsed]
                     if parsed.parse_status != "ok"
                 }
-                indexed_untracked = (
-                    _existing_indexed_paths(index, untracked) if untracked is not None else None
+                indexed_untracked_paths = (
+                    candidate_indexed_untracked
+                    if changed_paths is not None
+                    else (
+                        _existing_indexed_paths(index, untracked) if untracked is not None else None
+                    )
                 )
-                file_count = int(index.conn.execute("SELECT COUNT(*) AS c FROM files").fetchone()["c"])
+                file_count = int(
+                    index.conn.execute("SELECT COUNT(*) AS c FROM files").fetchone()["c"]
+                )
                 symbol_count = int(
                     index.conn.execute("SELECT COUNT(*) AS c FROM symbols").fetchone()["c"]
                 )
                 index.set_metadata(
                     str(repo_root),
                     include_roots=include_prefixes,
-                    indexed_untracked_paths=indexed_untracked,
+                    indexed_untracked_paths=indexed_untracked_paths,
                     file_count=file_count,
                     symbol_count=symbol_count,
                 )
@@ -431,6 +585,40 @@ def _existing_indexed_paths(
     return sorted(existing)
 
 
+def _indexed_untracked_from_metadata(metadata: Dict[str, str]) -> Optional[set[str]]:
+    raw = metadata.get("indexed_untracked_paths")
+    if raw is None:
+        return None
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return set()
+    if not isinstance(decoded, list):
+        return set()
+    return {str(path) for path in decoded if isinstance(path, str)}
+
+
+def _stored_file_hashes(
+    index: ProjectIndex,
+    candidates: Iterable[str],
+) -> Dict[str, str]:
+    unique = sorted(set(candidates))
+    stored: Dict[str, str] = {}
+    for offset in range(0, len(unique), 400):
+        batch = unique[offset : offset + 400]
+        placeholders = ",".join("?" for _ in batch)
+        stored.update(
+            {
+                str(row["path"]): str(row["sha256"])
+                for row in index.conn.execute(
+                    f"SELECT path, sha256 FROM files WHERE path IN ({placeholders})",
+                    tuple(batch),
+                )
+            }
+        )
+    return stored
+
+
 def _read_refresh_impact(
     index: ProjectIndex,
     rel_paths: Sequence[str],
@@ -456,55 +644,65 @@ def _read_refresh_impact(
 
 def _find_dependent_files(
     index: ProjectIndex,
-    changed_symbol_ids: List[str],
-    already_processed: set,
+    changed_node_ids: List[str],
+    already_processed: set[str],
     limit: int,
-) -> tuple:
-    """Find files containing symbols that directly depend on changed symbols.
+) -> tuple[List[str], bool]:
+    """Find files containing nodes that directly depend on changed nodes.
 
     Returns (dep_file_paths, cap_hit) where cap_hit is True if the limit was reached.
     """
-    if not changed_symbol_ids:
+    if not changed_node_ids or limit <= 0:
         return [], False
 
-    placeholders = ",".join("?" for _ in changed_symbol_ids)
+    changed_values = ",".join("(?)" for _ in changed_node_ids)
+    processed = sorted(already_processed)
+    processed_filter = ""
+    if processed:
+        processed_filter = f"AND path NOT IN ({','.join('?' for _ in processed)})"
     rows = index.conn.execute(
         f"""
-        SELECT DISTINCT n.path
-        FROM edges e
-        JOIN entities n ON n.id = CASE
-            WHEN e.target IN ({placeholders}) THEN e.source
-            WHEN e.source IN ({placeholders}) AND e.relation = 'tested_by' THEN e.target
-        END
-        WHERE (
-              (
-                e.target IN ({placeholders})
-                AND e.relation IN ('calls', 'imports', 'inherits', 'decorates')
-              )
-              OR (
-                e.source IN ({placeholders})
-                AND e.relation = 'tested_by'
-              )
+        WITH changed(id) AS (
+            VALUES {changed_values}
+        ),
+        dependent_ids(id) AS (
+            SELECT e.source
+            FROM changed AS c
+            JOIN edges AS e ON e.target = c.id
+            WHERE e.relation IN ('calls', 'imports', 'inherits')
+            UNION
+            SELECT e.target
+            FROM changed AS c
+            JOIN edges AS e ON e.source = c.id
+            WHERE e.relation IN ('tested_by', 'decorates')
+        ),
+        resolved_paths(path) AS (
+            SELECT COALESCE(
+                (
+                    SELECT f.path
+                    FROM files AS f
+                    WHERE f.id = d.id
+                ),
+                (
+                    SELECT f.path
+                    FROM symbols AS s
+                    JOIN files AS f ON f.id = s.file_id
+                    WHERE s.id = d.id
+                )
             )
-          AND n.type IN ('file', 'class', 'function', 'method', 'test', 'document')
-          AND n.path IS NOT NULL
+            FROM dependent_ids AS d
+        )
+        SELECT DISTINCT path
+        FROM resolved_paths
+        WHERE path IS NOT NULL
+        {processed_filter}
+        ORDER BY path
         LIMIT ?
         """,
-        (
-            *changed_symbol_ids,
-            *changed_symbol_ids,
-            *changed_symbol_ids,
-            *changed_symbol_ids,
-            limit + 1,
-        ),
+        (*changed_node_ids, *processed, limit + 1),
     ).fetchall()
 
-    dep_paths = []
-    for row in rows:
-        path = row["path"]
-        if path and path not in already_processed:
-            dep_paths.append(path)
-
+    dep_paths = [str(row["path"]) for row in rows]
     cap_hit = len(rows) > limit
     return dep_paths[:limit], cap_hit
 
@@ -581,6 +779,7 @@ def _insert_file_nodes(
     batch: _WriteBatch,
 ) -> None:
     file_rows: List[tuple] = []
+    module_rows: List[tuple] = []
     for parsed in parsed_files:
         node_id = file_node_id(parsed.rel_path)
         file_rows.append(
@@ -599,10 +798,16 @@ def _insert_file_nodes(
         )
         file_summary = _file_summary(parsed)
         batch.summary_rows.append((node_id, parsed.sha256, file_summary, "file", now))
-        batch.lexical_delete_ids.append((node_id,))
         batch.lexical_rows.append(
             (node_id, Path(parsed.rel_path).name, parsed.rel_path, "", "", file_summary, "")
         )
+        try:
+            parser = registry.for_extension(Path(parsed.rel_path).suffix)
+        except UnsupportedLanguageError:
+            continue
+        module_name = parser.module_name_from_relpath(parsed.rel_path)
+        if module_name is not None:
+            module_rows.append((module_name, node_id))
 
     if file_rows:
         index.conn.executemany(
@@ -624,20 +829,26 @@ def _insert_file_nodes(
             """,
             file_rows,
         )
+    if module_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO module_lookup(module_name, file_id)
+            VALUES(?, ?)
+            ON CONFLICT(module_name, file_id) DO NOTHING
+            """,
+            module_rows,
+        )
 
 
 def _load_symbol_lookup(index: ProjectIndex, batch: _WriteBatch) -> None:
-    for row in index.conn.execute(
-        """
-        SELECT id, name, path, type FROM entities
-        WHERE type IN ('class','function','method','document')
-        """,
-    ):
-        batch.symbol_by_name[row["name"]].append(row["id"])
-        if "." in row["name"]:
-            batch.symbol_by_name[row["name"].split(".")[-1]].append(row["id"])
-        batch.node_to_file_node[row["id"]] = file_node_id(row["path"])
-        batch.node_kind_by_id[row["id"]] = row["type"]
+    existing = index.conn.execute("SELECT 1 FROM symbols LIMIT 1").fetchone()
+    if existing is None:
+        return
+    batch.symbol_by_name = _LazySymbolLookup(
+        index,
+        batch.node_to_file_node,
+        batch.node_kind_by_id,
+    )
 
 
 def _insert_symbol_nodes(
@@ -647,6 +858,7 @@ def _insert_symbol_nodes(
     batch: _WriteBatch,
 ) -> None:
     symbol_rows: List[tuple] = []
+    lookup_rows: List[tuple] = []
     for parsed in parsed_files:
         tokenizer = registry.tokenizer_for(parsed.language)
         for symbol in parsed.symbols:
@@ -666,17 +878,24 @@ def _insert_symbol_nodes(
                     now,
                 )
             )
-            batch.symbol_by_name[symbol.name].append(symbol.node_id)
+            lookup_names = {symbol.name}
             if "." in symbol.name:
-                batch.symbol_by_name[symbol.name.split(".")[-1]].append(symbol.node_id)
+                lookup_names.add(symbol.name.rsplit(".", 1)[-1])
+            for lookup_name in lookup_names:
+                if isinstance(batch.symbol_by_name, _LazySymbolLookup):
+                    batch.symbol_by_name.add_candidate(lookup_name, symbol.node_id)
+                else:
+                    batch.symbol_by_name[lookup_name].append(symbol.node_id)
             batch.node_to_file_node[symbol.node_id] = file_node_id(parsed.rel_path)
             batch.node_kind_by_id[symbol.node_id] = symbol.kind
+            lookup_rows.extend(
+                (lookup_name, symbol.node_id) for lookup_name in sorted(lookup_names)
+            )
 
             summary = _symbol_summary(symbol)
             batch.summary_rows.append(
                 (symbol.node_id, symbol.source_hash, summary, symbol.kind, now)
             )
-            batch.lexical_delete_ids.append((symbol.node_id,))
             batch.lexical_rows.append(
                 (
                     symbol.node_id,
@@ -711,6 +930,15 @@ def _insert_symbol_nodes(
             """,
             symbol_rows,
         )
+    if lookup_rows:
+        index.conn.executemany(
+            """
+            INSERT INTO symbol_lookup(lookup_name, symbol_id)
+            VALUES(?, ?)
+            ON CONFLICT(lookup_name, symbol_id) DO NOTHING
+            """,
+            lookup_rows,
+        )
 
 
 def _flush_summary_and_lexical_rows(index: ProjectIndex, batch: _WriteBatch) -> None:
@@ -728,16 +956,20 @@ def _flush_summary_and_lexical_rows(index: ProjectIndex, batch: _WriteBatch) -> 
             batch.summary_rows,
         )
 
-    if batch.lexical_delete_ids:
-        index.conn.executemany(
-            "DELETE FROM lexical_index WHERE node_id = ?",
-            batch.lexical_delete_ids,
-        )
     if batch.lexical_rows:
         index.conn.executemany(
             """
-            INSERT INTO lexical_index(node_id, name, path, signature, docstring, summary, source)
+            INSERT INTO lexical_documents(
+                node_id, name, path, signature, docstring, summary, source
+            )
             VALUES(?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(node_id) DO UPDATE SET
+                name = excluded.name,
+                path = excluded.path,
+                signature = excluded.signature,
+                docstring = excluded.docstring,
+                summary = excluded.summary,
+                source = excluded.source
             """,
             batch.lexical_rows,
         )
@@ -1205,17 +1437,7 @@ def _symbol_summary(symbol: ParsedSymbol) -> str:
 
 
 def _module_to_file_id(index: ProjectIndex) -> Dict[str, str]:
-    mapping: Dict[str, str] = {}
-    for row in index.conn.execute("SELECT path FROM files"):
-        path = row["path"]
-        try:
-            parser = registry.for_extension(Path(path).suffix)
-        except UnsupportedLanguageError:
-            continue
-        module_name = parser.module_name_from_relpath(path)
-        if module_name is not None:
-            mapping[module_name] = file_node_id(path)
-    return mapping
+    return _LazyModuleLookup(index)
 
 
 def _pick_call_target(

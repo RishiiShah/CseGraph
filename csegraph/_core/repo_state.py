@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 
 def git_head_state(repo_path: str) -> Tuple[Optional[str], Optional[str]]:
@@ -15,8 +15,17 @@ def git_tracked_paths(repo_path: str) -> Optional[set[str]]:
     return _run_git_paths(repo_path, "ls-files", "-z")
 
 
-def git_untracked_paths(repo_path: str) -> Optional[set[str]]:
-    return _run_git_paths(repo_path, "ls-files", "--others", "--exclude-standard", "-z")
+def git_untracked_paths(
+    repo_path: str,
+    candidates: Iterable[str] | None = None,
+) -> Optional[set[str]]:
+    args = ["ls-files", "--others", "--exclude-standard", "-z"]
+    if candidates is not None:
+        paths = sorted(set(candidates))
+        if not paths:
+            return set()
+        args.extend(["--", *paths])
+    return _run_git_paths(repo_path, *args)
 
 
 def _run_git(repo_path: str, *args: str) -> Optional[str]:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "csegraph-sqlite-v11"
-SCHEMA_USER_VERSION = 11
+SCHEMA_VERSION = "csegraph-sqlite-v12"
+SCHEMA_USER_VERSION = 12
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS symbols (
     source_hash TEXT NOT NULL,
     is_test INTEGER NOT NULL DEFAULT 0,
     updated_at REAL NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS module_lookup (
+    module_name TEXT NOT NULL,
+    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    PRIMARY KEY (module_name, file_id)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS symbol_lookup (
+    lookup_name TEXT NOT NULL,
+    symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+    PRIMARY KEY (lookup_name, symbol_id)
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -101,6 +113,17 @@ CREATE TABLE IF NOT EXISTS summaries (
     updated_at REAL NOT NULL
 ) WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS lexical_documents (
+    rowid INTEGER PRIMARY KEY,
+    node_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    docstring TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS lexical_index USING fts5(
     node_id UNINDEXED,
     name,
@@ -108,8 +131,48 @@ CREATE VIRTUAL TABLE IF NOT EXISTS lexical_index USING fts5(
     signature,
     docstring,
     summary,
-    source
+    source,
+    content='lexical_documents',
+    content_rowid='rowid'
 );
+
+CREATE TRIGGER IF NOT EXISTS lexical_documents_ai
+AFTER INSERT ON lexical_documents BEGIN
+    INSERT INTO lexical_index(
+        rowid, node_id, name, path, signature, docstring, summary, source
+    ) VALUES(
+        new.rowid, new.node_id, new.name, new.path, new.signature,
+        new.docstring, new.summary, new.source
+    );
+END;
+
+CREATE TRIGGER IF NOT EXISTS lexical_documents_ad
+AFTER DELETE ON lexical_documents BEGIN
+    INSERT INTO lexical_index(
+        lexical_index, rowid, node_id, name, path,
+        signature, docstring, summary, source
+    ) VALUES(
+        'delete', old.rowid, old.node_id, old.name, old.path,
+        old.signature, old.docstring, old.summary, old.source
+    );
+END;
+
+CREATE TRIGGER IF NOT EXISTS lexical_documents_au
+AFTER UPDATE ON lexical_documents BEGIN
+    INSERT INTO lexical_index(
+        lexical_index, rowid, node_id, name, path,
+        signature, docstring, summary, source
+    ) VALUES(
+        'delete', old.rowid, old.node_id, old.name, old.path,
+        old.signature, old.docstring, old.summary, old.source
+    );
+    INSERT INTO lexical_index(
+        rowid, node_id, name, path, signature, docstring, summary, source
+    ) VALUES(
+        new.rowid, new.node_id, new.name, new.path, new.signature,
+        new.docstring, new.summary, new.source
+    );
+END;
 
 CREATE TABLE IF NOT EXISTS refresh_leases (
     repo_root TEXT PRIMARY KEY,
@@ -168,6 +231,10 @@ CREATE INDEX IF NOT EXISTS idx_symbols_kind_name ON symbols(kind, name);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_is_test
     ON symbols(is_test) WHERE is_test = 1;
+CREATE INDEX IF NOT EXISTS idx_module_lookup_file
+    ON module_lookup(file_id);
+CREATE INDEX IF NOT EXISTS idx_symbol_lookup_symbol
+    ON symbol_lookup(symbol_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target_relation
     ON edges(target, relation);
 CREATE INDEX IF NOT EXISTS idx_edges_relation
@@ -184,6 +251,11 @@ CREATE INDEX IF NOT EXISTS idx_edge_occurrences_source_relation
     ON edge_occurrences(source, relation);
 CREATE INDEX IF NOT EXISTS idx_edge_occurrences_target_relation
     ON edge_occurrences(target, relation);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_source_file
+    ON edge_occurrences(source_file_id);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_enclosing_symbol
+    ON edge_occurrences(enclosing_symbol_id)
+    WHERE enclosing_symbol_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_refresh_leases_expiry
     ON refresh_leases(expires_at);
 """

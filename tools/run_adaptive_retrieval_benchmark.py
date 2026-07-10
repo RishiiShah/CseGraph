@@ -8,7 +8,6 @@ import json
 import os
 import platform
 import shlex
-import shutil
 import statistics
 import subprocess
 import sys
@@ -25,21 +24,32 @@ if str(REPO_ROOT) not in sys.path:
 
 import csegraph
 from csegraph import ContextRequest, ContextService, IndexService, to_dict
-from csegraph._core.retrieval.token_budget import response_tokens, token_measurement
+from csegraph._core.retrieval.token_budget import (
+    DEFAULT_ENCODING,
+    count_payload_tokens,
+    response_tokens,
+    token_measurement,
+)
 from tools.adaptive_benchmark import (
+    LOCAL_COPY_URLS,
     PINNED_PYRIGHT_VERSION,
     AdaptiveBenchmarkCorpus,
     AdaptiveBenchmarkTask,
+    BenchmarkRepository,
     PyrightLspProvider,
     StrongBaselineAdapter,
+    benchmark_workspace_hygiene,
+    copy_benchmark_repository,
     corpus_completeness,
+    corpus_quality,
     execute_benchmark_task,
     load_adaptive_corpus,
     prepare_benchmark_repository,
 )
 
-REPORT_SCHEMA_VERSION = "csegraph-adaptive-retrieval-report-v3"
-RUNNER_VERSION = "2.1"
+REPORT_SCHEMA_VERSION = "csegraph-adaptive-retrieval-report-v4"
+RUNNER_VERSION = "2.3"
+DIAGNOSTIC_BUDGET_SLACK = 1024
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated measurements: cold,warm (warm includes an unreported warmup)",
     )
     parser.add_argument("--warm-runs", type=int, default=1)
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=None,
+        help="Alias for --warm-runs; use with warm mode for repeated measurement samples",
+    )
     parser.add_argument(
         "--pyright",
         choices=("auto", "off", "required"),
@@ -82,8 +98,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit is not None:
         tasks = tasks[: max(0, args.limit)]
     modes = _parse_modes(args.modes)
+    if args.samples is not None:
+        args.warm_runs = args.samples
     if args.warm_runs < 1:
-        parser.error("--warm-runs must be at least 1")
+        parser.error("--warm-runs/--samples must be at least 1")
 
     repo_root = Path(args.repo_root).resolve()
     cache_root = (
@@ -124,13 +142,21 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 if prepared.path is not None and prepared.commit_matches:
                     benchmark_repo = prepared.path
-                    if repository.url == "fixture://local":
+                    if _copy_repository_for_benchmark(repository):
                         benchmark_repo = scratch / f"fixture-{len(indexed)}"
-                        shutil.copytree(prepared.path, benchmark_repo)
+                        hygiene = copy_benchmark_repository(prepared.path, benchmark_repo)
+                    else:
+                        hygiene = benchmark_workspace_hygiene(benchmark_repo)
                     db = scratch / f"repo-{len(indexed)}.db"
                     index_started = time.perf_counter()
-                    IndexService(db).index(benchmark_repo)
+                    index_result = IndexService(db).index(benchmark_repo)
                     index_ms = (time.perf_counter() - index_started) * 1000
+                    repository_results[task.repo]["workspace_hygiene"] = hygiene
+                    repository_results[task.repo]["index"] = _index_report(
+                        index_result,
+                        db,
+                        index_ms,
+                    )
                     indexed[task.repo] = (benchmark_repo, db, index_ms)
 
             prepared_index = indexed.get(task.repo)
@@ -160,12 +186,14 @@ def main(argv: list[str] | None = None) -> int:
     if provider is not None:
         provider.close()
     completeness = corpus_completeness(corpus)
+    quality = corpus_quality(corpus)
     # A limited developer run is intentionally not a complete release-gate run.
     evaluated_complete_corpus = args.limit is None
     summary = _summary(
         results,
         args.budget,
         completeness=completeness,
+        quality=quality,
         evaluated_complete_corpus=evaluated_complete_corpus,
         pyright_required=args.pyright == "required",
         pyright_available=bool(provider and provider.available),
@@ -185,12 +213,14 @@ def main(argv: list[str] | None = None) -> int:
             "unsupported_reason": corpus.unsupported_reason,
             "sha256": _sha256(corpus_path),
             "completeness": completeness,
+            "quality": quality,
             "limited_to": args.limit,
         },
         "configuration": {
             "token_budget": args.budget,
             "modes": list(modes),
             "warm_runs": args.warm_runs,
+            "samples": args.warm_runs,
             "bootstrap_missing": args.bootstrap_missing,
             "pyright_mode": args.pyright,
             "execute_tasks": args.execute_tasks,
@@ -364,7 +394,8 @@ def _measure_pair(
             task=task.task,
             target=task.target,
             task_kind=_context_task_kind(task.category),
-            token_budget=budget,
+            token_budget=_diagnostic_measurement_budget(task, budget),
+            diagnostic=True,
         )
     )
     adaptive_observed_ms = (time.perf_counter() - adaptive_started) * 1000
@@ -372,7 +403,8 @@ def _measure_pair(
     adaptive_diagnostics = adaptive_payload.get("diagnostics") or {}
     adaptive_usage = adaptive_diagnostics.get("usage") or {}
     adaptive_engine_ms = float(adaptive_usage.get("latency_ms") or adaptive_observed_ms)
-    adaptive_tokens = int(adaptive_usage.get("tokens") or response_tokens(adaptive))
+    adaptive_diagnostic_tokens = int(adaptive_usage.get("tokens") or response_tokens(adaptive))
+    adaptive_tokens = _content_tokens_without_diagnostics(adaptive_payload)
     target_slice = next((item for item in adaptive.slices if item.role == "target"), None)
     adaptive_target = (
         {
@@ -403,6 +435,8 @@ def _measure_pair(
         "adaptive": {
             "status": adaptive_payload["status"],
             "tokens": adaptive_tokens,
+            "diagnostic_tokens": adaptive_diagnostic_tokens,
+            "diagnostic_budget": _diagnostic_measurement_budget(task, budget),
             "measurement": adaptive_usage.get("measurement") or token_measurement("o200k_base"),
             "tool_observed_latency_ms": round(adaptive_observed_ms, 3),
             "tool_latency_ms": round(adaptive_observed_ms, 3),
@@ -429,6 +463,18 @@ def _context_task_kind(category: str) -> str:
         "cross-file": "edit",
         "test-impact": "test-impact",
     }.get(category, "auto")
+
+
+def _diagnostic_measurement_budget(task: AdaptiveBenchmarkTask, content_budget: int) -> int:
+    if task.expected_status == "insufficient":
+        return content_budget
+    return min(16_384, content_budget + DIAGNOSTIC_BUDGET_SLACK)
+
+
+def _content_tokens_without_diagnostics(payload: dict[str, Any]) -> int:
+    content_payload = dict(payload)
+    content_payload.pop("diagnostics", None)
+    return count_payload_tokens(content_payload, DEFAULT_ENCODING)
 
 
 def _aggregate_system(samples: Sequence[dict[str, Any]], system: str) -> dict[str, Any]:
@@ -511,7 +557,7 @@ def _evaluate_v2_result(
     role_recall = role_hits / len(task.required_evidence) if task.required_evidence else 1.0
 
     if not slices:
-        precision = 1.0 if task.expected_status == "ambiguous" else 0.0
+        precision = 1.0 if task.expected_status != "ready" else 0.0
     else:
         precise = sum(
             any(_slice_overlaps_range(item, permitted) for permitted in task.permitted_ranges)
@@ -586,6 +632,7 @@ def _summary(
     token_budget: int,
     *,
     completeness: dict[str, Any],
+    quality: dict[str, Any],
     evaluated_complete_corpus: bool,
     pyright_required: bool,
     pyright_available: bool,
@@ -597,10 +644,12 @@ def _summary(
             "complete_corpus_evaluated": evaluated_complete_corpus,
             "all_tasks_measured": False,
             "pyright_requirement_met": not pyright_required or pyright_available,
+            "corpus_quality_passed": bool(quality["passed"]),
         }
         return {
             "task_count": len(results),
             "measured_task_count": 0,
+            "quality_gates": quality["gates"],
             "gates": gates,
             "release_gates_passed": False,
         }
@@ -631,6 +680,7 @@ def _summary(
         "complete_corpus_evaluated": evaluated_complete_corpus,
         "all_tasks_measured": len(measured) == len(results),
         "pyright_requirement_met": not pyright_required or pyright_available,
+        "corpus_quality_passed": bool(quality["passed"]),
         "baseline_nonempty": all(item["status"] == "ready" for item in baseline),
         "within_budget": within_budget,
         "target_ready_rate_100pct": target_rate == 1.0,
@@ -669,8 +719,108 @@ def _summary(
         "adaptive_engine_p95_latency_ms": round(_p95(adaptive_engine_latency), 3),
         "baseline_engine_p95_latency_ms": round(_p95(baseline_engine_latency), 3),
         "engine_p95_latency_delta_ms": round(engine_latency_delta, 3),
+        "by_repo": _by_repo_summary(measured),
+        "quality_gates": quality["gates"],
         "gates": gates,
         "release_gates_passed": all(gates.values()),
+    }
+
+
+def _by_repo_summary(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        grouped.setdefault(str(result["repo"]), []).append(result)
+    return {repo: _result_group_summary(items) for repo, items in sorted(grouped.items())}
+
+
+def _result_group_summary(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    adaptive = [item["adaptive"] for item in results]
+    baseline = [item["baseline"] for item in results]
+    adaptive_tokens = [int(item["tokens"]) for item in adaptive]
+    baseline_tokens = [int(item["tokens"]) for item in baseline]
+    adaptive_task_latencies = [float(item["tool_observed_latency_ms"]) for item in adaptive]
+    baseline_task_latencies = [float(item["tool_observed_latency_ms"]) for item in baseline]
+    adaptive_samples = _selected_system_samples(results, "adaptive")
+    baseline_samples = _selected_system_samples(results, "baseline")
+    adaptive_sample_latencies = [
+        float(item["tool_observed_latency_ms"]) for item in adaptive_samples
+    ]
+    baseline_sample_latencies = [
+        float(item["tool_observed_latency_ms"]) for item in baseline_samples
+    ]
+    status_counts: dict[str, int] = {}
+    for item in adaptive:
+        status = str(item.get("status") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "task_count": len(results),
+        "adaptive_sample_count": len(adaptive_samples),
+        "baseline_sample_count": len(baseline_samples),
+        "adaptive_status_counts": dict(sorted(status_counts.items())),
+        "expected_status_rate": round(
+            statistics.mean(1.0 if item["status_matched"] else 0.0 for item in adaptive),
+            4,
+        ),
+        "adaptive_recall": round(statistics.mean(float(item["recall"]) for item in adaptive), 4),
+        "adaptive_precision": round(
+            statistics.mean(float(item["precision"]) for item in adaptive),
+            4,
+        ),
+        "adaptive_role_recall": round(
+            statistics.mean(float(item["role_recall"]) for item in adaptive),
+            4,
+        ),
+        "adaptive_median_tokens": statistics.median(adaptive_tokens),
+        "baseline_median_tokens": statistics.median(baseline_tokens),
+        "adaptive_to_baseline_token_ratio": round(
+            statistics.median(adaptive_tokens) / max(1.0, statistics.median(baseline_tokens)),
+            4,
+        ),
+        "adaptive_mean_tool_latency_ms": _mean(adaptive_sample_latencies),
+        "adaptive_tool_latency_stdev_ms": _stdev(adaptive_sample_latencies),
+        "adaptive_tool_p95_latency_ms": round(_p95(adaptive_task_latencies), 3),
+        "baseline_mean_tool_latency_ms": _mean(baseline_sample_latencies),
+        "baseline_tool_latency_stdev_ms": _stdev(baseline_sample_latencies),
+        "baseline_tool_p95_latency_ms": round(_p95(baseline_task_latencies), 3),
+    }
+
+
+def _selected_system_samples(
+    results: Sequence[dict[str, Any]],
+    system: str,
+) -> list[dict[str, Any]]:
+    samples: list[dict[str, Any]] = []
+    for result in results:
+        mode = str(result["selected_mode"])
+        mode_measurements = result.get("measurements", {}).get(mode, {})
+        for sample in mode_measurements.get("samples", []):
+            value = sample.get(system) if isinstance(sample, dict) else None
+            if isinstance(value, dict):
+                samples.append(value)
+    return samples
+
+
+def _copy_repository_for_benchmark(repository: BenchmarkRepository) -> bool:
+    return repository.url in LOCAL_COPY_URLS
+
+
+def _index_report(index_result: Any, db_path: Path, index_ms: float) -> dict[str, Any]:
+    timings = dict(getattr(index_result, "timings_ms", {}) or {})
+    parse_cache_path = db_path.with_name("parse_cache.db")
+    return {
+        "files_indexed": int(getattr(index_result, "files_indexed", 0)),
+        "symbols_indexed": int(getattr(index_result, "symbols_indexed", 0)),
+        "edges_indexed": int(getattr(index_result, "edges_indexed", 0)),
+        "cache_hits": int(getattr(index_result, "cache_hits", 0)),
+        "cache_misses": int(getattr(index_result, "cache_misses", 0)),
+        "index_ms": round(index_ms, 3),
+        "discover_parse_ms": round(float(timings.get("discover_parse") or 0.0), 3),
+        "write_graph_ms": round(float(timings.get("write_graph") or 0.0), 3),
+        "db_size_bytes": db_path.stat().st_size if db_path.exists() else 0,
+        "parse_cache_size_bytes": (
+            parse_cache_path.stat().st_size if parse_cache_path.exists() else 0
+        ),
+        "timings_ms": timings,
     }
 
 
@@ -739,6 +889,14 @@ def _p95(values: list[float]) -> float:
     ordered = sorted(values)
     index = min(len(ordered) - 1, max(0, round(0.95 * (len(ordered) - 1))))
     return ordered[index]
+
+
+def _mean(values: Sequence[float]) -> float:
+    return round(statistics.fmean(values), 3) if values else 0.0
+
+
+def _stdev(values: Sequence[float]) -> float:
+    return round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0
 
 
 if __name__ == "__main__":

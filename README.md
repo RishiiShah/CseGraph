@@ -6,7 +6,7 @@ and exposes focused graph expansion only when structural evidence is needed.
 
 CseGraph 2.0 is a hard compatibility cutoff:
 
-- the index schema is `csegraph-sqlite-v11`;
+- the index schema is `csegraph-sqlite-v12`;
 - an index created by another schema must be rebuilt with `csegraph index`;
 - there is no schema migration path;
 - indexed source languages are Python, JavaScript, and TypeScript;
@@ -48,8 +48,8 @@ The CLI has exactly nine commands:
 
 | Command | Purpose |
 |---|---|
-| `csegraph index` | Build and atomically install a fresh v11 index. |
-| `csegraph refresh` | Apply changed and deleted files to an existing v11 index. |
+| `csegraph index` | Build and atomically install a fresh v12 index. |
+| `csegraph refresh` | Apply changed and deleted files to an existing v12 index. |
 | `csegraph context` | Retrieve compact, budgeted task context. |
 | `csegraph graph` | Inspect a focused graph neighborhood. |
 | `csegraph path` | Find a focused dependency path. |
@@ -127,7 +127,7 @@ and validates a new database beside the active database, then replaces the
 active database atomically. A failed build leaves the active database intact.
 Successful replacement leaves no backup or migration artifact.
 
-Commands that encounter a missing or non-v11 index report `index_required` and
+Commands that encounter a missing or non-v12 index report `index_required` and
 direct the caller to `csegraph_index` or `csegraph index`.
 
 ## Benchmarks

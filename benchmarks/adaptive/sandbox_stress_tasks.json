@@ -1,0 +1,6465 @@
+{
+  "schema_version": "csegraph-adaptive-benchmark-v2",
+  "corpus_version": "2026.07.5",
+  "tier": "perf",
+  "status": "ready",
+  "repositories": {
+    "sandbox/micrograd": {
+      "url": "sandbox://local",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685"
+    },
+    "sandbox/flask": {
+      "url": "sandbox://local",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81"
+    },
+    "sandbox/django": {
+      "url": "sandbox://local",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304"
+    }
+  },
+  "tasks": [
+    {
+      "id": "sandbox-micrograd-definition-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.backward",
+      "target": "Value.backward",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::micrograd/engine.py::method::Value.backward",
+        "name": "Value.backward",
+        "path": "micrograd/engine.py",
+        "line": 54
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 54,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            54,
+            70
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-definition-mul",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__mul__",
+      "target": "Value.__mul__",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::micrograd/engine.py::method::Value.__mul__",
+        "name": "Value.__mul__",
+        "path": "micrograd/engine.py",
+        "line": 24
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 24,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            24,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-test-definition",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain test_sanity_check",
+      "target": "test_sanity_check",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::test/test_engine.py::function::test_sanity_check",
+        "name": "test_sanity_check",
+        "path": "test/test_engine.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "test/test_engine.py",
+          "line": 4,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "test/test_engine.py",
+          "lines": [
+            4,
+            26
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-insufficient-value",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain the Value class",
+      "target": "Value",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            2,
+            94
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-targetless-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "ambiguous",
+      "task": "Find backward",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::micrograd/engine.py::method::Value.backward",
+          "name": "Value.backward",
+          "path": "micrograd/engine.py",
+          "line": 54
+        },
+        {
+          "id": "symbol::micrograd/engine.py::method::Value.relu",
+          "name": "Value.relu",
+          "path": "micrograd/engine.py",
+          "line": 45
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            45,
+            70
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-ambiguous-parameters",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "ambiguous",
+      "task": "Update parameters",
+      "target": "parameters",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::micrograd/nn.py::method::Module.parameters",
+          "name": "Module.parameters",
+          "path": "micrograd/nn.py",
+          "line": 10
+        },
+        {
+          "id": "symbol::micrograd/nn.py::method::Neuron.parameters",
+          "name": "Neuron.parameters",
+          "path": "micrograd/nn.py",
+          "line": 24
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/nn.py",
+          "lines": [
+            10,
+            40
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-structural-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "structural",
+      "task": "Trace the flow path for Value.backward",
+      "target": "Value.backward",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::micrograd/engine.py::method::Value.backward",
+        "name": "Value.backward",
+        "path": "micrograd/engine.py",
+        "line": 54
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 54,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            54,
+            70
+          ]
+        }
+      ],
+      "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "sandbox-micrograd-test-impact-add",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for Value.__add__",
+      "target": "Value.__add__",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::micrograd/engine.py::method::Value.__add__",
+        "name": "Value.__add__",
+        "path": "micrograd/engine.py",
+        "line": 13
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 13,
+          "role": "target"
+        },
+        {
+          "path": "micrograd/engine.py",
+          "line": 2,
+          "role": "dependency"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            13,
+            22
+          ]
+        },
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            2,
+            94
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-refactor-relu",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "refactor",
+      "task": "Refactor Value.relu using immediate callers and dependencies",
+      "target": "Value.relu",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::micrograd/engine.py::method::Value.relu",
+        "name": "Value.relu",
+        "path": "micrograd/engine.py",
+        "line": 45
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 45,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            45,
+            52
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-debug-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "debug",
+      "task": "Debug Value.backward using immediate callers, dependencies, and tests",
+      "target": "Value.backward",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::micrograd/engine.py::method::Value.backward",
+        "name": "Value.backward",
+        "path": "micrograd/engine.py",
+        "line": 54
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 54,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            54,
+            70
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-001-value---init",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__init__ in micrograd/engine.py",
+      "target": "Value.__init__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/engine.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 5,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            4,
+            12
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-002-module-zero-grad",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Module.zero_grad in micrograd/nn.py",
+      "target": "Module.zero_grad",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/nn.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/nn.py",
+          "line": 6,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/nn.py",
+          "lines": [
+            5,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-003-value---pow",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__pow__ in micrograd/engine.py",
+      "target": "Value.__pow__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/engine.py",
+        "line": 35
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 35,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            34,
+            44
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-004-module-parameters",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Module.parameters in micrograd/nn.py",
+      "target": "Module.parameters",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/nn.py",
+        "line": 10
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/nn.py",
+          "line": 10,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/nn.py",
+          "lines": [
+            9,
+            12
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-005-value---neg",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__neg__ in micrograd/engine.py",
+      "target": "Value.__neg__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/engine.py",
+        "line": 72
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 72,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            71,
+            74
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-006-neuron---init",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Neuron.__init__ in micrograd/nn.py",
+      "target": "Neuron.__init__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/nn.py",
+        "line": 15
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/nn.py",
+          "line": 15,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/nn.py",
+          "lines": [
+            14,
+            19
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-007-value---radd",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__radd__ in micrograd/engine.py",
+      "target": "Value.__radd__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/engine.py",
+        "line": 75
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 75,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            74,
+            77
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-008-neuron---call",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Neuron.__call__ in micrograd/nn.py",
+      "target": "Neuron.__call__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/nn.py",
+        "line": 20
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/nn.py",
+          "line": 20,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/nn.py",
+          "lines": [
+            19,
+            23
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-009-value---sub",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__sub__ in micrograd/engine.py",
+      "target": "Value.__sub__",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/engine.py",
+        "line": 78
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/engine.py",
+          "line": 78,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/engine.py",
+          "lines": [
+            77,
+            80
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-micrograd-exact-010-neuron-parameters",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Neuron.parameters in micrograd/nn.py",
+      "target": "Neuron.parameters",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "micrograd/nn.py",
+        "line": 24
+      },
+      "required_evidence": [
+        {
+          "path": "micrograd/nn.py",
+          "line": 24,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "micrograd/nn.py",
+          "lines": [
+            23,
+            26
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-definition-route",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask route registration",
+      "target": "route",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/flask/sansio/scaffold.py::method::Scaffold.route",
+        "name": "Scaffold.route",
+        "path": "src/flask/sansio/scaffold.py",
+        "line": 336
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "line": 336,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "lines": [
+            335,
+            365
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-definition-full-dispatch",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain full_dispatch_request",
+      "target": "full_dispatch_request",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/flask/app.py::method::Flask.full_dispatch_request",
+        "name": "Flask.full_dispatch_request",
+        "path": "src/flask/app.py",
+        "line": 992
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 992,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            992,
+            1019
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-test-definition",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_request_dispatching",
+      "target": "test_request_dispatching",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::tests/test_basic.py::function::test_request_dispatching",
+        "name": "test_request_dispatching",
+        "path": "tests/test_basic.py",
+        "line": 129
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_basic.py",
+          "line": 129,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_basic.py",
+          "lines": [
+            129,
+            149
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-targetless-add-url-rule",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "ambiguous",
+      "task": "Find add_url_rule",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::src/flask/sansio/blueprints.py::method::Blueprint.add_url_rule",
+          "name": "Blueprint.add_url_rule",
+          "path": "src/flask/sansio/blueprints.py",
+          "line": 413
+        },
+        {
+          "id": "symbol::src/flask/sansio/blueprints.py::method::BlueprintSetupState.add_url_rule",
+          "name": "BlueprintSetupState.add_url_rule",
+          "path": "src/flask/sansio/blueprints.py",
+          "line": 87
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "lines": [
+            87,
+            441
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-ambiguous-add-url-rule",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "ambiguous",
+      "task": "Update add_url_rule",
+      "target": "add_url_rule",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::src/flask/sansio/app.py::method::App.add_url_rule",
+          "name": "App.add_url_rule",
+          "path": "src/flask/sansio/app.py",
+          "line": 604
+        },
+        {
+          "id": "symbol::src/flask/sansio/blueprints.py::method::BlueprintSetupState.add_url_rule",
+          "name": "BlueprintSetupState.add_url_rule",
+          "path": "src/flask/sansio/blueprints.py",
+          "line": 87
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            604,
+            661
+          ]
+        },
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "lines": [
+            87,
+            441
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-structural-full-dispatch",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "structural",
+      "task": "Trace the flow path for full_dispatch_request",
+      "target": "full_dispatch_request",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/flask/app.py::method::Flask.full_dispatch_request",
+        "name": "Flask.full_dispatch_request",
+        "path": "src/flask/app.py",
+        "line": 992
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 992,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            992,
+            1019
+          ]
+        }
+      ],
+      "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "sandbox-flask-insufficient-full-dispatch-debug",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "debug",
+      "task": "Debug full_dispatch_request using immediate callers, dependencies, and tests",
+      "target": "full_dispatch_request",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            992,
+            1019
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-blueprint-add-url-rule",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "cross-file",
+      "task": "Update Blueprint.add_url_rule and inspect registration flow",
+      "target": "Blueprint.add_url_rule",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/flask/sansio/blueprints.py::method::Blueprint.add_url_rule",
+        "name": "Blueprint.add_url_rule",
+        "path": "src/flask/sansio/blueprints.py",
+        "line": 413
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "line": 413,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "lines": [
+            412,
+            441
+          ]
+        },
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "lines": [
+            223,
+            230
+          ]
+        },
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "lines": [
+            42,
+            49
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-test-method-route",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_method_route",
+      "target": "test_method_route",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::tests/test_basic.py::function::test_method_route",
+        "name": "test_method_route",
+        "path": "tests/test_basic.py",
+        "line": 56
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_basic.py",
+          "line": 56,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_basic.py",
+          "lines": [
+            55,
+            64
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-flask-insufficient-test-client",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for Flask.test_client",
+      "target": "Flask.test_client",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::src/flask/app.py::method::Flask.test_client",
+        "name": "Flask.test_client",
+        "path": "src/flask/app.py",
+        "line": 755
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 755,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            755,
+            811
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-001-remove-ctx",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain remove_ctx in src/flask/app.py",
+      "target": "remove_ctx",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 85
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 85,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            84,
+            93
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-002-prepare-import",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain prepare_import in src/flask/cli.py",
+      "target": "prepare_import",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 200
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 200,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            199,
+            227
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-003-config-from-envvar",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Config.from_envvar in src/flask/config.py",
+      "target": "Config.from_envvar",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/config.py",
+        "line": 102
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/config.py",
+          "line": 102,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/config.py",
+          "lines": [
+            101,
+            125
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-004-appctxglobals-setdefault",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain _AppCtxGlobals.setdefault in src/flask/ctx.py",
+      "target": "_AppCtxGlobals.setdefault",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 93
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 93,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            92,
+            104
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-005-attach-enctype-error-multidict",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain attach_enctype_error_multidict in src/flask/debughelpers.py",
+      "target": "attach_enctype_error_multidict",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/debughelpers.py",
+        "line": 81
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/debughelpers.py",
+          "line": 81,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/debughelpers.py",
+          "lines": [
+            80,
+            105
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-006-get-debug-flag",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain get_debug_flag in src/flask/helpers.py",
+      "target": "get_debug_flag",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 28
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 28,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            27,
+            34
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-007-jsonify",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain jsonify in src/flask/json/__init__.py",
+      "target": "jsonify",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/json/__init__.py",
+        "line": 138
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/json/__init__.py",
+          "line": 138,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/json/__init__.py",
+          "lines": [
+            137,
+            170
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-008-taggedjsonserializer-untag",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain TaggedJSONSerializer.untag in src/flask/json/tag.py",
+      "target": "TaggedJSONSerializer.untag",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/json/tag.py",
+        "line": 297
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/json/tag.py",
+          "line": 297,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/json/tag.py",
+          "lines": [
+            296,
+            308
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-009-has-level-handler",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain has_level_handler in src/flask/logging.py",
+      "target": "has_level_handler",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/logging.py",
+        "line": 31
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/logging.py",
+          "line": 31,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/logging.py",
+          "lines": [
+            30,
+            48
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-010-app-make-config",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.make_config in src/flask/sansio/app.py",
+      "target": "App.make_config",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 479
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 479,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            478,
+            494
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-011-blueprint-make-setup-state",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Blueprint.make_setup_state in src/flask/sansio/blueprints.py",
+      "target": "Blueprint.make_setup_state",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/blueprints.py",
+        "line": 246
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "line": 246,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/blueprints.py",
+          "lines": [
+            245,
+            254
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-012-setupmethod",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain setupmethod in src/flask/sansio/scaffold.py",
+      "target": "setupmethod",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/scaffold.py",
+        "line": 42
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "line": 42,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "lines": [
+            41,
+            50
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-013-sessioninterface-make-null-session",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.make_null_session in src/flask/sessions.py",
+      "target": "SessionInterface.make_null_session",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 150
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 150,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            149,
+            161
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-014-dispatchingjinjaloader-get-source",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain DispatchingJinjaLoader.get_source in src/flask/templating.py",
+      "target": "DispatchingJinjaLoader.get_source",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/templating.py",
+        "line": 57
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/templating.py",
+          "line": 57,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/templating.py",
+          "lines": [
+            56,
+            63
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-015-environbuilder-json-dumps",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain EnvironBuilder.json_dumps in src/flask/testing.py",
+      "target": "EnvironBuilder.json_dumps",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/testing.py",
+        "line": 88
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/testing.py",
+          "line": 88,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/testing.py",
+          "lines": [
+            87,
+            95
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-016-request-on-json-loading-failed",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Request.on_json_loading_failed in src/flask/wrappers.py",
+      "target": "Request.on_json_loading_failed",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/wrappers.py",
+        "line": 212
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/wrappers.py",
+          "line": 212,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/wrappers.py",
+          "lines": [
+            211,
+            220
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-017-add-ctx",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain add_ctx in src/flask/app.py",
+      "target": "add_ctx",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 97
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 97,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            96,
+            107
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-018-get-version",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain get_version in src/flask/cli.py",
+      "target": "get_version",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 267
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 267,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            266,
+            281
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-019-config-from-pyfile",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Config.from_pyfile in src/flask/config.py",
+      "target": "Config.from_pyfile",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/config.py",
+        "line": 187
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/config.py",
+          "line": 187,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/config.py",
+          "lines": [
+            186,
+            217
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-020-after-this-request",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain after_this_request in src/flask/ctx.py",
+      "target": "after_this_request",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 118
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 118,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            117,
+            149
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-021-get-load-dotenv",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain get_load_dotenv in src/flask/helpers.py",
+      "target": "get_load_dotenv",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 36
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 36,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            35,
+            49
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-022-create-logger",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain create_logger in src/flask/logging.py",
+      "target": "create_logger",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/logging.py",
+        "line": 58
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/logging.py",
+          "line": 58,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/logging.py",
+          "lines": [
+            57,
+            79
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-023-app-make-aborter",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.make_aborter in src/flask/sansio/app.py",
+      "target": "App.make_aborter",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 495
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 495,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            494,
+            506
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-024-find-package",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain find_package in src/flask/sansio/scaffold.py",
+      "target": "find_package",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/scaffold.py",
+        "line": 754
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "line": 754,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/scaffold.py",
+          "lines": [
+            753,
+            792
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-025-sessioninterface-is-null-session",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.is_null_session in src/flask/sessions.py",
+      "target": "SessionInterface.is_null_session",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 162
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 162,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            161,
+            170
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-026-dispatchingjinjaloader-list-templates",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain DispatchingJinjaLoader.list_templates in src/flask/templating.py",
+      "target": "DispatchingJinjaLoader.list_templates",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/templating.py",
+        "line": 108
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/templating.py",
+          "line": 108,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/templating.py",
+          "lines": [
+            107,
+            121
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-027-flask-open-instance-resource",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.open_instance_resource in src/flask/app.py",
+      "target": "Flask.open_instance_resource",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 447
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 447,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            446,
+            468
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-028-scriptinfo-load-app",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain ScriptInfo.load_app in src/flask/cli.py",
+      "target": "ScriptInfo.load_app",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 333
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 333,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            332,
+            373
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-029-config-from-object",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Config.from_object in src/flask/config.py",
+      "target": "Config.from_object",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/config.py",
+        "line": 218
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/config.py",
+          "line": 218,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/config.py",
+          "lines": [
+            217,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-030-has-request-context",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain has_request_context in src/flask/ctx.py",
+      "target": "has_request_context",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 209
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 209,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            208,
+            233
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-031-abort",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain abort in src/flask/helpers.py",
+      "target": "abort",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 281
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 281,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            280,
+            302
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-032-app-auto-find-instance-path",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.auto_find_instance_path in src/flask/sansio/app.py",
+      "target": "App.auto_find_instance_path",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 507
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 507,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            506,
+            519
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-033-sessioninterface-get-cookie-name",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_name in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 171
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 171,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            170,
+            174
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-034-render-template",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain render_template in src/flask/templating.py",
+      "target": "render_template",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/templating.py",
+        "line": 136
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/templating.py",
+          "line": 136,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/templating.py",
+          "lines": [
+            135,
+            149
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-035-flask-raise-routing-exception",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.raise_routing_exception in src/flask/app.py",
+      "target": "Flask.raise_routing_exception",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 562
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 562,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            561,
+            589
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-036-with-appcontext",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain with_appcontext in src/flask/cli.py",
+      "target": "with_appcontext",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 380
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 380,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            379,
+            403
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-037-config-from-mapping",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Config.from_mapping in src/flask/config.py",
+      "target": "Config.from_mapping",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/config.py",
+        "line": 304
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/config.py",
+          "line": 304,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/config.py",
+          "lines": [
+            303,
+            322
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-038-has-app-context",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain has_app_context in src/flask/ctx.py",
+      "target": "has_app_context",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 235
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 235,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            234,
+            258
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-039-get-template-attribute",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain get_template_attribute in src/flask/helpers.py",
+      "target": "get_template_attribute",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 304
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 304,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            303,
+            324
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-040-app-create-global-jinja-loader",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.create_global_jinja_loader in src/flask/sansio/app.py",
+      "target": "App.create_global_jinja_loader",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 520
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 520,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            519,
+            532
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-041-sessioninterface-get-cookie-domain",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_domain in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_domain",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 175
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 175,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            174,
+            186
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-042-render-template-string",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain render_template_string in src/flask/templating.py",
+      "target": "render_template_string",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/templating.py",
+        "line": 151
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/templating.py",
+          "line": 151,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/templating.py",
+          "lines": [
+            150,
+            161
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-043-flask-update-template-context",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.update_template_context in src/flask/app.py",
+      "target": "Flask.update_template_context",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 590
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 590,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            589,
+            619
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-044-appgroup-command",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain AppGroup.command in src/flask/cli.py",
+      "target": "AppGroup.command",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 413
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 413,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            412,
+            428
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-045-appcontext-copy",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain AppContext.copy in src/flask/ctx.py",
+      "target": "AppContext.copy",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 355
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 355,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            354,
+            369
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-046-flash",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain flash in src/flask/helpers.py",
+      "target": "flash",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 326
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 326,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            325,
+            358
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-047-app-select-jinja-autoescape",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.select_jinja_autoescape in src/flask/sansio/app.py",
+      "target": "App.select_jinja_autoescape",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 533
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 533,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            532,
+            548
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-048-sessioninterface-get-cookie-path",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_path in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_path",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 187
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 187,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            186,
+            194
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-049-stream-template",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain stream_template in src/flask/templating.py",
+      "target": "stream_template",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/templating.py",
+        "line": 181
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/templating.py",
+          "line": 181,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/templating.py",
+          "lines": [
+            180,
+            198
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-050-flask-make-shell-context",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.make_shell_context in src/flask/app.py",
+      "target": "Flask.make_shell_context",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 620
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 620,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            619,
+            631
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-051-appgroup-group",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain AppGroup.group in src/flask/cli.py",
+      "target": "AppGroup.group",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 429
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 429,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            428,
+            438
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-052-appcontext-match-request",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain AppContext.match_request in src/flask/ctx.py",
+      "target": "AppContext.match_request",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 405
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 405,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            404,
+            415
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-053-get-flashed-messages",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain get_flashed_messages in src/flask/helpers.py",
+      "target": "get_flashed_messages",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 360
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 360,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            359,
+            400
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-054-app-iter-blueprints",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.iter_blueprints in src/flask/sansio/app.py",
+      "target": "App.iter_blueprints",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 597
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 597,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            596,
+            603
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-055-sessioninterface-get-cookie-httponly",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_httponly in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_httponly",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 195
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 195,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            194,
+            201
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-056-stream-template-string",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain stream_template_string in src/flask/templating.py",
+      "target": "stream_template_string",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/templating.py",
+        "line": 200
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/templating.py",
+          "line": 200,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/templating.py",
+          "lines": [
+            199,
+            212
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-057-flask-test-cli-runner",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.test_cli_runner in src/flask/app.py",
+      "target": "Flask.test_cli_runner",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 813
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 813,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            812,
+            829
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-058-flaskgroup-get-command",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain FlaskGroup.get_command in src/flask/cli.py",
+      "target": "FlaskGroup.get_command",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 609
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 609,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            608,
+            635
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-059-appcontext-push",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain AppContext.push in src/flask/ctx.py",
+      "target": "AppContext.push",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/ctx.py",
+        "line": 416
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/ctx.py",
+          "line": 416,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/ctx.py",
+          "lines": [
+            415,
+            445
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-060-collecterrors-raise-any",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain _CollectErrors.raise_any in src/flask/helpers.py",
+      "target": "_CollectErrors.raise_any",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/helpers.py",
+        "line": 676
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/helpers.py",
+          "line": 676,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/helpers.py",
+          "lines": [
+            675,
+            682
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-061-app-trap-http-exception",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.trap_http_exception in src/flask/sansio/app.py",
+      "target": "App.trap_http_exception",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 893
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 893,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            892,
+            927
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-062-sessioninterface-get-cookie-secure",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_secure in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_secure",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 202
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 202,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            201,
+            207
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-063-flask-handle-http-exception",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.handle_http_exception in src/flask/app.py",
+      "target": "Flask.handle_http_exception",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 830
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 830,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            829,
+            864
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-064-flaskgroup-list-commands",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain FlaskGroup.list_commands in src/flask/cli.py",
+      "target": "FlaskGroup.list_commands",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 636
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 636,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            635,
+            656
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-065-app-inject-url-defaults",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.inject_url_defaults in src/flask/sansio/app.py",
+      "target": "App.inject_url_defaults",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 960
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 960,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            959,
+            980
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-066-sessioninterface-get-cookie-samesite",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_samesite in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_samesite",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 208
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 208,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            207,
+            214
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-067-flask-handle-user-exception",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask.handle_user_exception in src/flask/app.py",
+      "target": "Flask.handle_user_exception",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/app.py",
+        "line": 865
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/app.py",
+          "line": 865,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/app.py",
+          "lines": [
+            864,
+            896
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-068-flaskgroup-make-context",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain FlaskGroup.make_context in src/flask/cli.py",
+      "target": "FlaskGroup.make_context",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/cli.py",
+        "line": 657
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/cli.py",
+          "line": 657,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/cli.py",
+          "lines": [
+            656,
+            677
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-069-app-handle-url-build-error",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain App.handle_url_build_error in src/flask/sansio/app.py",
+      "target": "App.handle_url_build_error",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sansio/app.py",
+        "line": 981
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "line": 981,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sansio/app.py",
+          "lines": [
+            980,
+            1013
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-070-sessioninterface-get-cookie-partitioned",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain SessionInterface.get_cookie_partitioned in src/flask/sessions.py",
+      "target": "SessionInterface.get_cookie_partitioned",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "src/flask/sessions.py",
+        "line": 215
+      },
+      "required_evidence": [
+        {
+          "path": "src/flask/sessions.py",
+          "line": 215,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "src/flask/sessions.py",
+          "lines": [
+            214,
+            222
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-071-test-basic-url-generation",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_basic_url_generation in tests/test_appctx.py",
+      "target": "test_basic_url_generation",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_appctx.py",
+        "line": 10
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_appctx.py",
+          "line": 10,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_appctx.py",
+          "lines": [
+            9,
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-072-create-app2",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain create_app2 in tests/test_apps/cliapp/factory.py",
+      "target": "create_app2",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_apps/cliapp/factory.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_apps/cliapp/factory.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_apps/cliapp/factory.py",
+          "lines": [
+            7,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-073-test-options-work",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_options_work in tests/test_basic.py",
+      "target": "test_options_work",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_basic.py",
+        "line": 32
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_basic.py",
+          "line": 32,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_basic.py",
+          "lines": [
+            31,
+            40
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-074-test-blueprint-specific-error-handling",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_blueprint_specific_error_handling in tests/test_blueprints.py",
+      "target": "test_blueprint_specific_error_handling",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_blueprints.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_blueprints.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_blueprints.py",
+          "lines": [
+            7,
+            44
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-075-test-cli-name",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_cli_name in tests/test_cli.py",
+      "target": "test_cli_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_cli.py",
+        "line": 41
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_cli.py",
+          "line": 41,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_cli.py",
+          "lines": [
+            40,
+            46
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-076-common-object-test",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain common_object_test in tests/test_config.py",
+      "target": "common_object_test",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_config.py",
+        "line": 13
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_config.py",
+          "line": 13,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_config.py",
+          "lines": [
+            12,
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-077-test-custom-converters",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_custom_converters in tests/test_converters.py",
+      "target": "test_custom_converters",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_converters.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_converters.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_converters.py",
+          "lines": [
+            7,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-078-testsendfile-test-send-file",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain TestSendfile.test_send_file in tests/test_helpers.py",
+      "target": "TestSendfile.test_send_file",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_helpers.py",
+        "line": 34
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_helpers.py",
+          "line": 34,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_helpers.py",
+          "lines": [
+            33,
+            43
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-079-test-explicit-instance-paths",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_explicit_instance_paths in tests/test_instance_config.py",
+      "target": "test_explicit_instance_paths",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_instance_config.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_instance_config.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_instance_config.py",
+          "lines": [
+            7,
+            14
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-080-test-json-bad-requests",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_json_bad_requests in tests/test_json.py",
+      "target": "test_json_bad_requests",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_json.py",
+        "line": 30
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_json.py",
+          "line": 30,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_json.py",
+          "lines": [
+            29,
+            37
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-081-test-duplicate-tag",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_duplicate_tag in tests/test_json_tag.py",
+      "target": "test_duplicate_tag",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_json_tag.py",
+        "line": 32
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_json_tag.py",
+          "line": 32,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_json_tag.py",
+          "lines": [
+            31,
+            41
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-082-test-logger",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_logger in tests/test_logging.py",
+      "target": "test_logger",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_logging.py",
+        "line": 36
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_logging.py",
+          "line": 36,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_logging.py",
+          "lines": [
+            35,
+            40
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-083-test-aborting",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_aborting in tests/test_regression.py",
+      "target": "test_aborting",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_regression.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_regression.py",
+          "line": 4,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_regression.py",
+          "lines": [
+            3,
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-084-test-teardown-on-pop",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_teardown_on_pop in tests/test_reqctx.py",
+      "target": "test_teardown_on_pop",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_reqctx.py",
+        "line": 15
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_reqctx.py",
+          "line": 15,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_reqctx.py",
+          "lines": [
+            14,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-085-test-max-content-length",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_max_content_length in tests/test_request.py",
+      "target": "test_max_content_length",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_request.py",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_request.py",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_request.py",
+          "lines": [
+            8,
+            23
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-086-test-open-session-with-endpoint",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_open_session_with_endpoint in tests/test_session_interface.py",
+      "target": "test_open_session_with_endpoint",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_session_interface.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_session_interface.py",
+          "line": 6,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_session_interface.py",
+          "lines": [
+            5,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-087-test-template-rendered",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_template_rendered in tests/test_signals.py",
+      "target": "test_template_rendered",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_signals.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_signals.py",
+          "line": 4,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_signals.py",
+          "lines": [
+            3,
+            23
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-088-test-suppressed-exception-logging",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_suppressed_exception_logging in tests/test_subclassing.py",
+      "target": "test_suppressed_exception_logging",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_subclassing.py",
+        "line": 6
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_subclassing.py",
+          "line": 6,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_subclassing.py",
+          "lines": [
+            5,
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-089-test-original-win",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_original_win in tests/test_templating.py",
+      "target": "test_original_win",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_templating.py",
+        "line": 24
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_templating.py",
+          "line": 24,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_templating.py",
+          "lines": [
+            23,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-flask-exact-090-test-environ-defaults-from-config",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_environ_defaults_from_config in tests/test_testing.py",
+      "target": "test_environ_defaults_from_config",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/test_testing.py",
+        "line": 15
+      },
+      "required_evidence": [
+        {
+          "path": "tests/test_testing.py",
+          "line": 15,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/test_testing.py",
+          "lines": [
+            14,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-definition-render",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain render shortcut",
+      "target": "render",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::django/shortcuts.py::function::render",
+        "name": "render",
+        "path": "django/shortcuts.py",
+        "line": 20
+      },
+      "required_evidence": [
+        {
+          "path": "django/shortcuts.py",
+          "line": 20,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/shortcuts.py",
+          "lines": [
+            20,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-definition-get-object",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_object_or_404",
+      "target": "get_object_or_404",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::django/shortcuts.py::function::get_object_or_404",
+        "name": "get_object_or_404",
+        "path": "django/shortcuts.py",
+        "line": 79
+      },
+      "required_evidence": [
+        {
+          "path": "django/shortcuts.py",
+          "line": 79,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/shortcuts.py",
+          "lines": [
+            79,
+            107
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-targetless-redirect",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "ambiguous",
+      "task": "Find redirect shortcut",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::django/contrib/contenttypes/views.py::function::shortcut",
+          "name": "shortcut",
+          "path": "django/contrib/contenttypes/views.py",
+          "line": 9
+        },
+        {
+          "id": "symbol::django/contrib/redirects/models.py::class::Redirect",
+          "name": "Redirect",
+          "path": "django/contrib/redirects/models.py",
+          "line": 6
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/contenttypes/views.py",
+          "lines": [
+            9,
+            88
+          ]
+        },
+        {
+          "path": "django/contrib/redirects/models.py",
+          "lines": [
+            6,
+            35
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-ambiguous-reverse",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "ambiguous",
+      "task": "Update reverse",
+      "target": "reverse",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::django/contrib/gis/db/models/functions.py::class::Reverse",
+          "name": "Reverse",
+          "path": "django/contrib/gis/db/models/functions.py",
+          "line": 565
+        },
+        {
+          "id": "symbol::django/db/models/functions/text.py::class::Reverse",
+          "name": "Reverse",
+          "path": "django/db/models/functions/text.py",
+          "line": 260
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/db/models/functions.py",
+          "lines": [
+            565,
+            566
+          ]
+        },
+        {
+          "path": "django/db/models/functions/text.py",
+          "lines": [
+            260,
+            279
+          ]
+        },
+        {
+          "path": "django/urls/base.py",
+          "lines": [
+            28,
+            108
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-structural-get-object",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "structural",
+      "task": "Trace the flow path for get_object_or_404",
+      "target": "get_object_or_404",
+      "expected_status": "ready",
+      "expected_target": {
+        "id": "symbol::django/shortcuts.py::function::get_object_or_404",
+        "name": "get_object_or_404",
+        "path": "django/shortcuts.py",
+        "line": 79
+      },
+      "required_evidence": [
+        {
+          "path": "django/shortcuts.py",
+          "line": 79,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/shortcuts.py",
+          "lines": [
+            79,
+            107
+          ]
+        }
+      ],
+      "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "sandbox-django-insufficient-http-response",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain HttpResponse",
+      "target": "HttpResponse",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "django/http/response.py",
+          "lines": [
+            377,
+            441
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-insufficient-url-resolver",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Trace URLResolver routing structure",
+      "target": "URLResolver",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "django/urls/resolvers.py",
+          "lines": [
+            503,
+            769
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-ambiguous-redirect",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "debug",
+      "task": "Debug redirect using immediate callers, dependencies, and tests",
+      "target": "redirect",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {
+          "id": "symbol::django/contrib/redirects/models.py::class::Redirect",
+          "name": "Redirect",
+          "path": "django/contrib/redirects/models.py",
+          "line": 6
+        },
+        {
+          "id": "symbol::django/shortcuts.py::function::redirect",
+          "name": "redirect",
+          "path": "django/shortcuts.py",
+          "line": 31
+        }
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/redirects/models.py",
+          "lines": [
+            6,
+            35
+          ]
+        },
+        {
+          "path": "django/shortcuts.py",
+          "lines": [
+            31,
+            63
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-insufficient-test-impact-object",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for get_object_or_404",
+      "target": "get_object_or_404",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "django/shortcuts.py",
+          "lines": [
+            79,
+            107
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandbox-django-insufficient-test-target",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain test_get_object_or_404",
+      "target": "test_get_object_or_404",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [
+        {
+          "path": "tests/get_object_or_404/tests.py",
+          "lines": [
+            1,
+            200
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-001-apps-check-apps-ready",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain Apps.check_apps_ready in django/apps/registry.py",
+      "target": "Apps.check_apps_ready",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/apps/registry.py",
+        "line": 129
+      },
+      "required_evidence": [
+        {
+          "path": "django/apps/registry.py",
+          "line": 129,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/apps/registry.py",
+          "lines": [
+            128,
+            139
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-002-lazysettings-configure",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain LazySettings.configure in django/conf/__init__.py",
+      "target": "LazySettings.configure",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/conf/__init__.py",
+        "line": 200
+      },
+      "required_evidence": [
+        {
+          "path": "django/conf/__init__.py",
+          "line": 200,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/conf/__init__.py",
+          "lines": [
+            199,
+            218
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-003-i18n-patterns",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain i18n_patterns in django/conf/urls/i18n.py",
+      "target": "i18n_patterns",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/conf/urls/i18n.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "django/conf/urls/i18n.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/conf/urls/i18n.py",
+          "lines": [
+            7,
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-004-autodiscover",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain autodiscover in django/contrib/admin/__init__.py",
+      "target": "autodiscover",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/__init__.py",
+        "line": 55
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/__init__.py",
+          "line": 55,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/__init__.py",
+          "lines": [
+            54,
+            56
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-005-check-admin-app",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain check_admin_app in django/contrib/admin/checks.py",
+      "target": "check_admin_app",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/checks.py",
+        "line": 47
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/checks.py",
+          "line": 47,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/checks.py",
+          "lines": [
+            46,
+            54
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-006-facetsmixin-get-facet-queryset",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain FacetsMixin.get_facet_queryset in django/contrib/admin/filters.py",
+      "target": "FacetsMixin.get_facet_queryset",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/filters.py",
+        "line": 83
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/filters.py",
+          "line": 83,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/filters.py",
+          "lines": [
+            82,
+            90
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-007-adminreadonlyfield-contents",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AdminReadonlyField.contents in django/contrib/admin/helpers.py",
+      "target": "AdminReadonlyField.contents",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/helpers.py",
+        "line": 269
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/helpers.py",
+          "line": 269,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/helpers.py",
+          "lines": [
+            268,
+            302
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-008-logentrymanager-log-actions",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain LogEntryManager.log_actions in django/contrib/admin/models.py",
+      "target": "LogEntryManager.log_actions",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/models.py",
+        "line": 27
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/models.py",
+          "line": 27,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/models.py",
+          "lines": [
+            26,
+            55
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-009-get-content-type-for-model",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_content_type_for_model in django/contrib/admin/options.py",
+      "target": "get_content_type_for_model",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/options.py",
+        "line": 137
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/options.py",
+          "line": 137,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/options.py",
+          "lines": [
+            136,
+            143
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-010-adminsite-is-registered",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AdminSite.is_registered in django/contrib/admin/sites.py",
+      "target": "AdminSite.is_registered",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/sites.py",
+        "line": 164
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/sites.py",
+          "line": 164,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/sites.py",
+          "lines": [
+            163,
+            169
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-011-pagination",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain pagination in django/contrib/admin/templatetags/admin_list.py",
+      "target": "pagination",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/templatetags/admin_list.py",
+        "line": 57
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/templatetags/admin_list.py",
+          "line": 57,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/templatetags/admin_list.py",
+          "lines": [
+            56,
+            74
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-012-prepopulated-fields-js",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain prepopulated_fields_js in django/contrib/admin/templatetags/admin_modify.py",
+      "target": "prepopulated_fields_js",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/templatetags/admin_modify.py",
+        "line": 11
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/templatetags/admin_modify.py",
+          "line": 11,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/templatetags/admin_modify.py",
+          "lines": [
+            10,
+            49
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-013-adminseleniumtestcase-wait-until",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AdminSeleniumTestCase.wait_until in django/contrib/admin/tests.py",
+      "target": "AdminSeleniumTestCase.wait_until",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/tests.py",
+        "line": 39
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/tests.py",
+          "line": 39,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/tests.py",
+          "lines": [
+            38,
+            49
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-014-lookup-spawns-duplicates",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain lookup_spawns_duplicates in django/contrib/admin/utils.py",
+      "target": "lookup_spawns_duplicates",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/utils.py",
+        "line": 37
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/utils.py",
+          "line": 37,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/utils.py",
+          "lines": [
+            36,
+            61
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-015-autocompletejsonview-serialize-result",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AutocompleteJsonView.serialize_result in django/contrib/admin/views/autocomplete.py",
+      "target": "AutocompleteJsonView.serialize_result",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/views/autocomplete.py",
+        "line": 45
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/views/autocomplete.py",
+          "line": 45,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/views/autocomplete.py",
+          "lines": [
+            44,
+            51
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-016-staff-member-required",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain staff_member_required in django/contrib/admin/views/decorators.py",
+      "target": "staff_member_required",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/views/decorators.py",
+        "line": 5
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/views/decorators.py",
+          "line": 5,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/views/decorators.py",
+          "lines": [
+            4,
+            19
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-017-changelist-get-filters-params",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain ChangeList.get_filters_params in django/contrib/admin/views/main.py",
+      "target": "ChangeList.get_filters_params",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/views/main.py",
+        "line": 162
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/views/main.py",
+          "line": 162,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/views/main.py",
+          "lines": [
+            161,
+            174
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-018-url-params-from-lookup-dict",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain url_params_from_lookup_dict in django/contrib/admin/widgets.py",
+      "target": "url_params_from_lookup_dict",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admin/widgets.py",
+        "line": 130
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admin/widgets.py",
+          "line": 130,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admin/widgets.py",
+          "lines": [
+            129,
+            148
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-019-get-view-name",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_view_name in django/contrib/admindocs/utils.py",
+      "target": "get_view_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admindocs/utils.py",
+        "line": 27
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admindocs/utils.py",
+          "line": 27,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admindocs/utils.py",
+          "lines": [
+            26,
+            34
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-020-user-has-model-view-permission",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain user_has_model_view_permission in django/contrib/admindocs/views.py",
+      "target": "user_has_model_view_permission",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/admindocs/views.py",
+        "line": 204
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/admindocs/views.py",
+          "line": 204,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/admindocs/views.py",
+          "lines": [
+            203,
+            211
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-021-get-backends",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_backends in django/contrib/auth/__init__.py",
+      "target": "get_backends",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/__init__.py",
+        "line": 39
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/__init__.py",
+          "line": 39,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/__init__.py",
+          "lines": [
+            38,
+            41
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-022-abstractbaseuser-set-unusable-password",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AbstractBaseUser.set_unusable_password in django/contrib/auth/base_user.py",
+      "target": "AbstractBaseUser.set_unusable_password",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/base_user.py",
+        "line": 122
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/base_user.py",
+          "line": 122,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/base_user.py",
+          "lines": [
+            121,
+            125
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-023-check-middleware",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain check_middleware in django/contrib/auth/checks.py",
+      "target": "check_middleware",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/checks.py",
+        "line": 239
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/checks.py",
+          "line": 239,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/checks.py",
+          "lines": [
+            238,
+            261
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-024-auth",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain auth in django/contrib/auth/context_processors.py",
+      "target": "auth",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/context_processors.py",
+        "line": 49
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/context_processors.py",
+          "line": 49,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/context_processors.py",
+          "lines": [
+            48,
+            67
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-025-login-required",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain login_required in django/contrib/auth/decorators.py",
+      "target": "login_required",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/decorators.py",
+        "line": 74
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/decorators.py",
+          "line": 74,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/decorators.py",
+          "lines": [
+            73,
+            89
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-026-authenticationform-get-invalid-login-error",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AuthenticationForm.get_invalid_login_error in django/contrib/auth/forms.py",
+      "target": "AuthenticationForm.get_invalid_login_error",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/forms.py",
+        "line": 379
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/forms.py",
+          "line": 379,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/forms.py",
+          "lines": [
+            378,
+            385
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-027-groups-for-user",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain groups_for_user in django/contrib/auth/handlers/modwsgi.py",
+      "target": "groups_for_user",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/handlers/modwsgi.py",
+        "line": 44
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/handlers/modwsgi.py",
+          "line": 44,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/handlers/modwsgi.py",
+          "lines": [
+            43,
+            58
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-028-is-password-usable",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain is_password_usable in django/contrib/auth/hashers.py",
+      "target": "is_password_usable",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/hashers.py",
+        "line": 31
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/hashers.py",
+          "line": 31,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/hashers.py",
+          "lines": [
+            30,
+            37
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-029-get-system-username",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_system_username in django/contrib/auth/management/__init__.py",
+      "target": "get_system_username",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/management/__init__.py",
+        "line": 229
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/management/__init__.py",
+          "line": 229,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/management/__init__.py",
+          "lines": [
+            228,
+            244
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-030-command-get-input-data",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain Command.get_input_data in django/contrib/auth/management/commands/createsuperuser.py",
+      "target": "Command.get_input_data",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/management/commands/createsuperuser.py",
+        "line": 256
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/management/commands/createsuperuser.py",
+          "line": 256,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/management/commands/createsuperuser.py",
+          "lines": [
+            255,
+            271
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-031-remoteusermiddleware-aprocess-request",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain RemoteUserMiddleware.aprocess_request in django/contrib/auth/middleware.py",
+      "target": "RemoteUserMiddleware.aprocess_request",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/middleware.py",
+        "line": 176
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/middleware.py",
+          "line": 176,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/middleware.py",
+          "lines": [
+            175,
+            216
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-032-update-proxy-model-permissions",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain update_proxy_model_permissions in django/contrib/auth/migrations/0011_update_proxy_permissions.py",
+      "target": "update_proxy_model_permissions",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/migrations/0011_update_proxy_permissions.py",
+        "line": 17
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/migrations/0011_update_proxy_permissions.py",
+          "line": 17,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/migrations/0011_update_proxy_permissions.py",
+          "lines": [
+            16,
+            57
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-033-accessmixin-get-permission-denied-message",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AccessMixin.get_permission_denied_message in django/contrib/auth/mixins.py",
+      "target": "AccessMixin.get_permission_denied_message",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/mixins.py",
+        "line": 34
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/mixins.py",
+          "line": 34,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/mixins.py",
+          "lines": [
+            33,
+            40
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-034-update-last-login",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain update_last_login in django/contrib/auth/models.py",
+      "target": "update_last_login",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/models.py",
+        "line": 18
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/models.py",
+          "line": 18,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/models.py",
+          "lines": [
+            17,
+            25
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-035-get-password-validators",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_password_validators in django/contrib/auth/password_validation.py",
+      "target": "get_password_validators",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/password_validation.py",
+        "line": 25
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/password_validation.py",
+          "line": 25,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/password_validation.py",
+          "lines": [
+            24,
+            39
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-036-passwordresettokengenerator-make-token",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain PasswordResetTokenGenerator.make_token in django/contrib/auth/tokens.py",
+      "target": "PasswordResetTokenGenerator.make_token",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/tokens.py",
+        "line": 40
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/tokens.py",
+          "line": 40,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/tokens.py",
+          "lines": [
+            39,
+            50
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-037-redirecturlmixin-get-success-url-allowed-hosts",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain RedirectURLMixin.get_success_url_allowed_hosts in django/contrib/auth/views.py",
+      "target": "RedirectURLMixin.get_success_url_allowed_hosts",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/auth/views.py",
+        "line": 61
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/auth/views.py",
+          "line": 61,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/auth/views.py",
+          "lines": [
+            60,
+            65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-038-check-generic-foreign-keys",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain check_generic_foreign_keys in django/contrib/contenttypes/checks.py",
+      "target": "check_generic_foreign_keys",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/contenttypes/checks.py",
+        "line": 7
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/contenttypes/checks.py",
+          "line": 7,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/contenttypes/checks.py",
+          "lines": [
+            6,
+            26
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-039-genericrelation-bulk-related-objects",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GenericRelation.bulk_related_objects in django/contrib/contenttypes/fields.py",
+      "target": "GenericRelation.bulk_related_objects",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/contenttypes/fields.py",
+        "line": 574
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/contenttypes/fields.py",
+          "line": 574,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/contenttypes/fields.py",
+          "lines": [
+            573,
+            587
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-040-renamecontenttype-rename-forward",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain RenameContentType.rename_forward in django/contrib/contenttypes/management/__init__.py",
+      "target": "RenameContentType.rename_forward",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/contenttypes/management/__init__.py",
+        "line": 47
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/contenttypes/management/__init__.py",
+          "line": 47,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/contenttypes/management/__init__.py",
+          "lines": [
+            46,
+            49
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-041-add-legacy-name",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain add_legacy_name in django/contrib/contenttypes/migrations/0002_remove_content_type_name.py",
+      "target": "add_legacy_name",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/contenttypes/migrations/0002_remove_content_type_name.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/contenttypes/migrations/0002_remove_content_type_name.py",
+          "line": 4,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/contenttypes/migrations/0002_remove_content_type_name.py",
+          "lines": [
+            3,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-042-contenttypemanager-get-for-model",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain ContentTypeManager.get_for_model in django/contrib/contenttypes/models.py",
+      "target": "ContentTypeManager.get_for_model",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/contenttypes/models.py",
+        "line": 35
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/contenttypes/models.py",
+          "line": 35,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/contenttypes/models.py",
+          "lines": [
+            34,
+            62
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-043-flatpageform-clean-url",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain FlatpageForm.clean_url in django/contrib/flatpages/forms.py",
+      "target": "FlatpageForm.clean_url",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/flatpages/forms.py",
+        "line": 43
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/flatpages/forms.py",
+          "line": 43,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/flatpages/forms.py",
+          "lines": [
+            42,
+            56
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-044-get-srid-info",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_srid_info in django/contrib/gis/db/models/fields.py",
+      "target": "get_srid_info",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/db/models/fields.py",
+        "line": 32
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/db/models/fields.py",
+          "line": 32,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/db/models/fields.py",
+          "lines": [
+            31,
+            68
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-045-distanceresultmixin-source-is-geography",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain DistanceResultMixin.source_is_geography in django/contrib/gis/db/models/functions.py",
+      "target": "DistanceResultMixin.source_is_geography",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/db/models/functions.py",
+        "line": 308
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/db/models/functions.py",
+          "line": 308,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/db/models/functions.py",
+          "lines": [
+            307,
+            310
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-046-gislookup-process-band-indices",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GISLookup.process_band_indices in django/contrib/gis/db/models/lookups.py",
+      "target": "GISLookup.process_band_indices",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/db/models/lookups.py",
+        "line": 37
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/db/models/lookups.py",
+          "line": 37,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/db/models/lookups.py",
+          "lines": [
+            36,
+            55
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-047-geofeedmixin-georss-coords",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GeoFeedMixin.georss_coords in django/contrib/gis/feeds.py",
+      "target": "GeoFeedMixin.georss_coords",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/feeds.py",
+        "line": 11
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/feeds.py",
+          "line": 11,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/feeds.py",
+          "lines": [
+            10,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-048-check-err",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain check_err in django/contrib/gis/gdal/error.py",
+      "target": "check_err",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/error.py",
+        "line": 49
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/error.py",
+          "line": 49,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/error.py",
+          "lines": [
+            48,
+            61
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-049-field-as-double",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain Field.as_double in django/contrib/gis/gdal/field.py",
+      "target": "Field.as_double",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/field.py",
+        "line": 42
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/field.py",
+          "line": 42,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/field.py",
+          "lines": [
+            41,
+            49
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-050-ogrgeometry-set-3d",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain OGRGeometry.set_3d in django/contrib/gis/gdal/geometries.py",
+      "target": "OGRGeometry.set_3d",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/geometries.py",
+        "line": 278
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/geometries.py",
+          "line": 278,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/geometries.py",
+          "lines": [
+            277,
+            286
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-051-ogrgeomtype-to-multi",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain OGRGeomType.to_multi in django/contrib/gis/gdal/geomtype.py",
+      "target": "OGRGeomType.to_multi",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/geomtype.py",
+        "line": 140
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/geomtype.py",
+          "line": 140,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/geomtype.py",
+          "lines": [
+            139,
+            146
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-052-layer-get-geoms",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain Layer.get_geoms in django/contrib/gis/gdal/layer.py",
+      "target": "Layer.get_geoms",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/layer.py",
+        "line": 214
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/layer.py",
+          "line": 214,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/layer.py",
+          "lines": [
+            213,
+            225
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-053-std-call",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain std_call in django/contrib/gis/gdal/libgdal.py",
+      "target": "std_call",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/libgdal.py",
+        "line": 85
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/libgdal.py",
+          "line": 85,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/libgdal.py",
+          "lines": [
+            84,
+            94
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-054-arg-byref",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain arg_byref in django/contrib/gis/gdal/prototypes/errcheck.py",
+      "target": "arg_byref",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/prototypes/errcheck.py",
+        "line": 14
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/errcheck.py",
+          "line": 14,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/errcheck.py",
+          "lines": [
+            13,
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-055-bool-output",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain bool_output in django/contrib/gis/gdal/prototypes/generation.py",
+      "target": "bool_output",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/prototypes/generation.py",
+        "line": 26
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/generation.py",
+          "line": 26,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/generation.py",
+          "lines": [
+            25,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-056-env-func",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain env_func in django/contrib/gis/gdal/prototypes/geom.py",
+      "target": "env_func",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/prototypes/geom.py",
+        "line": 19
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/geom.py",
+          "line": 19,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/geom.py",
+          "lines": [
+            18,
+            25
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-057-srs-double",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain srs_double in django/contrib/gis/gdal/prototypes/srs.py",
+      "target": "srs_double",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/prototypes/srs.py",
+        "line": 15
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/srs.py",
+          "line": 15,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/prototypes/srs.py",
+          "lines": [
+            14,
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-058-gdalband-datatype",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GDALBand.datatype in django/contrib/gis/gdal/raster/band.py",
+      "target": "GDALBand.datatype",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/raster/band.py",
+        "line": 172
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/raster/band.py",
+          "line": 172,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/raster/band.py",
+          "lines": [
+            171,
+            180
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-059-spatialreference-attr-value",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain SpatialReference.attr_value in django/contrib/gis/gdal/srs.py",
+      "target": "SpatialReference.attr_value",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/gdal/srs.py",
+        "line": 151
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/gdal/srs.py",
+          "line": 151,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/gdal/srs.py",
+          "lines": [
+            150,
+            159
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-060-geoip2-city",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GeoIP2.city in django/contrib/gis/geoip2.py",
+      "target": "GeoIP2.city",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geoip2.py",
+        "line": 164
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geoip2.py",
+          "line": 164,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geoip2.py",
+          "lines": [
+            163,
+            191
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-061-geoscoordseq-getordinate",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GEOSCoordSeq.getOrdinate in django/contrib/gis/geos/coordseq.py",
+      "target": "GEOSCoordSeq.getOrdinate",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/coordseq.py",
+        "line": 164
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/coordseq.py",
+          "line": 164,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/coordseq.py",
+          "lines": [
+            163,
+            169
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-062-fromfile",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain fromfile in django/contrib/gis/geos/factory.py",
+      "target": "fromfile",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/factory.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/factory.py",
+          "line": 4,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/factory.py",
+          "lines": [
+            3,
+            29
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-063-geosgeometrybase-make-valid",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain GEOSGeometryBase.make_valid in django/contrib/gis/geos/geometry.py",
+      "target": "GEOSGeometryBase.make_valid",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/geometry.py",
+        "line": 238
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/geometry.py",
+          "line": 238,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/geometry.py",
+          "lines": [
+            237,
+            244
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-064-notice-h",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain notice_h in django/contrib/gis/geos/libgeos.py",
+      "target": "notice_h",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/libgeos.py",
+        "line": 83
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/libgeos.py",
+          "line": 83,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/libgeos.py",
+          "lines": [
+            82,
+            90
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-065-listmixin-extend",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain ListMixin.extend in django/contrib/gis/geos/mutable_list.py",
+      "target": "ListMixin.extend",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/mutable_list.py",
+        "line": 192
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/mutable_list.py",
+          "line": 192,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/mutable_list.py",
+          "lines": [
+            191,
+            195
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-066-preparedgeometry-contains-properly",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain PreparedGeometry.contains_properly in django/contrib/gis/geos/prepared.py",
+      "target": "PreparedGeometry.contains_properly",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/prepared.py",
+        "line": 29
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/prepared.py",
+          "line": 29,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/prepared.py",
+          "lines": [
+            28,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-067-check-cs-op",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain check_cs_op in django/contrib/gis/geos/prototypes/coordseq.py",
+      "target": "check_cs_op",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/prototypes/coordseq.py",
+        "line": 16
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/prototypes/coordseq.py",
+          "line": 16,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/prototypes/coordseq.py",
+          "lines": [
+            15,
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-068-last-arg-byref",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain last_arg_byref in django/contrib/gis/geos/prototypes/errcheck.py",
+      "target": "last_arg_byref",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/prototypes/errcheck.py",
+        "line": 16
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/prototypes/errcheck.py",
+          "line": 16,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/prototypes/errcheck.py",
+          "lines": [
+            15,
+            19
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-069-default-trim-value",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain default_trim_value in django/contrib/gis/geos/prototypes/io.py",
+      "target": "default_trim_value",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/geos/prototypes/io.py",
+        "line": 184
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/geos/prototypes/io.py",
+          "line": 184,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/geos/prototypes/io.py",
+          "lines": [
+            183,
+            190
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-070-measurebase-default-units",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain MeasureBase.default_units in django/contrib/gis/measure.py",
+      "target": "MeasureBase.default_units",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "django/contrib/gis/measure.py",
+        "line": 202
+      },
+      "required_evidence": [
+        {
+          "path": "django/contrib/gis/measure.py",
+          "line": 202,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "django/contrib/gis/measure.py",
+          "lines": [
+            201,
+            231
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-071-absoluteurloverridetests-test-get-absolute-url",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AbsoluteUrlOverrideTests.test_get_absolute_url in tests/absolute_url_overrides/tests.py",
+      "target": "AbsoluteUrlOverrideTests.test_get_absolute_url",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/absolute_url_overrides/tests.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "tests/absolute_url_overrides/tests.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/absolute_url_overrides/tests.py",
+          "lines": [
+            7,
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-072-adminautodiscovertests-test-double-call-autodiscover",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AdminAutoDiscoverTests.test_double_call_autodiscover in tests/admin_autodiscover/tests.py",
+      "target": "AdminAutoDiscoverTests.test_double_call_autodiscover",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_autodiscover/tests.py",
+        "line": 11
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_autodiscover/tests.py",
+          "line": 11,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_autodiscover/tests.py",
+          "lines": [
+            10,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-073-datehierarchytests-assertdateparams",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain DateHierarchyTests.assertDateParams in tests/admin_changelist/test_date_hierarchy.py",
+      "target": "DateHierarchyTests.assertDateParams",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_changelist/test_date_hierarchy.py",
+        "line": 23
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_changelist/test_date_hierarchy.py",
+          "line": 23,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_changelist/test_date_hierarchy.py",
+          "lines": [
+            22,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-074-build-tbody-html",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain build_tbody_html in tests/admin_changelist/tests.py",
+      "target": "build_tbody_html",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_changelist/tests.py",
+        "line": 80
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_changelist/tests.py",
+          "line": 80,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_changelist/tests.py",
+          "lines": [
+            79,
+            89
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-075-song-readonly-method-on-model",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain Song.readonly_method_on_model in tests/admin_checks/models.py",
+      "target": "Song.readonly_method_on_model",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_checks/models.py",
+        "line": 25
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_checks/models.py",
+          "line": 25,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_checks/models.py",
+          "lines": [
+            24,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-076-systemcheckstestcase-test-checks-are-performed",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain SystemChecksTestCase.test_checks_are_performed in tests/admin_checks/tests.py",
+      "target": "SystemChecksTestCase.test_checks_are_performed",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_checks/tests.py",
+        "line": 75
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_checks/tests.py",
+          "line": 75,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_checks/tests.py",
+          "lines": [
+            74,
+            83
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-077-actionadmin-remove-url",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain ActionAdmin.remove_url in tests/admin_custom_urls/models.py",
+      "target": "ActionAdmin.remove_url",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_custom_urls/models.py",
+        "line": 26
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_custom_urls/models.py",
+          "line": 26,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_custom_urls/models.py",
+          "lines": [
+            25,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-078-admincustomurlstest-test-admin-urls-no-clash",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AdminCustomUrlsTest.test_admin_URLs_no_clash in tests/admin_custom_urls/tests.py",
+      "target": "AdminCustomUrlsTest.test_admin_URLs_no_clash",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_custom_urls/tests.py",
+        "line": 80
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_custom_urls/tests.py",
+          "line": 80,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_custom_urls/tests.py",
+          "lines": [
+            79,
+            99
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-079-customadminsitetests-test-use-custom-admin-site",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain CustomAdminSiteTests.test_use_custom_admin_site in tests/admin_default_site/tests.py",
+      "target": "CustomAdminSiteTests.test_use_custom_admin_site",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_default_site/tests.py",
+        "line": 28
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_default_site/tests.py",
+          "line": 28,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_default_site/tests.py",
+          "lines": [
+            27,
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-080-person-rename-company",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain Person.rename_company in tests/admin_docs/models.py",
+      "target": "Person.rename_company",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_docs/models.py",
+        "line": 59
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_docs/models.py",
+          "line": 59,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_docs/models.py",
+          "lines": [
+            58,
+            63
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-081-xviewmiddlewaretest-test-xview-func",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain XViewMiddlewareTest.test_xview_func in tests/admin_docs/test_middleware.py",
+      "target": "XViewMiddlewareTest.test_xview_func",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_docs/test_middleware.py",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_docs/test_middleware.py",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_docs/test_middleware.py",
+          "lines": [
+            8,
+            26
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-082-testutils-test-parse-docstring",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain TestUtils.test_parse_docstring in tests/admin_docs/test_utils.py",
+      "target": "TestUtils.test_parse_docstring",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_docs/test_utils.py",
+        "line": 38
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_docs/test_utils.py",
+          "line": 38,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_docs/test_utils.py",
+          "lines": [
+            37,
+            54
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-083-admindocviewtests-test-bookmarklets",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain AdminDocViewTests.test_bookmarklets in tests/admin_docs/test_views.py",
+      "target": "AdminDocViewTests.test_bookmarklets",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_docs/test_views.py",
+        "line": 41
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_docs/test_views.py",
+          "line": 41,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_docs/test_views.py",
+          "lines": [
+            40,
+            44
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-084-xview",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain xview in tests/admin_docs/views.py",
+      "target": "xview",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_docs/views.py",
+        "line": 9
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_docs/views.py",
+          "line": 9,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_docs/views.py",
+          "lines": [
+            8,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-085-select-by",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain select_by in tests/admin_filters/tests.py",
+      "target": "select_by",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_filters/tests.py",
+        "line": 26
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_filters/tests.py",
+          "line": 26,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_filters/tests.py",
+          "lines": [
+            25,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-086-testtemplates-test-javascript-escaping",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain TestTemplates.test_javascript_escaping in tests/admin_inlines/test_templates.py",
+      "target": "TestTemplates.test_javascript_escaping",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_inlines/test_templates.py",
+        "line": 8
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_inlines/test_templates.py",
+          "line": 8,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_inlines/test_templates.py",
+          "lines": [
+            7,
+            25
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-087-testinline-test-can-delete",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain TestInline.test_can_delete in tests/admin_inlines/tests.py",
+      "target": "TestInline.test_can_delete",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_inlines/tests.py",
+        "line": 100
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_inlines/tests.py",
+          "line": 100,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_inlines/tests.py",
+          "lines": [
+            99,
+            111
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-088-testadminordering-test-dynamic-ordering",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain TestAdminOrdering.test_dynamic_ordering in tests/admin_ordering/tests.py",
+      "target": "TestAdminOrdering.test_dynamic_ordering",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_ordering/tests.py",
+        "line": 83
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_ordering/tests.py",
+          "line": 83,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_ordering/tests.py",
+          "lines": [
+            82,
+            97
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-089-testregistration-test-bare-registration",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain TestRegistration.test_bare_registration in tests/admin_registration/tests.py",
+      "target": "TestRegistration.test_bare_registration",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_registration/tests.py",
+        "line": 24
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_registration/tests.py",
+          "line": 24,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_registration/tests.py",
+          "lines": [
+            23,
+            29
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stress-django-exact-090-view-func-namespaced-unnamed",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain view_func_namespaced_unnamed in tests/admin_scripts/app_with_urls/views.py",
+      "target": "view_func_namespaced_unnamed",
+      "expected_status": "ready",
+      "expected_target": {
+        "path": "tests/admin_scripts/app_with_urls/views.py",
+        "line": 4
+      },
+      "required_evidence": [
+        {
+          "path": "tests/admin_scripts/app_with_urls/views.py",
+          "line": 4,
+          "role": "target"
+        }
+      ],
+      "permitted_ranges": [
+        {
+          "path": "tests/admin_scripts/app_with_urls/views.py",
+          "lines": [
+            3,
+            6
+          ]
+        }
+      ]
+    }
+  ]
+}

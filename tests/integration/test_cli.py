@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from csegraph._cli.main import _build_parser, _dispatch
+
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -56,3 +58,92 @@ def test_removed_command_is_not_registered():
     )
     assert result.returncode == 2
     assert "invalid choice" in result.stderr
+
+
+def test_plain_refresh_uses_candidate_aware_coordinator(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    expected = object()
+    calls: list[tuple[str, Path]] = []
+
+    class RecordingCoordinator:
+        def __init__(self, db_path: str) -> None:
+            calls.append((db_path, Path()))
+
+        def explicit_refresh(self, repo_path: str) -> object:
+            calls[-1] = (calls[-1][0], Path(repo_path))
+            return expected
+
+    class FailingRefreshService:
+        def __init__(self, db_path: str) -> None:
+            raise AssertionError("plain refresh should use candidate detection")
+
+    monkeypatch.setattr(
+        "csegraph._core.retrieval.freshness.FreshnessCoordinator",
+        RecordingCoordinator,
+    )
+    monkeypatch.setattr(
+        "csegraph._core.index.services.RefreshService",
+        FailingRefreshService,
+    )
+    args = _build_parser().parse_args(["refresh", str(repo), "--json"])
+
+    result = _dispatch(args)
+
+    assert result is expected
+    assert calls == [(str(repo / ".csegraph" / "index.db"), repo)]
+
+
+def test_refresh_with_membership_overrides_keeps_full_discovery(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    expected = object()
+    calls: list[dict[str, object]] = []
+
+    class RecordingRefreshService:
+        def __init__(self, db_path: str) -> None:
+            assert db_path == str(repo / ".csegraph" / "index.db")
+
+        def refresh(self, **kwargs: object) -> object:
+            calls.append(kwargs)
+            return expected
+
+    class FailingCoordinator:
+        def __init__(self, db_path: str) -> None:
+            raise AssertionError("membership overrides require full discovery")
+
+    monkeypatch.setattr(
+        "csegraph._core.index.services.RefreshService",
+        RecordingRefreshService,
+    )
+    monkeypatch.setattr(
+        "csegraph._core.retrieval.freshness.FreshnessCoordinator",
+        FailingCoordinator,
+    )
+    args = _build_parser().parse_args(
+        [
+            "refresh",
+            str(repo),
+            "--exclude",
+            "*.generated.py",
+            "--include-root",
+            "src",
+            "--json",
+        ]
+    )
+
+    result = _dispatch(args)
+
+    assert result is expected
+    assert calls == [
+        {
+            "exclude_patterns": ["*.generated.py"],
+            "include_roots": ["src"],
+        }
+    ]

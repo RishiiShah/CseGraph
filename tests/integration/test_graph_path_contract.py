@@ -32,7 +32,7 @@ def _index_python_repo(tmp_path: Path) -> tuple[Path, str]:
     return repo, db_path
 
 
-def test_graph_queries_canonical_v11_entities(tmp_path: Path) -> None:
+def test_graph_queries_canonical_v12_entities(tmp_path: Path) -> None:
     _, db_path = _index_python_repo(tmp_path)
 
     with sqlite3.connect(db_path) as conn:
@@ -71,7 +71,7 @@ def test_graph_queries_canonical_v11_entities(tmp_path: Path) -> None:
     }.isdisjoint(payload)
 
 
-def test_path_queries_canonical_v11_symbols(tmp_path: Path) -> None:
+def test_path_queries_canonical_v12_symbols(tmp_path: Path) -> None:
     _, db_path = _index_python_repo(tmp_path)
 
     result = GraphQueryService(db_path).shortest_path("greet", "format_name")

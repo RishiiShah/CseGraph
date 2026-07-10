@@ -382,6 +382,9 @@ def test_release_hardening_files_and_vscode_audit_override():
     for rel_path in expected_files:
         assert (repo_root / rel_path).exists(), rel_path
 
+    ci_workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "      - feature/**" in ci_workflow
+
     package_json = json.loads((repo_root / "csegraph-vscode" / "package.json").read_text())
     assert package_json["overrides"] == {"tmp": "^0.2.6"}
 

@@ -1,0 +1,420 @@
+{
+  "schema_version": "csegraph-adaptive-benchmark-v2",
+  "corpus_version": "2026.07.3",
+  "tier": "release",
+  "status": "ready",
+  "repositories": {
+    "sandbox/micrograd": {
+      "url": "sandbox://local",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685"
+    },
+    "sandbox/flask": {
+      "url": "sandbox://local",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81"
+    },
+    "sandbox/django": {
+      "url": "sandbox://local",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304"
+    }
+  },
+  "tasks": [
+    {
+      "id": "sandbox-micrograd-definition-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.backward",
+      "target": "Value.backward",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::micrograd/engine.py::method::Value.backward", "name": "Value.backward", "path": "micrograd/engine.py", "line": 54},
+      "required_evidence": [{"path": "micrograd/engine.py", "line": 54, "role": "target"}],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [54, 70]}]
+    },
+    {
+      "id": "sandbox-micrograd-definition-mul",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain Value.__mul__",
+      "target": "Value.__mul__",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::micrograd/engine.py::method::Value.__mul__", "name": "Value.__mul__", "path": "micrograd/engine.py", "line": 24},
+      "required_evidence": [{"path": "micrograd/engine.py", "line": 24, "role": "target"}],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [24, 33]}]
+    },
+    {
+      "id": "sandbox-micrograd-test-definition",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain test_sanity_check",
+      "target": "test_sanity_check",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::test/test_engine.py::function::test_sanity_check", "name": "test_sanity_check", "path": "test/test_engine.py", "line": 4},
+      "required_evidence": [{"path": "test/test_engine.py", "line": 4, "role": "target"}],
+      "permitted_ranges": [{"path": "test/test_engine.py", "lines": [4, 26]}]
+    },
+    {
+      "id": "sandbox-micrograd-insufficient-value",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "definition",
+      "task": "Explain the Value class",
+      "target": "Value",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [2, 94]}]
+    },
+    {
+      "id": "sandbox-micrograd-targetless-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "ambiguous",
+      "task": "Find backward",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::micrograd/engine.py::method::Value.backward", "name": "Value.backward", "path": "micrograd/engine.py", "line": 54},
+        {"id": "symbol::micrograd/engine.py::method::Value.relu", "name": "Value.relu", "path": "micrograd/engine.py", "line": 45}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [45, 70]}]
+    },
+    {
+      "id": "sandbox-micrograd-ambiguous-parameters",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "ambiguous",
+      "task": "Update parameters",
+      "target": "parameters",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::micrograd/nn.py::method::Module.parameters", "name": "Module.parameters", "path": "micrograd/nn.py", "line": 10},
+        {"id": "symbol::micrograd/nn.py::method::Neuron.parameters", "name": "Neuron.parameters", "path": "micrograd/nn.py", "line": 24}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "micrograd/nn.py", "lines": [10, 40]}]
+    },
+    {
+      "id": "sandbox-micrograd-structural-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "structural",
+      "task": "Trace the flow path for Value.backward",
+      "target": "Value.backward",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::micrograd/engine.py::method::Value.backward", "name": "Value.backward", "path": "micrograd/engine.py", "line": 54},
+      "required_evidence": [{"path": "micrograd/engine.py", "line": 54, "role": "target"}],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [54, 70]}],
+      "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "sandbox-micrograd-test-impact-add",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for Value.__add__",
+      "target": "Value.__add__",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::micrograd/engine.py::method::Value.__add__", "name": "Value.__add__", "path": "micrograd/engine.py", "line": 13},
+      "required_evidence": [
+        {"path": "micrograd/engine.py", "line": 13, "role": "target"},
+        {"path": "micrograd/engine.py", "line": 2, "role": "dependency"}
+      ],
+      "permitted_ranges": [
+        {"path": "micrograd/engine.py", "lines": [13, 22]},
+        {"path": "micrograd/engine.py", "lines": [2, 94]}
+      ]
+    },
+    {
+      "id": "sandbox-micrograd-refactor-relu",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "refactor",
+      "task": "Refactor Value.relu using immediate callers and dependencies",
+      "target": "Value.relu",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::micrograd/engine.py::method::Value.relu", "name": "Value.relu", "path": "micrograd/engine.py", "line": 45},
+      "required_evidence": [{"path": "micrograd/engine.py", "line": 45, "role": "target"}],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [45, 52]}]
+    },
+    {
+      "id": "sandbox-micrograd-debug-backward",
+      "repo": "sandbox/micrograd",
+      "commit": "c911406e5ace8742e5841a7e0df113ecb5d54685",
+      "category": "debug",
+      "task": "Debug Value.backward using immediate callers, dependencies, and tests",
+      "target": "Value.backward",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::micrograd/engine.py::method::Value.backward", "name": "Value.backward", "path": "micrograd/engine.py", "line": 54},
+      "required_evidence": [{"path": "micrograd/engine.py", "line": 54, "role": "target"}],
+      "permitted_ranges": [{"path": "micrograd/engine.py", "lines": [54, 70]}]
+    },
+    {
+      "id": "sandbox-flask-definition-route",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain Flask route registration",
+      "target": "route",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::src/flask/sansio/scaffold.py::method::Scaffold.route", "name": "Scaffold.route", "path": "src/flask/sansio/scaffold.py", "line": 336},
+      "required_evidence": [{"path": "src/flask/sansio/scaffold.py", "line": 336, "role": "target"}],
+      "permitted_ranges": [{"path": "src/flask/sansio/scaffold.py", "lines": [335, 365]}]
+    },
+    {
+      "id": "sandbox-flask-definition-full-dispatch",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain full_dispatch_request",
+      "target": "full_dispatch_request",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::src/flask/app.py::method::Flask.full_dispatch_request", "name": "Flask.full_dispatch_request", "path": "src/flask/app.py", "line": 992},
+      "required_evidence": [{"path": "src/flask/app.py", "line": 992, "role": "target"}],
+      "permitted_ranges": [{"path": "src/flask/app.py", "lines": [992, 1019]}]
+    },
+    {
+      "id": "sandbox-flask-test-definition",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_request_dispatching",
+      "target": "test_request_dispatching",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::tests/test_basic.py::function::test_request_dispatching", "name": "test_request_dispatching", "path": "tests/test_basic.py", "line": 129},
+      "required_evidence": [{"path": "tests/test_basic.py", "line": 129, "role": "target"}],
+      "permitted_ranges": [{"path": "tests/test_basic.py", "lines": [129, 149]}]
+    },
+    {
+      "id": "sandbox-flask-targetless-add-url-rule",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "ambiguous",
+      "task": "Find add_url_rule",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::src/flask/sansio/blueprints.py::method::Blueprint.add_url_rule", "name": "Blueprint.add_url_rule", "path": "src/flask/sansio/blueprints.py", "line": 413},
+        {"id": "symbol::src/flask/sansio/blueprints.py::method::BlueprintSetupState.add_url_rule", "name": "BlueprintSetupState.add_url_rule", "path": "src/flask/sansio/blueprints.py", "line": 87}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "src/flask/sansio/blueprints.py", "lines": [87, 441]}]
+    },
+    {
+      "id": "sandbox-flask-ambiguous-add-url-rule",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "ambiguous",
+      "task": "Update add_url_rule",
+      "target": "add_url_rule",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::src/flask/sansio/app.py::method::App.add_url_rule", "name": "App.add_url_rule", "path": "src/flask/sansio/app.py", "line": 604},
+        {"id": "symbol::src/flask/sansio/blueprints.py::method::BlueprintSetupState.add_url_rule", "name": "BlueprintSetupState.add_url_rule", "path": "src/flask/sansio/blueprints.py", "line": 87}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {"path": "src/flask/sansio/app.py", "lines": [604, 661]},
+        {"path": "src/flask/sansio/blueprints.py", "lines": [87, 441]}
+      ]
+    },
+    {
+      "id": "sandbox-flask-structural-full-dispatch",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "structural",
+      "task": "Trace the flow path for full_dispatch_request",
+      "target": "full_dispatch_request",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::src/flask/app.py::method::Flask.full_dispatch_request", "name": "Flask.full_dispatch_request", "path": "src/flask/app.py", "line": 992},
+      "required_evidence": [{"path": "src/flask/app.py", "line": 992, "role": "target"}],
+      "permitted_ranges": [{"path": "src/flask/app.py", "lines": [992, 1019]}],
+      "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "sandbox-flask-insufficient-full-dispatch-debug",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "debug",
+      "task": "Debug full_dispatch_request using immediate callers, dependencies, and tests",
+      "target": "full_dispatch_request",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "src/flask/app.py", "lines": [992, 1019]}]
+    },
+    {
+      "id": "sandbox-flask-blueprint-add-url-rule",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "cross-file",
+      "task": "Update Blueprint.add_url_rule and inspect registration flow",
+      "target": "Blueprint.add_url_rule",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::src/flask/sansio/blueprints.py::method::Blueprint.add_url_rule", "name": "Blueprint.add_url_rule", "path": "src/flask/sansio/blueprints.py", "line": 413},
+      "required_evidence": [{"path": "src/flask/sansio/blueprints.py", "line": 413, "role": "target"}],
+      "permitted_ranges": [
+        {"path": "src/flask/sansio/blueprints.py", "lines": [412, 441]},
+        {"path": "src/flask/sansio/blueprints.py", "lines": [223, 230]},
+        {"path": "src/flask/sansio/scaffold.py", "lines": [42, 49]}
+      ]
+    },
+    {
+      "id": "sandbox-flask-test-method-route",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "definition",
+      "task": "Explain test_method_route",
+      "target": "test_method_route",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::tests/test_basic.py::function::test_method_route", "name": "test_method_route", "path": "tests/test_basic.py", "line": 56},
+      "required_evidence": [{"path": "tests/test_basic.py", "line": 56, "role": "target"}],
+      "permitted_ranges": [{"path": "tests/test_basic.py", "lines": [55, 64]}]
+    },
+    {
+      "id": "sandbox-flask-insufficient-test-client",
+      "repo": "sandbox/flask",
+      "commit": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for Flask.test_client",
+      "target": "Flask.test_client",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::src/flask/app.py::method::Flask.test_client", "name": "Flask.test_client", "path": "src/flask/app.py", "line": 755},
+      "required_evidence": [{"path": "src/flask/app.py", "line": 755, "role": "target"}],
+      "permitted_ranges": [{"path": "src/flask/app.py", "lines": [755, 811]}]
+    },
+    {
+      "id": "sandbox-django-definition-render",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain render shortcut",
+      "target": "render",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::django/shortcuts.py::function::render", "name": "render", "path": "django/shortcuts.py", "line": 20},
+      "required_evidence": [{"path": "django/shortcuts.py", "line": 20, "role": "target"}],
+      "permitted_ranges": [{"path": "django/shortcuts.py", "lines": [20, 28]}]
+    },
+    {
+      "id": "sandbox-django-definition-get-object",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain get_object_or_404",
+      "target": "get_object_or_404",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::django/shortcuts.py::function::get_object_or_404", "name": "get_object_or_404", "path": "django/shortcuts.py", "line": 79},
+      "required_evidence": [{"path": "django/shortcuts.py", "line": 79, "role": "target"}],
+      "permitted_ranges": [{"path": "django/shortcuts.py", "lines": [79, 107]}]
+    },
+    {
+      "id": "sandbox-django-targetless-redirect",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "ambiguous",
+      "task": "Find redirect shortcut",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::django/contrib/contenttypes/views.py::function::shortcut", "name": "shortcut", "path": "django/contrib/contenttypes/views.py", "line": 9},
+        {"id": "symbol::django/contrib/redirects/models.py::class::Redirect", "name": "Redirect", "path": "django/contrib/redirects/models.py", "line": 6}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {"path": "django/contrib/contenttypes/views.py", "lines": [9, 88]},
+        {"path": "django/contrib/redirects/models.py", "lines": [6, 35]}
+      ]
+    },
+    {
+      "id": "sandbox-django-ambiguous-reverse",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "ambiguous",
+      "task": "Update reverse",
+      "target": "reverse",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::django/contrib/gis/db/models/functions.py::class::Reverse", "name": "Reverse", "path": "django/contrib/gis/db/models/functions.py", "line": 565},
+        {"id": "symbol::django/db/models/functions/text.py::class::Reverse", "name": "Reverse", "path": "django/db/models/functions/text.py", "line": 260}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {"path": "django/contrib/gis/db/models/functions.py", "lines": [565, 566]},
+        {"path": "django/db/models/functions/text.py", "lines": [260, 279]},
+        {"path": "django/urls/base.py", "lines": [28, 108]}
+      ]
+    },
+    {
+      "id": "sandbox-django-structural-get-object",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "structural",
+      "task": "Trace the flow path for get_object_or_404",
+      "target": "get_object_or_404",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::django/shortcuts.py::function::get_object_or_404", "name": "get_object_or_404", "path": "django/shortcuts.py", "line": 79},
+      "required_evidence": [{"path": "django/shortcuts.py", "line": 79, "role": "target"}],
+      "permitted_ranges": [{"path": "django/shortcuts.py", "lines": [79, 107]}],
+      "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "sandbox-django-insufficient-http-response",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain HttpResponse",
+      "target": "HttpResponse",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "django/http/response.py", "lines": [377, 441]}]
+    },
+    {
+      "id": "sandbox-django-insufficient-url-resolver",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Trace URLResolver routing structure",
+      "target": "URLResolver",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "django/urls/resolvers.py", "lines": [503, 769]}]
+    },
+    {
+      "id": "sandbox-django-ambiguous-redirect",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "debug",
+      "task": "Debug redirect using immediate callers, dependencies, and tests",
+      "target": "redirect",
+      "expected_status": "ambiguous",
+      "expected_candidates": [
+        {"id": "symbol::django/contrib/redirects/models.py::class::Redirect", "name": "Redirect", "path": "django/contrib/redirects/models.py", "line": 6},
+        {"id": "symbol::django/shortcuts.py::function::redirect", "name": "redirect", "path": "django/shortcuts.py", "line": 31}
+      ],
+      "required_evidence": [],
+      "permitted_ranges": [
+        {"path": "django/contrib/redirects/models.py", "lines": [6, 35]},
+        {"path": "django/shortcuts.py", "lines": [31, 63]}
+      ]
+    },
+    {
+      "id": "sandbox-django-insufficient-test-impact-object",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "test-impact",
+      "task": "Assess one-hop test impact for get_object_or_404",
+      "target": "get_object_or_404",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "django/shortcuts.py", "lines": [79, 107]}]
+    },
+    {
+      "id": "sandbox-django-insufficient-test-target",
+      "repo": "sandbox/django",
+      "commit": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
+      "category": "definition",
+      "task": "Explain test_get_object_or_404",
+      "target": "test_get_object_or_404",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "tests/get_object_or_404/tests.py", "lines": [1, 200]}]
+    }
+  ]
+}

@@ -7,7 +7,7 @@ repository
   -> discover Python, JavaScript, and TypeScript
   -> parse with tree-sitter
   -> build canonical files, symbols, relationships, and lexical data
-  -> store schema v11 in SQLite
+  -> store schema v12 in SQLite
   -> retrieve compact context, graph neighborhoods, or paths
 ```
 
@@ -35,7 +35,8 @@ graph-query, compact result, serialization, and typed recovery APIs.
 3. Parse source and extract symbols, imports, bindings, relationships, and
    occurrence evidence.
 4. Write a new database beside the active database.
-5. Build lexical data and summaries in the same write flow.
+5. Build persisted module/symbol lookups, lexical data, and summaries in the
+   same write flow.
 6. Validate foreign keys and database integrity.
 7. Optimize and close the new database.
 8. Atomically replace the active database.
@@ -62,9 +63,9 @@ whole-symbol slices without loading the complete graph.
 explicit health or orientation requests. `csegraph_graph` and
 `csegraph_path` perform focused structural queries.
 
-## SQLite schema v11
+## SQLite schema v12
 
-The schema identifier is `csegraph-sqlite-v11`; `PRAGMA user_version` is `11`.
+The schema identifier is `csegraph-sqlite-v12`; `PRAGMA user_version` is `12`.
 The persisted tables are:
 
 | Table | Purpose |
@@ -72,12 +73,15 @@ The persisted tables are:
 | `metadata` | Schema, repository, revision, and freshness metadata. |
 | `files` | Canonical source-file records. |
 | `symbols` | Canonical symbols linked to files and optional parent symbols. |
+| `module_lookup` | Module names mapped to canonical file identifiers. |
+| `symbol_lookup` | Full and short symbol aliases mapped to canonical symbols. |
 | `edges` | Unique directed relationships. |
 | `imports` | Import statements and resolved files. |
 | `import_bindings` | Local/imported names and resolution results. |
 | `edge_occurrences` | Source locations supporting relationships or unresolved references. |
 | `summaries` | Source-hash-keyed summaries for files and symbols. |
-| `lexical_index` | FTS5 retrieval data. |
+| `lexical_documents` | Canonical lexical rows with indexed node identifiers. |
+| `lexical_index` | External-content FTS5 retrieval index maintained from lexical documents. |
 | `refresh_leases` | Cross-process refresh ownership and expiry. |
 
 `entities` is a zero-storage SQL view that joins the canonical `files` and
@@ -88,7 +92,13 @@ Composite primary keys and `WITHOUT ROWID` are used where the access pattern
 benefits. Indexes are limited to retrieval, traversal, refresh, and resolution
 queries. Foreign keys are enabled and validated.
 
-There is no schema migration. Any missing or non-v11 database produces
+Fresh builds bulk-populate lexical documents and rebuild FTS once before atomic
+publication. Secondary indexes are constructed after graph writes on the
+disposable build database. Incremental writes use SQLite triggers, so canonical
+rows and FTS updates commit or roll back together. Refresh resolution loads only
+the module and symbol aliases referenced by the changed batch.
+
+There is no schema migration. Any missing or non-v12 database produces
 `index_required` with a `csegraph_index` continuation.
 
 ## Compact contracts

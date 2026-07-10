@@ -44,6 +44,18 @@ class _TinyScanFallback(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class _FilesystemSnapshot:
+    revision: int
+    file_signatures: dict[str, tuple[int, float]]
+    directory_mtimes: dict[str, float]
+    control_mtimes: dict[str, float | None]
+
+
+_NON_GIT_SNAPSHOTS: dict[str, _FilesystemSnapshot] = {}
+_NON_GIT_SNAPSHOTS_LOCK = threading.Lock()
+
+
 @dataclass
 class FreshnessResult:
     state: str
@@ -501,7 +513,7 @@ def _detect_changed_paths(
             return filesystem_paths
     git_paths = _git_changed_paths(repo, metadata.get("built_commit"))
     if git_paths is not None:
-        return _filter_indexed_content(index, repo, git_paths)
+        return _filter_indexed_content(index, repo, git_paths, metadata)
     return _filesystem_changed_paths(index, repo)
 
 
@@ -637,35 +649,56 @@ def _dir_may_contain_include(rel_dir: str, include_roots: tuple[str, ...]) -> bo
         return True
     normalized = rel_dir.strip("/")
     return any(
-        normalized == root
-        or normalized.startswith(f"{root}/")
-        or root.startswith(f"{normalized}/")
+        normalized == root or normalized.startswith(f"{root}/") or root.startswith(f"{normalized}/")
         for root in include_roots
     )
 
 
 def _git_changed_paths(repo: Path, built_commit: str | None) -> list[Path] | None:
-    head = _run_git(repo, ["rev-parse", "HEAD"])
-    if head is None:
+    head_state = _git_head_state_from_files(repo)
+    head = head_state[1] if head_state is not None else _run_git(repo, ["rev-parse", "HEAD"])
+    if not head:
         return None
 
-    commands: list[list[str]] = []
-    if built_commit and not head.startswith(built_commit):
-        commands.append(["diff", "--name-only", "--no-renames", "-z", built_commit, "HEAD", "--"])
-    commands.extend(
-        [
-            ["diff", "--name-only", "--no-renames", "-z", "HEAD", "--"],
-            ["ls-files", "--others", "--exclude-standard", "-z"],
-        ]
-    )
-    changed: set[Path] = set()
-    for args in commands:
-        output = _run_git_bytes(repo, args)
+    status_args = [
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--no-renames",
+    ]
+    status = _run_git_bytes(repo, status_args)
+    if status is None:
+        return None
+    status_paths = _porcelain_status_paths(repo, status)
+    if status_paths is None:
+        return None
+
+    changed: set[Path] = set(status_paths)
+    if built_commit and not (head.startswith(built_commit) or built_commit.startswith(head)):
+        output = _run_git_bytes(
+            repo,
+            ["diff", "--name-only", "--no-renames", "-z", built_commit, "HEAD", "--"],
+        )
         if output is None:
             return None
         for raw in output.split(b"\0"):
             if raw:
                 changed.add(repo / raw.decode("utf-8", errors="replace"))
+    return sorted(changed)
+
+
+def _porcelain_status_paths(repo: Path, output: bytes) -> list[Path] | None:
+    changed: set[Path] = set()
+    for record in output.split(b"\0"):
+        if not record:
+            continue
+        if len(record) < 4 or record[2:3] != b" ":
+            return None
+        raw = record[3:]
+        if not raw:
+            return None
+        changed.add(repo / raw.decode("utf-8", errors="replace"))
     return sorted(changed)
 
 
@@ -811,6 +844,10 @@ def _checkpoint_git_state(
 
 
 def _filesystem_changed_paths(index: ProjectIndex, repo: Path) -> list[Path]:
+    cached = _cached_filesystem_changed_paths(index, repo)
+    if cached is not None:
+        return cached
+
     stored = {
         str(row["path"]): (
             int(row["size"]),
@@ -845,25 +882,119 @@ def _filesystem_changed_paths(index: ProjectIndex, repo: Path) -> list[Path]:
         if current_hash != previous[2]:
             changed.add(path)
     changed.update(repo / rel for rel in stored.keys() - current.keys())
-    return sorted(changed)
+    result = sorted(changed)
+    if not result:
+        _store_filesystem_snapshot(index, repo, current)
+    return result
+
+
+def _cached_filesystem_changed_paths(
+    index: ProjectIndex,
+    repo: Path,
+) -> list[Path] | None:
+    key = f"{index.db_path}\0{repo}"
+    with _NON_GIT_SNAPSHOTS_LOCK:
+        snapshot = _NON_GIT_SNAPSHOTS.get(key)
+    if snapshot is None or snapshot.revision != index.index_revision():
+        return None
+
+    for rel, previous in snapshot.directory_mtimes.items():
+        path = repo if rel == "." else repo / rel
+        try:
+            directory_mtime = float(path.stat().st_mtime)
+        except OSError:
+            return None
+        if directory_mtime != previous:
+            return None
+
+    for rel, previous in snapshot.control_mtimes.items():
+        path = repo / rel
+        try:
+            control_mtime: float | None = float(path.stat().st_mtime)
+        except OSError:
+            control_mtime = None
+        if control_mtime != previous:
+            return None
+
+    for rel, previous in snapshot.file_signatures.items():
+        path = repo / rel
+        try:
+            file_stat = path.stat()
+        except OSError:
+            return [path]
+        if not path.is_file() or path.is_symlink():
+            return [path]
+        file_signature = (int(file_stat.st_size), float(file_stat.st_mtime))
+        if file_signature != previous:
+            return [path]
+    return []
+
+
+def _store_filesystem_snapshot(
+    index: ProjectIndex,
+    repo: Path,
+    current: dict[str, tuple[int, float]],
+) -> None:
+    directory_mtimes = _directory_mtimes(repo)
+    if directory_mtimes is None:
+        return
+    control_mtimes: dict[str, float | None] = {}
+    for rel in (GITIGNORE_FILENAME, IGNORE_FILENAME):
+        path = repo / rel
+        try:
+            control_mtimes[rel] = float(path.stat().st_mtime)
+        except OSError:
+            control_mtimes[rel] = None
+    snapshot = _FilesystemSnapshot(
+        revision=index.index_revision(),
+        file_signatures=current,
+        directory_mtimes=directory_mtimes,
+        control_mtimes=control_mtimes,
+    )
+    key = f"{index.db_path}\0{repo}"
+    with _NON_GIT_SNAPSHOTS_LOCK:
+        _NON_GIT_SNAPSHOTS[key] = snapshot
+
+
+def _directory_mtimes(repo: Path) -> dict[str, float] | None:
+    resolved = repo.resolve()
+    mtimes: dict[str, float] = {}
+    try:
+        for dirpath, dirnames, _filenames in os.walk(resolved):
+            dirnames[:] = sorted(
+                name for name in dirnames if name not in EXCLUDED_DIRS and not name.startswith(".")
+            )
+            path = Path(dirpath)
+            rel = path.relative_to(resolved).as_posix()
+            mtimes[rel if rel != "." else "."] = float(path.stat().st_mtime)
+    except (OSError, ValueError):
+        return None
+    return mtimes
 
 
 def _filter_indexed_content(
     index: ProjectIndex,
     repo: Path,
     paths: list[Path],
+    metadata: dict[str, str],
 ) -> list[Path]:
-    metadata = index.metadata(raise_if_empty=False)
-    ignore = load_ignore_filter(repo)
-    try:
-        include_roots = tuple(
-            str(value).strip("/")
-            for value in json.loads(metadata.get("include_roots", "[]"))
-            if isinstance(value, str)
-        )
-    except (TypeError, json.JSONDecodeError):
-        include_roots = ()
     raw_untracked = metadata.get("indexed_untracked_paths")
+    indexed_untracked: list[str]
+    if raw_untracked is not None:
+        try:
+            decoded = json.loads(raw_untracked)
+        except (TypeError, json.JSONDecodeError):
+            decoded = []
+        indexed_untracked = (
+            [str(path) for path in decoded if isinstance(path, str)]
+            if isinstance(decoded, list)
+            else []
+        )
+        if not paths and all((repo / rel_path).exists() for rel_path in indexed_untracked):
+            return []
+
+    ignore = load_ignore_filter(repo)
+    include_roots = _include_roots_from_metadata(metadata)
     if raw_untracked is None:
         stored = {
             str(row["path"]): str(row["sha256"])
@@ -884,15 +1015,6 @@ def _filter_indexed_content(
         else:
             indexed_untracked = list(stored)
     else:
-        try:
-            decoded = json.loads(raw_untracked)
-        except (TypeError, json.JSONDecodeError):
-            decoded = []
-        indexed_untracked = (
-            [str(path) for path in decoded if isinstance(path, str)]
-            if isinstance(decoded, list)
-            else []
-        )
         candidate_rel_paths = set(indexed_untracked)
         for path in paths:
             try:

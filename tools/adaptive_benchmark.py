@@ -19,7 +19,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
 from csegraph._core.retrieval.token_budget import (
@@ -52,6 +52,26 @@ MAX_MATCHES = 5
 MAX_DISCOVERY_MATCHES = 3
 WINDOW_LINES = 80
 MIN_WINDOW_LINES = 10
+BENCHMARK_ARTIFACT_NAMES = frozenset(
+    {
+        ".DS_Store",
+        ".cache",
+        ".coverage",
+        ".csegraph",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+    }
+)
+BENCHMARK_ARTIFACT_SUFFIXES = (".pyc", ".pyo")
+LOCAL_COPY_URLS = frozenset({"fixture://local", "sandbox://local"})
 
 
 def _baseline_intent(task: str, task_kind: str) -> str:
@@ -691,7 +711,7 @@ def load_adaptive_corpus(path: str | Path) -> AdaptiveBenchmarkCorpus:
             f"got {payload.get('schema_version')!r}"
         )
     tier = str(payload.get("tier") or "pr")
-    if tier not in {"pr", "nightly", "release"}:
+    if tier not in {"pr", "nightly", "release", "perf", "broad"}:
         raise ValueError(f"Unsupported benchmark tier {tier!r}")
     status = str(payload.get("status") or "ready")
     if status not in {"ready", "planned", "blocked"}:
@@ -710,6 +730,7 @@ def load_adaptive_corpus(path: str | Path) -> AdaptiveBenchmarkCorpus:
             raise ValueError(f"Repository {repo_path!r} is missing {exc.args[0]!r}") from exc
         if not repository.url or len(repository.commit) != 40:
             raise ValueError(f"Repository {repo_path!r} must have a URL and 40-char commit")
+        _reject_csegraph_self_repository(repository.path, context=f"Repository {repo_path!r}")
         repositories[repository.path] = repository
 
     tasks: list[AdaptiveBenchmarkTask] = []
@@ -813,6 +834,7 @@ def load_adaptive_corpus(path: str | Path) -> AdaptiveBenchmarkCorpus:
                     f"Task {task.id!r} must define expected_next_tool for structural tasks"
                 )
         task_repository = repositories.get(task.repo)
+        _reject_csegraph_self_repository(task.repo, context=f"Task {task.id!r}")
         if task_repository is not None and task_repository.commit != task.commit:
             raise ValueError(f"Task {task.id!r} commit differs from repository {task.repo!r}")
         tasks.append(task)
@@ -838,8 +860,135 @@ def load_adaptive_tasks(path: str | Path) -> list[AdaptiveBenchmarkTask]:
     return list(load_adaptive_corpus(path).tasks)
 
 
+def corpus_quality(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
+    """Return benchmark task-mix quality metrics, warnings, and enforceable gates."""
+
+    tasks = list(corpus.tasks)
+    task_count = len(tasks)
+    category_counts = _counts(task.category for task in tasks)
+    status_counts = _counts(task.expected_status for task in tasks)
+    execution_mode_counts = _counts(task.execution_mode for task in tasks)
+    explicit_target_count = sum(task.target is not None for task in tasks)
+    targetless_count = task_count - explicit_target_count
+    ambiguous_count = sum(
+        task.category == "ambiguous" or task.expected_status == "ambiguous" for task in tasks
+    )
+    structural_followup_count = sum(
+        task.category == "structural" and task.expected_next_tool is not None for task in tasks
+    )
+    agent_task_count = sum(task.execution_mode == "agent" for task in tasks)
+    required_test_evidence_count = sum(
+        any(evidence.path.startswith(("test/", "tests/")) for evidence in task.required_evidence)
+        for task in tasks
+    )
+    insufficient_budget_count = sum(task.expected_status == "insufficient" for task in tasks)
+    exact_target_ratio = explicit_target_count / task_count if task_count else 0.0
+
+    gates = {
+        "targetless_coverage": targetless_count > 0,
+        "ambiguous_coverage": ambiguous_count > 0,
+        "structural_followup_coverage": structural_followup_count > 0,
+        "agent_task_coverage": agent_task_count > 0,
+        "required_test_evidence": required_test_evidence_count > 0,
+        "insufficient_budget_coverage": insufficient_budget_count > 0,
+        "exact_target_ratio_at_most_90pct": exact_target_ratio <= 0.90,
+    }
+    warnings: list[str] = []
+    if task_count and explicit_target_count == task_count:
+        warnings.append("all_tasks_have_explicit_targets")
+    elif exact_target_ratio > 0.85:
+        warnings.append("explicit_target_ratio_high")
+    if not gates["targetless_coverage"]:
+        warnings.append("targetless_coverage_missing")
+    if not gates["ambiguous_coverage"]:
+        warnings.append("ambiguous_coverage_missing")
+    if not gates["structural_followup_coverage"]:
+        warnings.append("structural_followup_coverage_missing")
+    if not gates["agent_task_coverage"]:
+        warnings.append("agent_task_coverage_missing")
+    if not gates["required_test_evidence"]:
+        warnings.append("required_test_evidence_missing")
+    if not gates["insufficient_budget_coverage"]:
+        warnings.append("insufficient_budget_coverage_missing")
+
+    # Agent execution coverage is contract-enforced for PR corpora, while the
+    # existing larger corpora remain retrieval-quality focused. Task execution
+    # itself remains opt-in.
+    # The perf and broad corpora intentionally favor stable exact targets for
+    # high-N latency averages while keeping ambiguity/insufficient/structural
+    # coverage from the sandbox release seed; exact-target ratio is therefore a
+    # warning, not a perf/broad-tier failure.
+    enforced_gate_names = tuple(
+        name
+        for name in gates
+        if not (
+            (name == "agent_task_coverage" and corpus.tier != "pr")
+            or (corpus.tier in {"perf", "broad"} and name == "exact_target_ratio_at_most_90pct")
+        )
+    )
+    enforced = corpus.tier in {"pr", "release", "perf", "broad"}
+    passed = not enforced or all(gates[name] for name in enforced_gate_names)
+    return {
+        "metrics": {
+            "task_count": task_count,
+            "category_counts": category_counts,
+            "status_counts": status_counts,
+            "execution_mode_counts": execution_mode_counts,
+            "explicit_target_count": explicit_target_count,
+            "targetless_count": targetless_count,
+            "explicit_target_ratio": round(exact_target_ratio, 4),
+            "ambiguous_count": ambiguous_count,
+            "structural_followup_count": structural_followup_count,
+            "agent_task_count": agent_task_count,
+            "required_test_evidence_count": required_test_evidence_count,
+            "insufficient_budget_count": insufficient_budget_count,
+        },
+        "warnings": warnings,
+        "gates": gates,
+        "enforced": enforced,
+        "enforced_gate_names": enforced_gate_names,
+        "passed": passed,
+    }
+
+
+def copy_benchmark_repository(source: Path, destination: Path) -> dict[str, Any]:
+    """Copy a benchmark repository into scratch without runtime artifacts."""
+
+    shutil.copytree(source, destination, ignore=_benchmark_copy_ignore)
+    return benchmark_workspace_hygiene(destination)
+
+
+def benchmark_workspace_hygiene(path: Path) -> dict[str, Any]:
+    """Report whether a benchmark workspace contains known runtime artifacts."""
+
+    artifacts = [
+        candidate.relative_to(path).as_posix()
+        for candidate in path.rglob("*")
+        if _is_benchmark_artifact_path(candidate.relative_to(path))
+    ]
+    return {
+        "clean": not artifacts,
+        "artifact_paths": sorted(artifacts)[:50],
+        "artifact_count": len(artifacts),
+        "ignored_names": sorted(BENCHMARK_ARTIFACT_NAMES),
+        "ignored_suffixes": list(BENCHMARK_ARTIFACT_SUFFIXES),
+    }
+
+
+def _reject_csegraph_self_repository(value: str, *, context: str) -> None:
+    normalized = value.replace("\\", "/").strip().strip("/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    lowered = normalized.lower()
+    if lowered in {"", ".", "csegraph"} or lowered.startswith("csegraph/"):
+        raise ValueError(
+            f"{context} points at CseGraph itself; benchmark corpora must use sandbox "
+            "or fixture repositories."
+        )
+
+
 def corpus_completeness(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
-    expected_counts = {"pr": 20, "nightly": 60, "release": 30}
+    expected_counts = {"pr": 22, "nightly": 60, "release": 30, "perf": 220, "broad": 348}
     expected = expected_counts[corpus.tier]
     supported = [task for task in corpus.tasks if task.supported]
     invalid_tasks: list[str] = []
@@ -884,6 +1033,31 @@ def corpus_completeness(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
         "gates": gates,
         "complete": all(gates.values()),
     }
+
+
+def _counts(values: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _benchmark_copy_ignore(directory: str, names: Sequence[str]) -> set[str]:
+    base = Path(directory)
+    return {
+        name
+        for name in names
+        if _is_benchmark_artifact_path((base / name).relative_to(base))
+        or name in BENCHMARK_ARTIFACT_NAMES
+        or name.endswith(BENCHMARK_ARTIFACT_SUFFIXES)
+    }
+
+
+def _is_benchmark_artifact_path(path: Path) -> bool:
+    parts = path.parts
+    return any(part in BENCHMARK_ARTIFACT_NAMES for part in parts) or path.name.endswith(
+        BENCHMARK_ARTIFACT_SUFFIXES
+    )
 
 
 def prepare_benchmark_repository(
@@ -1485,9 +1659,7 @@ def _fixture_revision(repo: Path) -> str:
         (
             candidate
             for candidate in repo.rglob("*")
-            if candidate.is_file()
-            and ".csegraph" not in candidate.parts
-            and "__pycache__" not in candidate.parts
+            if candidate.is_file() and not _is_benchmark_artifact_path(candidate.relative_to(repo))
         ),
         key=lambda candidate: candidate.relative_to(repo).as_posix(),
     ):

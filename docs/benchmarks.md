@@ -1,122 +1,143 @@
 # Benchmark Evidence
 
-This page compares the checked-in `v1.8.0` baseline against the latest `2.0.0`
-cross-repository rerun. The benchmark harness launches the CseGraph MCP server
-as a separate stdio process and calls tools through the official
-`mcp.client` JSON-RPC path.
+This page tracks the adaptive retrieval benchmark evidence used for CseGraph
+performance work. The current benchmark compares CseGraph's adaptive retrieval
+against a bounded `rg`/selective-read baseline under the same token budget.
 
 ## Method
 
 - MCP latency is measured as the client-side round trip around
   `session.call_tool(...)`; token counting and report writing are excluded.
-- The baseline reads all included source and text files once per query.
-- `chars/4` counts are CseGraph's transparent heuristic and are reported
-  alongside exact UTF-8 bytes and OpenAI proxy counts.
-- Profile choice changes retrieval latency, not the benchmark workload.
+- Token reduction is measured against the bounded baseline used by the adaptive
+  retrieval runner, not against a full-repository read.
+- The old full-repository footprint sweep was removed from this page because
+  its 99.xx% reductions were easy to misread as agent-realistic savings.
 
-## Current Sweep
+## Adaptive Retrieval Benchmark Tiers
 
-Latest rerun: CseGraph `2.0.0`
+The adaptive retrieval runner is the current correctness-and-efficiency
+benchmark for agent context selection. It compares CseGraph's adaptive retrieval
+against a bounded `rg`/selective-read baseline under the same token budget, and
+reports status accuracy, target recall, slice precision, token use, index
+diagnostics, workspace hygiene, and latency. The runner writes
+`csegraph-adaptive-retrieval-report-v4` reports.
 
-| Profile | Total naive chars/4 | MCP chars/4 | chars/4 reduction | Total naive OpenAI proxy | MCP OpenAI proxy | OpenAI proxy reduction | Avg MCP latency | Avg Phase B |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `auto` | 4,350,352,900 | 234,676 | 18,537.7x | 4,222,438,000 | 264,576 | 15,959.3x | 88.4ms | 8,934.6ms |
-| `small` | 4,350,352,900 | 234,676 | 18,537.7x | 4,222,438,000 | 264,576 | 15,959.3x | 101.0ms | 9,293.7ms |
-| `medium` | 4,350,352,900 | 234,676 | 18,537.7x | 4,222,438,000 | 264,576 | 15,959.3x | 101.6ms | 8,788.5ms |
-| `large` | 4,350,352,900 | 234,676 | 18,537.7x | 4,222,438,000 | 264,576 | 15,959.3x | 102.9ms | 9,391.6ms |
+Current corpus tiers:
 
-What the sweep shows:
+| Tier | Corpus | Purpose | Current scope |
+|---|---|---|---|
+| PR | `benchmarks/adaptive/pr_tasks.json` | Fast regression gate for expected status, recall, precision, token budget, and quality mix | Local fixtures |
+| Nightly | `benchmarks/adaptive/nightly_tasks.json` | Broader fixture regression with more task categories | Local fixtures |
+| Release | `benchmarks/adaptive/sandbox_release_tasks.json` | Hand-curated real-repo quality gate with ambiguous, targetless, structural, insufficient-budget, and test-evidence tasks | `micrograd`, `flask`, `django` |
+| Perf/stress | `benchmarks/adaptive/sandbox_stress_tasks.json` | High-N stable latency/token averages on representative small/medium/large repos | `micrograd`, `flask`, `django` |
+| Broad | `benchmarks/adaptive/sandbox_broad_tasks.json` | All-local-sandbox coverage for ecosystem shape and scale cliffs | All 10 sandbox repos |
 
-- `auto` is the best default latency profile.
-- `medium` is the best Phase B profile.
-- `small` never wins on aggregate latency or Phase B, so it is mostly a
-  regression mode.
-- `large` is the slowest overall.
-- The token reductions are identical across all four profiles, so profile choice
-  is trading latency, not retrieval breadth.
+### Broad all-sandbox run
 
-## Per-Sandbox Fixture Token Footprint
+Latest local broad run: `2026-07-10`, cold mode, Pyright off, 800-token budget.
+The report measured all 348 broad-corpus tasks across all 10 local sandbox
+repositories.
 
-These totals are from the `auto` run, but the token counts are identical across
-all four profiles. Each fixture ran 100 queries, so per-query averages are the
-totals divided by 100. Reduction percentages are computed as
-`1 - MCP / naive`, rounded to 3 decimals.
+| Metric | Result |
+|---|---:|
+| Tasks measured | 348 / 348 |
+| Expected status accuracy | 100.0% |
+| Adaptive recall | 100.0% |
+| Adaptive precision | 100.0% |
+| Adaptive role recall | 100.0% |
+| Adaptive median tokens | 198.5 |
+| Baseline median tokens | 718.5 |
+| Adaptive / baseline token ratio | 27.63% |
+| Median token reduction | 72.37% |
 
-### chars/4 Footprint
+The broad corpus used a temporary pilot cap, not a principled final weighting.
+The cap existed only to make the first all-10 local run tractable while
+validating repository hygiene, indexing, report schema, and task correctness.
+It should not be used to compare large repos with small repos.
 
-| Repository | Queries | Total naive chars/4 | Total MCP content chars/4 | Content reduction % | Total MCP envelope chars/4 | Envelope reduction % |
-|---|---:|---:|---:|---:|---:|---:|
-| `nanoGPT` | 100 | 1,660,200 | 17,152 | 98.967% | 22,073 | 98.670% |
-| `micrograd` | 100 | 224,000 | 18,025 | 91.953% | 23,178 | 89.653% |
-| `django` | 100 | 704,652,100 | 23,835 | 99.997% | 29,439 | 99.996% |
-| `pandas` | 100 | 593,543,600 | 24,143 | 99.996% | 29,802 | 99.995% |
-| `flask` | 100 | 15,754,200 | 23,409 | 99.851% | 29,056 | 99.816% |
-| `transformers` | 100 | 2,110,603,300 | 33,060 | 99.998% | 38,808 | 99.998% |
-| `scikit-learn` | 100 | 403,429,300 | 23,835 | 99.994% | 29,317 | 99.993% |
-| `fastapi` | 100 | 336,417,000 | 21,599 | 99.994% | 27,067 | 99.992% |
-| `celery` | 100 | 91,927,400 | 24,319 | 99.974% | 29,760 | 99.968% |
-| `pytest` | 100 | 92,141,800 | 25,299 | 99.973% | 30,976 | 99.966% |
+The readout is intentionally mixed:
 
-### OpenAI Proxy Footprint
+- Retrieval quality passed: every broad task matched the expected status, target
+  recall, precision, and role recall.
+- Token efficiency is strong: the broad run reduced median context tokens by
+  72.37% versus the bounded baseline.
+- The latency gate did not pass: `engine_p95_overhead_below_100ms` failed,
+  driven mostly by `transformers`, with secondary cliffs in `pandas`, `django`,
+  and `scikit-learn`.
+- The broad tier is therefore useful as a perf/nightly signal, not as a PR
+  gate.
+- The broad tier is not the final benchmark shape because most repositories were
+  capped at 40 tasks regardless of size.
 
-| Repository | Queries | Total naive OpenAI proxy | Total MCP content OpenAI proxy | Content reduction % | Total MCP envelope OpenAI proxy | Envelope reduction % |
-|---|---:|---:|---:|---:|---:|---:|
-| `nanoGPT` | 100 | 1,723,200 | 20,418 | 98.815% | 27,167 | 98.423% |
-| `micrograd` | 100 | 254,100 | 22,299 | 91.224% | 29,338 | 88.454% |
-| `django` | 100 | 654,951,600 | 26,094 | 99.996% | 34,116 | 99.995% |
-| `pandas` | 100 | 620,289,200 | 28,024 | 99.995% | 36,069 | 99.994% |
-| `flask` | 100 | 14,661,800 | 26,520 | 99.819% | 34,642 | 99.764% |
-| `transformers` | 100 | 2,001,146,400 | 35,453 | 99.998% | 43,912 | 99.998% |
-| `scikit-learn` | 100 | 400,175,400 | 26,649 | 99.993% | 34,436 | 99.991% |
-| `fastapi` | 100 | 361,108,800 | 23,758 | 99.993% | 31,374 | 99.991% |
-| `celery` | 100 | 83,120,100 | 27,375 | 99.967% | 35,070 | 99.958% |
-| `pytest` | 100 | 85,007,400 | 27,986 | 99.967% | 36,177 | 99.957% |
+### Corpus realism policy
 
-## Per-Repository Winners
+All benchmark tasks should be hard to fool and representative of how agents
+actually ask for context.
 
-| Repository | Best latency profile | Best latency | Best Phase B profile | Best Phase B |
-|---|---|---:|---|---:|
-| `nanoGPT` | `auto` | 8.0ms | `medium` | 63.0ms |
-| `micrograd` | `auto` | 4.8ms | `auto` | 60.8ms |
-| `django` | `medium` | 137.6ms | `medium` | 80,122.6ms |
-| `pandas` | `auto` | 106.2ms | `auto` | 1,081.4ms |
-| `flask` | `medium` | 71.9ms | `auto` | 256.3ms |
-| `transformers` | `auto` | 159.8ms | `auto` | 3,256.8ms |
-| `scikit-learn` | `auto` | 104.0ms | `auto` | 528.1ms |
-| `fastapi` | `auto` | 103.4ms | `auto` | 479.1ms |
-| `celery` | `auto` | 88.6ms | `auto` | 1,073.5ms |
-| `pytest` | `auto` | 98.7ms | `auto` | 297.8ms |
+Repository tasks should be tailored to each project, not only generated from
+generic symbol lookups. Generated exact-definition tasks are still useful for
+stable latency/token averages, but every serious release/perf corpus should also
+include repository-specific scenarios:
 
-The only repositories that prefer `medium` for context latency are `django`
-and `flask`. Everything else is fastest on `auto`. The remaining outlier is
-`django` Phase B, which still dominates wall time even on the best profile.
+- `micrograd`: autograd graph traversal, `Value.backward`, operation closures,
+  simple neural-network helpers, and small test-impact tasks.
+- `flask`: routing, blueprints, request/app contexts, CLI behavior, error
+  handling, and tests around dispatch.
+- `django`: URL resolving, shortcuts, model/query behavior, forms/admin, test
+  discovery, and cross-file framework flows.
+- `fastapi`: dependency injection, routing, OpenAPI/schema generation,
+  validation, and async/test-client paths.
+- `pytest`: collection, fixtures, assertion rewriting, hooks/plugins, and
+  regression tests under `testing/`.
+- `celery`: task registration, app finalization, worker/beat control, result
+  backends, routing, and integration-style tests.
+- `pandas`: dataframe/array operations, dtype dispatch, IO/parsing, groupby,
+  extension arrays, and targeted regression tests.
+- `scikit-learn`: estimators, validation utilities, datasets, metrics,
+  pipelines, and model-selection flows.
+- `transformers`: model/config loading, tokenizers, generation, pipelines,
+  CLI/serving, dependency gates, and tests that exercise large module layouts.
+- `nanoGPT`: training loop, batching, model configuration, optimizer setup, and
+  data preparation scripts.
 
-## v1.8.0 vs 2.0.0
+Task counts should also scale with repository size and complexity, with caps so
+large repositories do not dominate the aggregate. The report should keep both:
 
-### Latency And Phase B
+- weighted aggregate metrics, where more tasks in larger repositories reflect
+  real surface area; and
+- macro-average metrics, where each repository gets one vote so `transformers`,
+  `pandas`, and `django` cannot hide regressions in smaller projects.
 
-| Profile | v1.8.0 Avg MCP latency | 2.0.0 Avg MCP latency | Speedup | v1.8.0 Avg Phase B | 2.0.0 Avg Phase B | Speedup |
-|---|---:|---:|---:|---:|---:|---:|
-| `auto` | 1,118.4ms | 88.4ms | 12.6x | 15,748.2ms | 8,934.6ms | 1.8x |
-| `small` | 1,141.3ms | 101.0ms | 11.3x | 16,378.6ms | 9,293.7ms | 1.8x |
-| `medium` | 1,120.3ms | 101.6ms | 11.0x | 15,863.4ms | 8,788.5ms | 1.8x |
-| `large` | 1,142.4ms | 102.9ms | 11.1x | 15,935.8ms | 9,391.6ms | 1.7x |
+There is no benchmark-quality reason for large repos to stop at 40 tasks. The
+current broad corpus used 40 as a first-pass execution cap only. Large repos
+should have more tasks because they expose more APIs, more architecture shapes,
+more duplicate names, more tests, and more performance cliffs. Small repos
+should have fewer but more scenario-specific tasks.
 
-### Token Reduction
+The next specialized corpus should be size-weighted and repo-specific:
 
-| Profile | v1.8.0 chars/4 reduction | 2.0.0 chars/4 reduction | v1.8.0 OpenAI proxy reduction | 2.0.0 OpenAI proxy reduction |
-|---|---:|---:|---:|---:|
-| `auto` | 299.8x | 18,537.7x | 280.7x | 15,959.3x |
-| `small` | 246.4x | 18,537.7x | 231.3x | 15,959.3x |
-| `medium` | 246.9x | 18,537.7x | 232.1x | 15,959.3x |
-| `large` | 243.0x | 18,537.7x | 227.6x | 15,959.3x |
+| Repository | Approx. Python files | Approx. symbols | Current broad tasks | Target specialized tasks | Why |
+|---|---:|---:|---:|---:|---|
+| `micrograd` | 5 | 40 | 20 | 20-25 | Tiny repo; scenario variety matters more than count |
+| `nanoGPT` | 15 | 30 | 8 | 20-30 | Needs tailored training/data/model tasks instead of only unique-symbol tasks |
+| `flask` | 83 | 1,620 | 40 | 60-80 | Medium framework with routing, context, CLI, and tests |
+| `pytest` | 270 | 6,850 | 40 | 80-100 | Plugin/hook/collection behavior deserves more tailored coverage |
+| `celery` | 416 | 8,875 | 40 | 90-120 | Worker, beat, task registry, routing, and backend paths |
+| `fastapi` | 1,129 | 5,556 | 40 | 90-120 | Routing, dependency injection, validation, OpenAPI, async tests |
+| `scikit-learn` | 1,014 | 12,744 | 40 | 120-150 | Estimator/pipeline/dataset/model-selection flows |
+| `pandas` | 1,509 | 33,139 | 40 | 160-200 | Large API surface, dtype dispatch, IO, arrays, groupby, tests |
+| `django` | 2,924 | 43,431 | 40 | 180-220 | Large framework with many cross-file subsystem flows |
+| `transformers` | 4,559 | 73,598 | 40 | 220-300 | Largest repo and current p95 latency cliff |
 
-The practical readout is straightforward:
+Specialized benchmark suites should be split by purpose:
 
-- `2.0.0` is materially faster across every profile.
-- `auto` gives the best latency without sacrificing token efficiency.
-- `medium` is the best compromise when Phase B wall time matters more than the
-  first context round trip.
-- The tiny repos are already in single-digit millisecond territory on `auto`;
-  further gains there need freshness or filesystem-path reductions, not a
-  different retrieval profile.
+- `sandbox_broad`: all repos, capped, fast enough for regular perf/nightly
+  visibility.
+- `sandbox_specialist`: size-weighted, repo-tailored scenarios for release
+  quality.
+- `sandbox_mega`: expensive separate stress suites for `transformers`, `django`,
+  `pandas`, and `scikit-learn`, so large-repo latency cliffs cannot be hidden or
+  block smaller-repo feedback.
+- task-type suites for structural, test-impact, ambiguous, insufficient-budget,
+  and agent-edit cases, because those failure modes are different from exact
+  definition lookup.

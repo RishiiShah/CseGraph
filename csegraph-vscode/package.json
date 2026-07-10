@@ -118,7 +118,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npx @vscode/vsce package --no-dependencies",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "npm run compile && node --test test/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.19.0",

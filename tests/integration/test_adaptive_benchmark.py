@@ -8,15 +8,25 @@ from pathlib import Path
 import pytest
 
 from tools.adaptive_benchmark import (
+    AdaptiveBenchmarkCorpus,
     AdaptiveBenchmarkTask,
     BenchmarkRepository,
     PyrightLspProvider,
     StrongBaselineAdapter,
+    _fixture_revision,
     _lsp_locations,
+    copy_benchmark_repository,
     corpus_completeness,
+    corpus_quality,
     execute_benchmark_task,
     load_adaptive_corpus,
     prepare_benchmark_repository,
+)
+from tools.run_adaptive_retrieval_benchmark import (
+    REPORT_SCHEMA_VERSION,
+)
+from tools.run_adaptive_retrieval_benchmark import (
+    main as run_adaptive_benchmark,
 )
 
 
@@ -121,23 +131,35 @@ def test_strong_baseline_uses_references_for_impact_task(tmp_path: Path):
     assert result.usage["lsp_calls"] == 1
 
 
-def test_pr_adaptive_corpus_has_balanced_twenty_task_v2_fixture():
+def test_pr_adaptive_corpus_has_balanced_twenty_two_task_v2_fixture():
     repo_root = Path(__file__).resolve().parents[2]
     corpus = load_adaptive_corpus(repo_root / "benchmarks" / "adaptive" / "pr_tasks.json")
     tasks = list(corpus.tasks)
+    quality = corpus_quality(corpus)
 
     assert corpus.schema_version == "csegraph-adaptive-benchmark-v2"
-    assert len(tasks) == 20
-    assert len({task.id for task in tasks}) == 20
+    assert len(tasks) == 22
+    assert len({task.id for task in tasks}) == 22
     assert all(len(task.commit) == 40 for task in tasks)
     assert sum(task.target is None for task in tasks) >= 8
     assert sum(task.category == "ambiguous" for task in tasks) == 4
     assert sum(task.category == "structural" for task in tasks) == 2
+    assert sum(task.execution_mode == "agent" for task in tasks) >= 1
+    assert any(
+        any(evidence.path.startswith(("test/", "tests/")) for evidence in task.required_evidence)
+        for task in tasks
+    )
+    assert sum(task.expected_status == "insufficient" for task in tasks) >= 1
     assert all(task.permitted_ranges for task in tasks)
     assert all(
         task.expected_target is not None for task in tasks if task.expected_status == "ready"
     )
     assert corpus_completeness(corpus)["complete"] is True
+    assert quality["enforced"] is True
+    assert quality["gates"]["agent_task_coverage"] is True
+    assert quality["gates"]["required_test_evidence"] is True
+    assert quality["gates"]["insufficient_budget_coverage"] is True
+    assert quality["passed"] is True
 
 
 def test_all_corpus_manifests_report_honest_completeness():
@@ -180,6 +202,353 @@ def test_local_pr_fixture_revision_is_content_addressed(tmp_path: Path):
     assert prepared.observed_commit == repository.commit
     assert prepared.commit_matches is True
     assert prepared.bootstrapped is False
+
+
+def test_benchmark_repository_copy_scrubs_runtime_artifacts(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "app.py").write_text("def greet():\n    return 'hi'\n", encoding="utf-8")
+    (source / ".git").mkdir()
+    (source / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (source / ".csegraph").mkdir()
+    (source / ".csegraph" / "index.db").write_bytes(b"sqlite")
+    (source / "__pycache__").mkdir()
+    (source / "__pycache__" / "app.cpython-314.pyc").write_bytes(b"pyc")
+    (source / ".pytest_cache").mkdir()
+    (source / ".pytest_cache" / "README.md").write_text("cache", encoding="utf-8")
+    (source / "build").mkdir()
+    (source / "build" / "artifact.txt").write_text("artifact", encoding="utf-8")
+    (source / ".DS_Store").write_bytes(b"finder")
+
+    hygiene = copy_benchmark_repository(source, tmp_path / "copy")
+
+    copied = tmp_path / "copy"
+    assert (copied / "app.py").is_file()
+    assert not (copied / ".git").exists()
+    assert not (copied / ".csegraph").exists()
+    assert not (copied / "__pycache__").exists()
+    assert not (copied / ".pytest_cache").exists()
+    assert not (copied / "build").exists()
+    assert not (copied / ".DS_Store").exists()
+    assert hygiene["clean"] is True
+    assert ".csegraph" in hygiene["ignored_names"]
+
+
+def test_fixture_revision_ignores_same_runtime_artifacts_as_copy(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("def greet():\n    return 'hi'\n", encoding="utf-8")
+    before = _fixture_revision(repo)
+
+    (repo / ".git").mkdir()
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (repo / ".csegraph").mkdir()
+    (repo / ".csegraph" / "index.db").write_bytes(b"sqlite")
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__" / "app.cpython-314.pyc").write_bytes(b"pyc")
+    (repo / ".pytest_cache").mkdir()
+    (repo / ".pytest_cache" / "README.md").write_text("cache", encoding="utf-8")
+    (repo / ".DS_Store").write_bytes(b"finder")
+
+    assert _fixture_revision(repo) == before
+
+
+def test_corpus_quality_warns_for_flattering_retrieval_corpus(tmp_path: Path):
+    task = AdaptiveBenchmarkTask(
+        id="exact-only",
+        repo="fixture",
+        commit="a" * 40,
+        category="definition",
+        task="Explain greet",
+        target="greet",
+        expected_status="ready",
+        expected_target=None,
+        required_evidence=(),
+        permitted_ranges=(),
+    )
+    corpus = AdaptiveBenchmarkCorpus(
+        path=tmp_path / "corpus.json",
+        schema_version="csegraph-adaptive-benchmark-v2",
+        version="test",
+        tier="pr",
+        status="ready",
+        unsupported_reason=None,
+        repositories={
+            "fixture": BenchmarkRepository(
+                path="fixture",
+                url="fixture://local",
+                commit="a" * 40,
+            )
+        },
+        tasks=(task,),
+    )
+
+    quality = corpus_quality(corpus)
+
+    assert quality["gates"]["targetless_coverage"] is False
+    assert quality["gates"]["agent_task_coverage"] is False
+    assert quality["gates"]["insufficient_budget_coverage"] is False
+    assert "all_tasks_have_explicit_targets" in quality["warnings"]
+    assert "agent_task_coverage_missing" in quality["warnings"]
+    assert quality["passed"] is False
+
+
+def test_release_corpus_quality_fails_on_serious_retrieval_gaps(tmp_path: Path):
+    task = AdaptiveBenchmarkTask(
+        id="exact-only",
+        repo="fixture",
+        commit="a" * 40,
+        category="definition",
+        task="Explain greet",
+        target="greet",
+        expected_status="ready",
+    )
+    corpus = AdaptiveBenchmarkCorpus(
+        path=tmp_path / "release.json",
+        schema_version="csegraph-adaptive-benchmark-v2",
+        version="test",
+        tier="release",
+        status="ready",
+        unsupported_reason=None,
+        repositories={
+            "fixture": BenchmarkRepository(
+                path="fixture",
+                url="fixture://local",
+                commit="a" * 40,
+            )
+        },
+        tasks=(task,),
+    )
+
+    quality = corpus_quality(corpus)
+
+    assert quality["enforced"] is True
+    assert quality["passed"] is False
+    assert quality["gates"]["targetless_coverage"] is False
+    assert quality["gates"]["required_test_evidence"] is False
+
+
+def test_runner_reports_index_diagnostics_and_adaptive_usage(tmp_path: Path):
+    repo = tmp_path / "fixture"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+        encoding="utf-8",
+    )
+    commit = _fixture_revision(repo)
+    corpus_path = tmp_path / "corpus.json"
+    corpus_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "csegraph-adaptive-benchmark-v2",
+                "corpus_version": "diagnostic-test",
+                "tier": "pr",
+                "status": "ready",
+                "repositories": {
+                    "fixture": {
+                        "url": "fixture://local",
+                        "commit": commit,
+                    }
+                },
+                "tasks": [
+                    {
+                        "id": "greet",
+                        "repo": "fixture",
+                        "commit": commit,
+                        "category": "definition",
+                        "task": "Explain greet",
+                        "target": "greet",
+                        "expected_status": "ready",
+                        "expected_target": {
+                            "path": "app.py",
+                            "line": 1,
+                            "name": "greet",
+                        },
+                        "required_evidence": [{"path": "app.py", "line": 1, "role": "target"}],
+                        "permitted_ranges": [{"path": "app.py", "lines": [1, 2]}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "report.json"
+
+    assert (
+        run_adaptive_benchmark(
+            [
+                "--corpus",
+                str(corpus_path),
+                "--repo-root",
+                str(tmp_path),
+                "--modes",
+                "warm",
+                "--samples",
+                "2",
+                "--pyright",
+                "off",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    repository = report["repositories"]["fixture"]
+    task = report["tasks"][0]
+    assert REPORT_SCHEMA_VERSION == "csegraph-adaptive-retrieval-report-v4"
+    assert repository["workspace_hygiene"]["clean"] is True
+    assert repository["index"]["files_indexed"] == 1
+    assert repository["index"]["cache_misses"] == 1
+    assert repository["index"]["discover_parse_ms"] >= 0
+    assert repository["index"]["write_graph_ms"] >= 0
+    assert repository["index"]["db_size_bytes"] > 0
+    assert repository["index"]["parse_cache_size_bytes"] > 0
+    assert report["corpus"]["quality"]["warnings"]
+    assert "quality_gates" in report["summary"]
+    assert report["configuration"]["samples"] == 2
+    assert report["summary"]["by_repo"]["fixture"]["task_count"] == 1
+    assert report["summary"]["by_repo"]["fixture"]["adaptive_sample_count"] == 2
+    assert task["selected_mode"] == "warm"
+    assert task["adaptive"]["sample_count"] == 2
+    assert task["adaptive"]["cache"] == "disabled"
+    assert task["adaptive"]["engine_latency_ms"] >= 0
+    assert task["adaptive"]["tokens"] > 0
+
+
+def test_local_sandbox_release_corpus_loads_and_has_quality_coverage():
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/sandbox_release_tasks.json")
+    quality = corpus_quality(corpus)
+
+    assert corpus.tier == "release"
+    assert len(corpus.tasks) == 30
+    assert {
+        "sandbox/micrograd",
+        "sandbox/flask",
+        "sandbox/django",
+    }.issubset(corpus.repositories)
+    assert corpus_completeness(corpus)["complete"] is True
+    assert quality["gates"]["targetless_coverage"] is True
+    assert quality["gates"]["ambiguous_coverage"] is True
+    assert quality["gates"]["structural_followup_coverage"] is True
+    assert quality["gates"]["insufficient_budget_coverage"] is True
+    assert quality["gates"]["required_test_evidence"] is True
+    assert quality["passed"] is True
+
+
+def test_local_sandbox_stress_corpus_loads_and_has_perf_coverage():
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/sandbox_stress_tasks.json")
+    quality = corpus_quality(corpus)
+
+    assert corpus.tier == "perf"
+    assert len(corpus.tasks) == 220
+    assert {
+        repo: sum(task.repo == repo for task in corpus.tasks)
+        for repo in {"sandbox/micrograd", "sandbox/flask", "sandbox/django"}
+    } == {
+        "sandbox/micrograd": 20,
+        "sandbox/flask": 100,
+        "sandbox/django": 100,
+    }
+    assert corpus_completeness(corpus)["complete"] is True
+    assert quality["gates"]["targetless_coverage"] is True
+    assert quality["gates"]["ambiguous_coverage"] is True
+    assert quality["gates"]["structural_followup_coverage"] is True
+    assert quality["gates"]["insufficient_budget_coverage"] is True
+    assert quality["gates"]["required_test_evidence"] is True
+    assert quality["gates"]["exact_target_ratio_at_most_90pct"] is False
+    assert "exact_target_ratio_at_most_90pct" not in quality["enforced_gate_names"]
+    assert quality["passed"] is True
+
+
+def test_local_sandbox_broad_corpus_covers_all_local_sandboxes():
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/sandbox_broad_tasks.json")
+    quality = corpus_quality(corpus)
+
+    expected_counts = {
+        "sandbox/celery": 40,
+        "sandbox/django": 40,
+        "sandbox/fastapi": 40,
+        "sandbox/flask": 40,
+        "sandbox/micrograd": 20,
+        "sandbox/nanoGPT": 8,
+        "sandbox/pandas": 40,
+        "sandbox/pytest": 40,
+        "sandbox/scikit-learn": 40,
+        "sandbox/transformers": 40,
+    }
+
+    assert corpus.tier == "broad"
+    assert len(corpus.tasks) == sum(expected_counts.values())
+    assert set(corpus.repositories) == set(expected_counts)
+    assert {
+        repo: sum(task.repo == repo for task in corpus.tasks) for repo in expected_counts
+    } == expected_counts
+    assert corpus_completeness(corpus)["complete"] is True
+    assert quality["gates"]["targetless_coverage"] is True
+    assert quality["gates"]["ambiguous_coverage"] is True
+    assert quality["gates"]["structural_followup_coverage"] is True
+    assert quality["gates"]["insufficient_budget_coverage"] is True
+    assert quality["gates"]["required_test_evidence"] is True
+    assert quality["gates"]["exact_target_ratio_at_most_90pct"] is False
+    assert "exact_target_ratio_at_most_90pct" not in quality["enforced_gate_names"]
+    assert quality["passed"] is True
+
+
+@pytest.mark.parametrize("repo_path", ["", ".", "./", "csegraph", "./csegraph", "csegraph/src"])
+def test_adaptive_corpus_loader_rejects_csegraph_self_repository(
+    tmp_path: Path,
+    repo_path: str,
+):
+    corpus = {
+        "schema_version": "csegraph-adaptive-benchmark-v2",
+        "corpus_version": "test",
+        "tier": "pr",
+        "status": "ready",
+        "repositories": {
+            repo_path: {
+                "url": "fixture://local",
+                "commit": "a" * 40,
+            }
+        },
+        "tasks": [
+            {
+                "id": "self",
+                "repo": repo_path,
+                "commit": "a" * 40,
+                "category": "definition",
+                "task": "Explain ContextService",
+                "expected_status": "ready",
+                "expected_target": {
+                    "id": "symbol::csegraph/_core/retrieval/adaptive.py::class::ContextService",
+                    "path": "csegraph/_core/retrieval/adaptive.py",
+                    "line": 57,
+                },
+                "required_evidence": [
+                    {
+                        "path": "csegraph/_core/retrieval/adaptive.py",
+                        "line": 57,
+                        "role": "target",
+                    }
+                ],
+                "permitted_ranges": [
+                    {
+                        "path": "csegraph/_core/retrieval/adaptive.py",
+                        "lines": [57, 66],
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(corpus), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="CseGraph itself"):
+        load_adaptive_corpus(path)
 
 
 def test_corpus_loader_rejects_duplicate_task_ids(tmp_path: Path):

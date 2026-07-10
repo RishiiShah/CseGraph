@@ -75,6 +75,39 @@ def _git_repo(tmp_path: Path) -> tuple[Path, Path]:
     return repo, db
 
 
+def test_non_git_freshness_reuses_snapshot_and_detects_file_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    app = repo / "app.py"
+    app.write_text("def value():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "index.db"
+    IndexService(db).index(repo)
+    monkeypatch.setattr(freshness_module, "TINY_FRESHNESS_FILE_LIMIT", 0)
+
+    first = FreshnessCoordinator(db).ensure_current(repo)
+    assert first.state == "current"
+
+    with patch.object(
+        freshness_module.registry,
+        "iter_files",
+        side_effect=AssertionError("unchanged snapshot should skip discovery"),
+    ):
+        second = FreshnessCoordinator(db).ensure_current(repo)
+    assert second.state == "current"
+
+    app.write_text("def value():\n    return 2\n", encoding="utf-8")
+    with patch.object(
+        freshness_module.registry,
+        "iter_files",
+        side_effect=AssertionError("changed indexed files should use the snapshot fast path"),
+    ):
+        changed = FreshnessCoordinator(db).ensure_current(repo)
+    assert changed.state == "refreshed"
+
+
 def _lease_process(
     db_path: str,
     repo_root: str,
@@ -501,6 +534,80 @@ def test_git_freshness_queries_only_changed_and_untracked_paths(tmp_path: Path) 
     assert all(" WHERE path IN " in statement for statement in file_queries)
 
 
+def test_git_freshness_uses_one_status_command_when_head_is_current(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    index = ProjectIndex(db)
+    try:
+        index.conn.execute("UPDATE files SET size = ?", (17 * 1024 * 1024,))
+        index.conn.commit()
+        metadata = index.metadata()
+    finally:
+        index.close()
+
+    calls: list[list[str]] = []
+    real_run_git_bytes = freshness_module._run_git_bytes
+
+    def recording_run_git_bytes(repo_path: Path, args: list[str]) -> bytes | None:
+        calls.append(args)
+        return real_run_git_bytes(repo_path, args)
+
+    def fail_text_git(*args, **kwargs):
+        raise AssertionError("readable Git metadata should avoid text Git subprocesses")
+
+    monkeypatch.setattr(freshness_module, "_run_git_bytes", recording_run_git_bytes)
+    monkeypatch.setattr(freshness_module, "_run_git", fail_text_git)
+
+    index = ProjectIndex(db)
+    try:
+        changed = _detect_changed_paths(index, repo, metadata)
+    finally:
+        index.close()
+
+    assert changed == []
+    assert calls == [
+        [
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--no-renames",
+        ]
+    ]
+
+
+def test_git_freshness_empty_status_skips_ignore_and_hash_queries(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, db = _git_repo(tmp_path)
+    index = ProjectIndex(db)
+    try:
+        index.conn.execute("UPDATE files SET size = ?", (17 * 1024 * 1024,))
+        index.conn.commit()
+        metadata = index.metadata()
+    finally:
+        index.close()
+
+    monkeypatch.setattr(freshness_module, "_git_changed_paths", lambda *args: [])
+
+    def fail_broad_filtering(*args, **kwargs):
+        raise AssertionError("empty Git status should not perform broad filtering")
+
+    monkeypatch.setattr(freshness_module, "load_ignore_filter", fail_broad_filtering)
+    monkeypatch.setattr(freshness_module, "_stored_file_hashes", fail_broad_filtering)
+
+    index = ProjectIndex(db)
+    try:
+        changed = _detect_changed_paths(index, repo, metadata)
+    finally:
+        index.close()
+
+    assert changed == []
+
+
 def test_tiny_git_freshness_skips_git_change_detection_when_current(
     tmp_path: Path,
     monkeypatch,
@@ -534,9 +641,7 @@ def test_tiny_git_freshness_hashes_same_size_preserved_mtime_edit(
     source = repo / "app.py"
     index = ProjectIndex(db)
     try:
-        row = index.conn.execute(
-            "SELECT mtime, sha256 FROM files WHERE path = 'app.py'"
-        ).fetchone()
+        row = index.conn.execute("SELECT mtime, sha256 FROM files WHERE path = 'app.py'").fetchone()
         stored_mtime = float(row["mtime"])
         original_hash = str(row["sha256"])
     finally:
@@ -598,9 +703,7 @@ def test_tiny_git_freshness_uses_byte_budget_not_symbol_count(
     repo, db = _git_repo(tmp_path)
     index = ProjectIndex(db)
     try:
-        index.conn.execute(
-            "UPDATE metadata SET value = '1000000' WHERE key = 'symbol_count'"
-        )
+        index.conn.execute("UPDATE metadata SET value = '1000000' WHERE key = 'symbol_count'")
         index.conn.commit()
     finally:
         index.close()

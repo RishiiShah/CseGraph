@@ -6,12 +6,13 @@ Used by RefreshService to skip AST parsing for unchanged files.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import zlib
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from csegraph._core.index.schema import SCHEMA_VERSION
 from csegraph._core.languages.types import (
@@ -38,6 +39,8 @@ class ExtractionCache:
         self.db_path = str(Path(db_path))
         self.hits = 0
         self.misses = 0
+        self._batch_max_pending: int | None = None
+        self._batch_pending = 0
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
@@ -75,7 +78,37 @@ class ExtractionCache:
             """,
             (parsed.rel_path, parsed.sha256, CACHE_VERSION, blob),
         )
-        self.conn.commit()
+        if self._batch_max_pending is None:
+            self.conn.commit()
+            return
+        self._batch_pending += 1
+        if self._batch_pending >= self._batch_max_pending:
+            self.conn.commit()
+            self._batch_pending = 0
+
+    @contextlib.contextmanager
+    def batch_writes(self, max_pending: int = 100) -> Iterator[None]:
+        if max_pending < 1:
+            raise ValueError("max_pending must be at least 1")
+        if self._batch_max_pending is not None:
+            raise RuntimeError("Nested cache write batches are not supported")
+        self._batch_max_pending = max_pending
+        self._batch_pending = 0
+        try:
+            yield
+        except BaseException:
+            self.conn.rollback()
+            raise
+        else:
+            try:
+                if self._batch_pending:
+                    self.conn.commit()
+            except BaseException:
+                self.conn.rollback()
+                raise
+        finally:
+            self._batch_max_pending = None
+            self._batch_pending = 0
 
     def clear(self) -> None:
         self.conn.execute("DELETE FROM parse_cache")

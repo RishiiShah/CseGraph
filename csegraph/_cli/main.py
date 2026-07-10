@@ -166,6 +166,11 @@ def _dispatch(args: argparse.Namespace) -> Any:
             include_roots=args.include_root,
         )
     if args.command == "refresh":
+        if args.exclude is None and args.include_root is None:
+            from csegraph._core.retrieval.freshness import FreshnessCoordinator
+
+            return FreshnessCoordinator(db_path).explicit_refresh(repo)
+
         from csegraph._core.index.services import RefreshService
 
         return RefreshService(db_path).refresh(

@@ -316,10 +316,7 @@ def _is_tiny_repo(metadata: dict[str, str]) -> bool:
     symbol_count = metadata.get("symbol_count")
     if file_count is None or symbol_count is None:
         return False
-    return (
-        int(file_count) <= TINY_REPO_FILE_LIMIT
-        and int(symbol_count) <= TINY_REPO_SYMBOL_LIMIT
-    )
+    return int(file_count) <= TINY_REPO_FILE_LIMIT and int(symbol_count) <= TINY_REPO_SYMBOL_LIMIT
 
 
 def _tiny_target_candidates(

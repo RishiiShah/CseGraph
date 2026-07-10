@@ -2,12 +2,29 @@ import * as vscode from "vscode";
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  PerRootDebouncer,
+  StatusUpdateCoordinator,
+} from "./coordinators";
 
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
-let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+const refreshDebouncer = new PerRootDebouncer<
+  ReturnType<typeof setTimeout>
+>(
+  (callback, delay) => setTimeout(callback, delay),
+  (timer) => clearTimeout(timer)
+);
+let statusCoordinator:
+  | StatusUpdateCoordinator<StatusCommandResult>
+  | undefined;
 let resolvedCliByRoot = new Map<string, string>();
 let loggedFallbacks = new Set<string>();
+
+interface StatusCommandResult {
+  err: Error | null;
+  stdout: string;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   outputChannel = vscode.window.createOutputChannel("CseGraph");
@@ -19,6 +36,19 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.command = "csegraph.status";
   statusBarItem.tooltip = "Click for csegraph status";
   context.subscriptions.push(statusBarItem);
+
+  statusCoordinator = new StatusUpdateCoordinator(
+    (root, complete) => {
+      const cli = getCliCommand(root);
+      execFile(
+        cli,
+        ["status", "--json"],
+        { cwd: root, timeout: 10_000 },
+        (err, stdout) => complete({ err, stdout })
+      );
+    },
+    (_root, result) => renderStatusBar(result)
+  );
 
   const commands: [string, () => void][] = [
     ["csegraph.index", cmdIndex],
@@ -45,13 +75,15 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!watched.has(ext)) {
       return;
     }
-    const debounce = config.get<number>("refreshDebounce", 2000);
-    if (refreshTimer) {
-      clearTimeout(refreshTimer);
+    const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+    if (!folder) {
+      return;
     }
-    refreshTimer = setTimeout(() => {
-      silentRefresh();
-    }, debounce);
+    const root = folder.uri.fsPath;
+    const debounce = config.get<number>("refreshDebounce", 2000);
+    refreshDebouncer.schedule(root, debounce, () => {
+      silentRefresh(root);
+    });
   });
   context.subscriptions.push(watcher);
 
@@ -70,9 +102,8 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  if (refreshTimer) {
-    clearTimeout(refreshTimer);
-  }
+  refreshDebouncer.clear();
+  statusCoordinator?.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +191,7 @@ function run(command: string, args: string[] = []): void {
     } else if (err) {
       outputChannel.appendLine(`Exit code: ${err.code}`);
     }
-    updateStatusBar();
+    refreshStatusBar(root);
   });
 }
 
@@ -208,7 +239,7 @@ function runWithProgress(
                 `CseGraph: ${command} complete.`
               );
             }
-            updateStatusBar();
+            refreshStatusBar(root);
             resolve();
           }
         );
@@ -216,18 +247,14 @@ function runWithProgress(
   );
 }
 
-function silentRefresh(): void {
-  const root = getWorkspaceRoot();
-  if (!root) {
-    return;
-  }
+function silentRefresh(root: string): void {
   const cli = getCliCommand(root);
   execFile(
     cli,
     ["refresh"],
     { cwd: root, timeout: 60_000 },
     (_err, _stdout, _stderr) => {
-      updateStatusBar();
+      refreshStatusBar(root);
     }
   );
 }
@@ -239,46 +266,54 @@ function silentRefresh(): void {
 function updateStatusBar(): void {
   const config = vscode.workspace.getConfiguration("csegraph");
   if (!config.get<boolean>("statusBar", true)) {
+    statusCoordinator?.show(undefined);
     statusBarItem.hide();
     return;
   }
 
   const root = getWorkspaceRoot();
   if (!root) {
+    statusCoordinator?.show(undefined);
     statusBarItem.hide();
     return;
   }
 
-  const cli = getCliCommand(root);
-  execFile(
-    cli,
-    ["status", "--json"],
-    { cwd: root, timeout: 10_000 },
-    (err, stdout) => {
-      if (err || !stdout.trim()) {
-        statusBarItem.text = "$(database) csegraph: no index";
-        statusBarItem.show();
-        return;
-      }
-      try {
-        const data = JSON.parse(stdout);
-        const nodes = data.total_nodes ?? 0;
-        const edges = data.total_edges ?? 0;
-        const warnings = (data.warnings ?? []).length;
-        const icon = warnings > 0 ? "$(warning)" : "$(database)";
-        statusBarItem.text = `${icon} csegraph: ${nodes} nodes, ${edges} edges`;
-        if (warnings > 0) {
-          statusBarItem.tooltip = `${warnings} warning(s) — click for details`;
-        } else {
-          statusBarItem.tooltip = "Click for csegraph status";
-        }
-        statusBarItem.show();
-      } catch {
-        statusBarItem.text = "$(database) csegraph";
-        statusBarItem.show();
-      }
+  statusCoordinator?.show(root);
+}
+
+function refreshStatusBar(root: string): void {
+  const config = vscode.workspace.getConfiguration("csegraph");
+  if (!config.get<boolean>("statusBar", true)) {
+    statusCoordinator?.show(undefined);
+    statusBarItem.hide();
+    return;
+  }
+  statusCoordinator?.refresh(root);
+}
+
+function renderStatusBar(result: StatusCommandResult): void {
+  if (result.err || !result.stdout.trim()) {
+    statusBarItem.text = "$(database) csegraph: no index";
+    statusBarItem.show();
+    return;
+  }
+  try {
+    const data = JSON.parse(result.stdout);
+    const nodes = data.total_nodes ?? 0;
+    const edges = data.total_edges ?? 0;
+    const warnings = (data.warnings ?? []).length;
+    const icon = warnings > 0 ? "$(warning)" : "$(database)";
+    statusBarItem.text = `${icon} csegraph: ${nodes} nodes, ${edges} edges`;
+    if (warnings > 0) {
+      statusBarItem.tooltip = `${warnings} warning(s) — click for details`;
+    } else {
+      statusBarItem.tooltip = "Click for csegraph status";
     }
-  );
+    statusBarItem.show();
+  } catch {
+    statusBarItem.text = "$(database) csegraph";
+    statusBarItem.show();
+  }
 }
 
 // ---------------------------------------------------------------------------

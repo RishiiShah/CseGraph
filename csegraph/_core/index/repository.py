@@ -17,6 +17,12 @@ from csegraph._core.index.schema import (
 )
 from csegraph._core.repo_state import git_head_state
 
+_LEXICAL_TRIGGER_NAMES = (
+    "lexical_documents_ai",
+    "lexical_documents_ad",
+    "lexical_documents_au",
+)
+
 
 class ProjectIndex:
     """SQLite boundary for one csegraph repository index."""
@@ -26,6 +32,9 @@ class ProjectIndex:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
+        self._lexical_trigger_sql: list[str] | None = None
+        self._deferred_secondary_index_sql: list[str] | None = None
+        self._disposable_build_active = False
         for pragma in (
             "PRAGMA busy_timeout = 5000",
             "PRAGMA journal_mode = WAL",
@@ -71,6 +80,31 @@ class ProjectIndex:
     def _commit(self) -> None:
         if not self._in_transaction:
             self.conn.commit()
+
+    def begin_disposable_build(self) -> None:
+        if self._disposable_build_active:
+            raise RuntimeError("A disposable build is already active.")
+        self.conn.commit()
+        mode = self.conn.execute("PRAGMA journal_mode = MEMORY").fetchone()
+        if mode is None or str(mode[0]).lower() != "memory":
+            raise RuntimeError("Could not enable disposable build journaling.")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self._disposable_build_active = True
+
+    def finish_disposable_build(self) -> None:
+        if not self._disposable_build_active:
+            raise RuntimeError("No disposable build is active.")
+        self.conn.commit()
+        self.conn.execute("PRAGMA synchronous = FULL")
+        mode = self.conn.execute("PRAGMA journal_mode = DELETE").fetchone()
+        if mode is None or str(mode[0]).lower() != "delete":
+            raise RuntimeError("Could not restore durable build journaling.")
+        with self.atomic_write():
+            self.conn.execute(
+                "UPDATE metadata SET value = ? WHERE key = 'schema_version'",
+                (SCHEMA_VERSION,),
+            )
+        self._disposable_build_active = False
 
     def initialize_schema(self) -> None:
         existing_version = self._existing_schema_version()
@@ -224,11 +258,60 @@ class ProjectIndex:
         return values
 
     def clear_graph(self) -> None:
-        self.conn.execute("DELETE FROM lexical_index")
+        self.conn.execute("DELETE FROM lexical_documents")
         self.conn.execute("DELETE FROM summaries")
         self.conn.execute("DELETE FROM edges")
         self.conn.execute("DELETE FROM files")
         self._commit()
+
+    def begin_bulk_lexical_write(self) -> None:
+        if self._lexical_trigger_sql is not None:
+            raise RuntimeError("A bulk lexical write is already active.")
+        placeholders = ",".join("?" for _ in _LEXICAL_TRIGGER_NAMES)
+        rows = self.conn.execute(
+            f"""
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND name IN ({placeholders})
+            ORDER BY name
+            """,
+            _LEXICAL_TRIGGER_NAMES,
+        ).fetchall()
+        if {str(row["name"]) for row in rows} != set(_LEXICAL_TRIGGER_NAMES):
+            raise RuntimeError("The lexical synchronization triggers are incomplete.")
+        self._lexical_trigger_sql = [str(row["sql"]) for row in rows]
+        for name in _LEXICAL_TRIGGER_NAMES:
+            self.conn.execute(f'DROP TRIGGER "{name}"')
+
+    def finish_bulk_lexical_write(self) -> None:
+        if self._lexical_trigger_sql is None:
+            raise RuntimeError("No bulk lexical write is active.")
+        self.conn.execute("INSERT INTO lexical_index(lexical_index) VALUES('rebuild')")
+        for sql in self._lexical_trigger_sql:
+            self.conn.execute(sql)
+        self._lexical_trigger_sql = None
+
+    def begin_bulk_secondary_index_write(self) -> None:
+        if self._deferred_secondary_index_sql is not None:
+            raise RuntimeError("A bulk secondary-index write is already active.")
+        rows = self.conn.execute(
+            """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'index'
+              AND name GLOB 'idx_*'
+              AND sql IS NOT NULL
+            ORDER BY name
+            """
+        ).fetchall()
+        self._deferred_secondary_index_sql = [str(row["sql"]) for row in rows]
+        for row in rows:
+            self.conn.execute(f'DROP INDEX "{row["name"]}"')
+
+    def finish_bulk_secondary_index_write(self) -> None:
+        if self._deferred_secondary_index_sql is None:
+            raise RuntimeError("No bulk secondary-index write is active.")
+        for sql in self._deferred_secondary_index_sql:
+            self.conn.execute(sql)
+        self._deferred_secondary_index_sql = None
 
     def delete_file_payload(self, rel_path: str, remove_incoming: bool) -> List[str]:
         file_id = file_node_id(rel_path)
@@ -260,7 +343,7 @@ class ProjectIndex:
             )
         self.conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
         self.conn.execute(
-            f"DELETE FROM lexical_index WHERE node_id IN ({placeholders})",
+            f"DELETE FROM lexical_documents WHERE node_id IN ({placeholders})",
             node_ids,
         )
         self.conn.execute(
@@ -278,6 +361,23 @@ class ProjectIndex:
                 OR target NOT IN (SELECT id FROM entities)
             """
         )
+        self._commit()
+
+    def cleanup_removed_symbol_edges(self, symbol_ids: Sequence[str]) -> None:
+        unique = sorted(set(symbol_ids))
+        for offset in range(0, len(unique), 400):
+            batch = unique[offset : offset + 400]
+            placeholders = ",".join("?" for _ in batch)
+            self.conn.execute(
+                f"""
+                DELETE FROM edges
+                WHERE target IN ({placeholders})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM symbols WHERE symbols.id = edges.target
+                  )
+                """,
+                tuple(batch),
+            )
         self._commit()
 
     def verify_lease(self, repo_root: str, owner: str) -> bool:

@@ -1,19 +1,19 @@
 {
   "schema_version": "csegraph-adaptive-benchmark-v2",
-  "corpus_version": "2026.07.2",
+  "corpus_version": "2026.07.4",
   "tier": "pr",
   "status": "ready",
   "repositories": {
     "benchmarks/fixtures/adaptive_pr": {
       "url": "fixture://local",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9"
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453"
     }
   },
   "tasks": [
     {
       "id": "fixture-exact-add",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain the add function",
       "target": "add",
@@ -25,7 +25,7 @@
     {
       "id": "fixture-exact-multiply",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain the multiply function",
       "target": "multiply",
@@ -37,7 +37,7 @@
     {
       "id": "fixture-exact-normalize",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain normalize",
       "target": "normalize",
@@ -49,7 +49,7 @@
     {
       "id": "fixture-exact-user",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain the User model",
       "target": "User",
@@ -61,7 +61,7 @@
     {
       "id": "fixture-exact-dispatch",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain dispatch",
       "target": "dispatch",
@@ -73,7 +73,7 @@
     {
       "id": "fixture-targetless-create-user",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain create_user",
       "expected_status": "ready",
@@ -84,7 +84,7 @@
     {
       "id": "fixture-targetless-display-name",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Find display_name",
       "expected_status": "ready",
@@ -95,7 +95,7 @@
     {
       "id": "fixture-targetless-load-user",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Find load_user",
       "expected_status": "ready",
@@ -106,7 +106,7 @@
     {
       "id": "fixture-targetless-run-signup",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "definition",
       "task": "Explain run_signup",
       "expected_status": "ready",
@@ -117,7 +117,7 @@
     {
       "id": "fixture-ambiguous-handle",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "ambiguous",
       "task": "Update handle",
       "expected_status": "ambiguous",
@@ -134,7 +134,7 @@
     {
       "id": "fixture-ambiguous-save",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "ambiguous",
       "task": "Update save",
       "expected_status": "ambiguous",
@@ -148,7 +148,7 @@
     {
       "id": "fixture-ambiguous-process",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "ambiguous",
       "task": "Update process",
       "expected_status": "ambiguous",
@@ -165,7 +165,7 @@
     {
       "id": "fixture-ambiguous-validate",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "ambiguous",
       "task": "Update validate",
       "expected_status": "ambiguous",
@@ -182,7 +182,7 @@
     {
       "id": "fixture-impact-create-user",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "cross-file",
       "task": "Update create_user and inspect its dependencies and tests",
       "target": "create_user",
@@ -204,7 +204,7 @@
     {
       "id": "fixture-impact-dispatch",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "cross-file",
       "task": "Update dispatch and inspect registered handlers",
       "target": "dispatch",
@@ -221,7 +221,7 @@
     {
       "id": "fixture-impact-run-signup",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "cross-file",
       "task": "Update run_signup and inspect its dependencies",
       "target": "run_signup",
@@ -242,7 +242,7 @@
     {
       "id": "fixture-debug-save-user",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "debug",
       "task": "Debug save_user and inspect its caller",
       "target": "save_user",
@@ -260,7 +260,7 @@
     {
       "id": "fixture-impact-display-name",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "cross-file",
       "task": "Update display_name and inspect normalization",
       "target": "display_name",
@@ -279,7 +279,7 @@
     {
       "id": "fixture-structural-create-user",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "structural",
       "task": "Explain the architecture around create_user",
       "target": "create_user",
@@ -292,7 +292,7 @@
     {
       "id": "fixture-structural-run-signup",
       "repo": "benchmarks/fixtures/adaptive_pr",
-      "commit": "8ee6db77631ce7759b5dc0a56e5e12624cc218e9",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
       "category": "structural",
       "task": "Trace the flow path for run_signup",
       "target": "run_signup",
@@ -301,6 +301,41 @@
       "required_evidence": [{"path": "src/workflow.py", "line": 5, "role": "target"}],
       "permitted_ranges": [{"path": "src/workflow.py", "lines": [5, 7]}],
       "expected_next_tool": "csegraph_graph"
+    },
+    {
+      "id": "fixture-agent-create-user",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
+      "category": "test-impact",
+      "task": "Update create_user and verify its test behavior",
+      "target": "create_user",
+      "expected_status": "ready",
+      "expected_target": {"id": "symbol::src/service.py::function::create_user", "name": "create_user", "path": "src/service.py", "line": 6},
+      "required_evidence": [
+        {"path": "src/service.py", "line": 6, "role": "target"},
+        {"path": "tests/test_service.py", "line": 4}
+      ],
+      "permitted_ranges": [
+        {"path": "src/service.py", "lines": [6, 8]},
+        {"path": "src/user_handlers.py", "lines": [4, 5]},
+        {"path": "tests/test_service.py", "lines": [4, 5]},
+        {"path": "src/math_ops.py", "lines": [9, 10]},
+        {"path": "src/models.py", "lines": [1, 6]}
+      ],
+      "execution_mode": "agent",
+      "test_command": ["python3", "-c", "import sys; sys.path.insert(0, '.'); from src.service import create_user; assert create_user(' Ada ') == 'user:ada'"],
+      "hidden_checks": [["python3", "-c", "from src.service import create_user; assert create_user(' Ada ') == 'user:ada'"]]
+    },
+    {
+      "id": "fixture-insufficient-large-context",
+      "repo": "benchmarks/fixtures/adaptive_pr",
+      "commit": "54bee7a296ef56cf2f55e8edca35e70b69e20453",
+      "category": "definition",
+      "task": "Explain the complete large context function",
+      "target": "explain_large_context",
+      "expected_status": "insufficient",
+      "required_evidence": [],
+      "permitted_ranges": [{"path": "src/large_context.py", "lines": [1, 134]}]
     }
   ]
 }

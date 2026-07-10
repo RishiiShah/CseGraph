@@ -9,7 +9,7 @@ from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.schema import SCHEMA_USER_VERSION, SCHEMA_VERSION
 
 
-def test_fresh_database_initializes_as_v11(tmp_path):
+def test_fresh_database_initializes_as_v12(tmp_path):
     db = tmp_path / "index.db"
     index = ProjectIndex(db)
     try:

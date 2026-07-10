@@ -31,7 +31,7 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _seed_v11_index(repo: Path, db: str) -> None:
+def _seed_v12_index(repo: Path, db: str) -> None:
     index = ProjectIndex(db)
     try:
         index.initialize_schema()
@@ -125,7 +125,7 @@ def _seed_v11_index(repo: Path, db: str) -> None:
 def _indexed(tmp_path: Path) -> tuple[Path, str]:
     repo = _make_repo(tmp_path)
     db = str(repo / ".scratch" / "csegraph" / "test.db")
-    _seed_v11_index(repo, db)
+    _seed_v12_index(repo, db)
     return repo, db
 
 
@@ -210,7 +210,7 @@ class TestMinimalServiceShape:
             encoding="utf-8",
         )
         db = str(repo / ".scratch" / "csegraph" / "test.db")
-        _seed_v11_index(repo, db)
+        _seed_v12_index(repo, db)
 
         result = MinimalService(db).first(task="explore the app architecture")
 
@@ -342,7 +342,7 @@ class TestMinimalMcpTool:
     def test_handle_tool_invokes_service(self, tmp_path):
         repo = _make_repo(tmp_path)
         db = str(repo / ".csegraph" / "index.db")
-        _seed_v11_index(repo, db)
+        _seed_v12_index(repo, db)
         result = _handle_tool(
             "csegraph_minimal",
             {"repo": str(repo), "task": "review the diff"},

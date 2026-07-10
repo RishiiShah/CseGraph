@@ -6,7 +6,7 @@ from pathlib import Path
 from csegraph import IndexService
 
 
-def test_v11_derives_symbol_language_and_path_from_files(tmp_path: Path):
+def test_v12_derives_symbol_language_and_path_from_files(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
