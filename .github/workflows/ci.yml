@@ -314,7 +314,7 @@ jobs:
       - name: Run adaptive retrieval PR gates
         run: |
           python tools/run_adaptive_retrieval_benchmark.py \
-            --corpus benchmarks/adaptive/pr_tasks.json \
+            --corpus pr \
             --modes cold,warm \
             --warm-runs 1 \
             --pyright required \

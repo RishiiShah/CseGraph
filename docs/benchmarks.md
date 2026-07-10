@@ -22,19 +22,21 @@ reports status accuracy, target recall, slice precision, token use, index
 diagnostics, workspace hygiene, and latency. The runner writes
 `csegraph-adaptive-retrieval-report-v4` reports.
 
-Only the PR, nightly, and release corpora are tracked in git. The perf/stress
-and broad corpora are generated locally from the tracked release seed via
-`tools/generate_sandbox_stress_corpus.py` and are intentionally ignored.
+The PR, nightly, and release task definitions live in the readable Python
+builders in `tools/benchmark_corpora.py`. The runner materializes them in
+memory; the perf/stress and broad corpora are generated locally from the
+release builder via `tools/generate_sandbox_stress_corpus.py` and are
+intentionally ignored.
 
 Current corpus tiers:
 
 | Tier | Corpus | Purpose | Current scope |
 |---|---|---|---|
-| PR | `benchmarks/adaptive/pr_tasks.json` | Fast regression gate for expected status, recall, precision, token budget, and quality mix | Local fixtures |
-| Nightly | `benchmarks/adaptive/nightly_tasks.json` | Broader fixture regression with more task categories | Local fixtures |
-| Release | `benchmarks/adaptive/sandbox_release_tasks.json` | Hand-curated real-repo quality gate with ambiguous, targetless, structural, insufficient-budget, and test-evidence tasks | Tracked seed |
-| Perf/stress | `benchmarks/adaptive/sandbox_stress_tasks.json` | High-N stable latency/token averages on representative small/medium/large repos | Generated locally |
-| Broad | `benchmarks/adaptive/sandbox_broad_tasks.json` | All-local-sandbox coverage for ecosystem shape and scale cliffs | Generated locally |
+| PR | `--corpus pr` | Fast regression gate for expected status, recall, precision, token budget, and quality mix | Local fixtures |
+| Nightly | `--corpus nightly` | Broader fixture regression with more task categories | Local fixtures |
+| Release | `--corpus release` | Hand-curated real-repo quality gate with ambiguous, targetless, structural, insufficient-budget, and test-evidence tasks | Local sandbox inputs |
+| Perf/stress | `tools/generate_sandbox_stress_corpus.py` | High-N stable latency/token averages on representative small/medium/large repos | Generated locally |
+| Broad | `tools/generate_sandbox_stress_corpus.py` | All-local-sandbox coverage for ecosystem shape and scale cliffs | Generated locally |
 
 ### Broad all-sandbox run
 

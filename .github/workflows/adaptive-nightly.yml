@@ -33,7 +33,7 @@ jobs:
       - name: Run the complete nightly corpus
         run: |
           python tools/run_adaptive_retrieval_benchmark.py \
-            --corpus benchmarks/adaptive/nightly_tasks.json \
+            --corpus nightly \
             --bootstrap-missing \
             --allow-network \
             --modes cold,warm \

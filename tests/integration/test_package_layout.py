@@ -400,4 +400,4 @@ def test_release_workflow_uses_shared_nightly_corpus_and_v2_baseline():
 
     assert "historical baseline" in workflow
     assert "historical_tags" in workflow
-    assert "--corpus benchmarks/adaptive/nightly_tasks.json" in workflow
+    assert "--corpus nightly" in workflow

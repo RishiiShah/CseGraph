@@ -701,9 +701,17 @@ class StrongBaselineAdapter:
         return result
 
 
-def load_adaptive_corpus(path: str | Path) -> AdaptiveBenchmarkCorpus:
-    corpus_path = Path(path)
-    payload = json.loads(corpus_path.read_text(encoding="utf-8"))
+def load_adaptive_corpus(
+    source: str | Path | Mapping[str, Any],
+    *,
+    path: Path | None = None,
+) -> AdaptiveBenchmarkCorpus:
+    if isinstance(source, Mapping):
+        corpus_path = path or Path("<generated>")
+        payload = dict(source)
+    else:
+        corpus_path = Path(source)
+        payload = json.loads(corpus_path.read_text(encoding="utf-8"))
     schema_version = str(payload.get("schema_version") or "")
     if schema_version not in TASK_SCHEMA_VERSIONS:
         raise ValueError(
@@ -838,8 +846,9 @@ def load_adaptive_corpus(path: str | Path) -> AdaptiveBenchmarkCorpus:
         if task_repository is not None and task_repository.commit != task.commit:
             raise ValueError(f"Task {task.id!r} commit differs from repository {task.repo!r}")
         tasks.append(task)
+    corpus_location = corpus_path if str(corpus_path).startswith("<") else corpus_path.resolve()
     return AdaptiveBenchmarkCorpus(
-        path=corpus_path.resolve(),
+        path=corpus_location,
         schema_version=schema_version,
         version=str(payload.get("corpus_version") or "unversioned"),
         tier=tier,
@@ -854,10 +863,112 @@ def load_adaptive_corpus(path: str | Path) -> AdaptiveBenchmarkCorpus:
     )
 
 
-def load_adaptive_tasks(path: str | Path) -> list[AdaptiveBenchmarkTask]:
+def corpus_to_payload(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
+    """Serialize an in-memory corpus only when a tool explicitly needs JSON."""
+
+    payload: dict[str, Any] = {
+        "schema_version": corpus.schema_version,
+        "corpus_version": corpus.version,
+        "tier": corpus.tier,
+        "status": corpus.status,
+        "repositories": {
+            path: {"url": repository.url, "commit": repository.commit}
+            for path, repository in corpus.repositories.items()
+        },
+        "tasks": [],
+    }
+    if corpus.unsupported_reason is not None:
+        payload["unsupported_reason"] = corpus.unsupported_reason
+
+    for task in corpus.tasks:
+        raw: dict[str, Any] = {
+            "id": task.id,
+            "repo": task.repo,
+            "commit": task.commit,
+            "category": task.category,
+            "task": task.task,
+            "expected_status": task.expected_status,
+        }
+        if task.target is not None:
+            raw["target"] = task.target
+        if task.expected_target is not None:
+            raw["expected_target"] = {
+                "path": task.expected_target.path,
+                "line": task.expected_target.line,
+                **(
+                    {"name": task.expected_target.name}
+                    if task.expected_target.name is not None
+                    else {}
+                ),
+                **({"id": task.expected_target.id} if task.expected_target.id is not None else {}),
+            }
+        if task.expected_candidates:
+            raw["expected_candidates"] = [
+                {
+                    "path": candidate.path,
+                    "line": candidate.line,
+                    **({"name": candidate.name} if candidate.name is not None else {}),
+                    **({"id": candidate.id} if candidate.id is not None else {}),
+                }
+                for candidate in task.expected_candidates
+            ]
+        raw["required_evidence"] = [
+            {
+                "path": evidence.path,
+                "line": evidence.line,
+                **({"role": evidence.role} if evidence.role is not None else {}),
+            }
+            for evidence in task.required_evidence
+        ]
+        raw["permitted_ranges"] = [
+            {
+                "path": permitted.path,
+                "lines": [permitted.start_line, permitted.end_line],
+            }
+            for permitted in task.permitted_ranges
+        ]
+        if task.expected_next_tool is not None:
+            raw["expected_next_tool"] = task.expected_next_tool
+        if task.expected_locations:
+            raw["expected_locations"] = list(task.expected_locations)
+        if task.permitted_files:
+            raw["permitted_files"] = list(task.permitted_files)
+        if task.setup_command:
+            raw["setup_command"] = list(task.setup_command)
+        if task.test_command:
+            raw["test_command"] = list(task.test_command)
+        if task.hidden_checks:
+            raw["hidden_checks"] = [list(check) for check in task.hidden_checks]
+        if task.execution_mode != "retrieval":
+            raw["execution_mode"] = task.execution_mode
+        if task.agent_command:
+            raw["agent_command"] = list(task.agent_command)
+        if task.timeout_seconds != 120.0:
+            raw["timeout_seconds"] = task.timeout_seconds
+        if not task.supported:
+            raw["supported"] = False
+        if task.unsupported_reason is not None:
+            raw["unsupported_reason"] = task.unsupported_reason
+        if task.network_required:
+            raw["network_required"] = True
+        payload["tasks"].append(raw)
+    return payload
+
+
+def build_adaptive_corpus(name: str, *, repo_root: Path) -> AdaptiveBenchmarkCorpus:
+    """Build a named source-driven corpus without reading a manifest file."""
+
+    from tools.benchmark_corpora import build_adaptive_corpus as build
+
+    return build(name, repo_root=repo_root)
+
+
+def load_adaptive_tasks(
+    source: str | Path | Mapping[str, Any],
+) -> list[AdaptiveBenchmarkTask]:
     """Compatibility loader returning only tasks from a versioned corpus."""
 
-    return list(load_adaptive_corpus(path).tasks)
+    return list(load_adaptive_corpus(source).tasks)
 
 
 def corpus_quality(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:

@@ -53,8 +53,7 @@ data/
 benchmark_results/
 sandbox/
 ref/
-benchmarks/adaptive/sandbox_stress_tasks.json
-benchmarks/adaptive/sandbox_broad_tasks.json
+benchmarks/adaptive/*.json
 
 # Unpacked wheel trees can shadow imports if left in the repo root
 csegraph-1.7.1/
@@ -73,6 +72,7 @@ CODEX.md
 .gemini/
 .kiro/
 .mcp.json
+docs/superpowers/
 
 # Local maintainer scripts (not shipped; keep reusable tools under tools/)
 scripts/

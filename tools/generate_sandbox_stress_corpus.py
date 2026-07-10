@@ -12,12 +12,17 @@ from __future__ import annotations
 import ast
 import json
 import subprocess
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RELEASE_CORPUS = REPO_ROOT / "benchmarks" / "adaptive" / "sandbox_release_tasks.json"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.adaptive_benchmark import build_adaptive_corpus, corpus_to_payload
+
 CORPUS_VERSION = "2026.07.5"
 STRESS_TARGET_COUNTS = {
     "sandbox/micrograd": 20,
@@ -67,9 +72,8 @@ def main() -> int:
 def generate_sandbox_corpora(
     *,
     output_root: Path = REPO_ROOT / "benchmarks" / "adaptive",
-    release_corpus: Path = RELEASE_CORPUS,
 ) -> dict[str, Path]:
-    release_payload = json.loads(release_corpus.read_text(encoding="utf-8"))
+    release_payload = corpus_to_payload(build_adaptive_corpus("release", repo_root=REPO_ROOT))
     output_root.mkdir(parents=True, exist_ok=True)
     stress_output = output_root / "sandbox_stress_tasks.json"
     broad_output = output_root / "sandbox_broad_tasks.json"

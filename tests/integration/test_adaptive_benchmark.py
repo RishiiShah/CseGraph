@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import tools.adaptive_benchmark as adaptive_benchmark
 from tools.adaptive_benchmark import (
     AdaptiveBenchmarkCorpus,
     AdaptiveBenchmarkTask,
@@ -134,7 +135,7 @@ def test_strong_baseline_uses_references_for_impact_task(tmp_path: Path):
 
 def test_pr_adaptive_corpus_has_balanced_twenty_two_task_v2_fixture():
     repo_root = Path(__file__).resolve().parents[2]
-    corpus = load_adaptive_corpus(repo_root / "benchmarks" / "adaptive" / "pr_tasks.json")
+    corpus = adaptive_benchmark.build_adaptive_corpus("pr", repo_root=repo_root)
     tasks = list(corpus.tasks)
     quality = corpus_quality(corpus)
 
@@ -163,10 +164,55 @@ def test_pr_adaptive_corpus_has_balanced_twenty_two_task_v2_fixture():
     assert quality["passed"] is True
 
 
+def test_source_driven_corpus_builders_replace_tracked_manifests():
+    repo_root = Path(__file__).resolve().parents[2]
+
+    assert not list((repo_root / "benchmarks" / "adaptive").glob("*.json"))
+    assert hasattr(adaptive_benchmark, "build_adaptive_corpus")
+    build_adaptive_corpus = adaptive_benchmark.build_adaptive_corpus
+
+    pr = build_adaptive_corpus("pr", repo_root=repo_root)
+    nightly = build_adaptive_corpus("nightly", repo_root=repo_root)
+    release = build_adaptive_corpus("release", repo_root=repo_root)
+
+    assert len(pr.tasks) == 22
+    assert len(nightly.tasks) == 60
+    assert len(release.tasks) == 30
+    assert all(task.commit == pr.repositories[task.repo].commit for task in pr.tasks)
+    assert corpus_quality(pr)["passed"] is True
+    assert corpus_quality(nightly)["passed"] is True
+    assert corpus_quality(release)["passed"] is True
+
+
+def test_named_corpus_can_run_without_a_manifest_file(tmp_path: Path):
+    output = tmp_path / "report.json"
+
+    assert (
+        run_adaptive_benchmark(
+            [
+                "--corpus",
+                "pr",
+                "--repo-root",
+                str(Path(__file__).resolve().parents[2]),
+                "--limit",
+                "0",
+                "--pyright",
+                "off",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["corpus"]["tier"] == "pr"
+    assert report["corpus"]["path"] == "<generated:pr>"
+
+
 def test_all_corpus_manifests_report_honest_completeness():
     repo_root = Path(__file__).resolve().parents[2]
-    pr = load_adaptive_corpus(repo_root / "benchmarks/adaptive/pr_tasks.json")
-    nightly = load_adaptive_corpus(repo_root / "benchmarks/adaptive/nightly_tasks.json")
+    pr = adaptive_benchmark.build_adaptive_corpus("pr", repo_root=repo_root)
+    nightly = adaptive_benchmark.build_adaptive_corpus("nightly", repo_root=repo_root)
 
     assert corpus_completeness(pr)["complete"] is True
     assert len(nightly.tasks) == 60
@@ -193,15 +239,12 @@ def generated_sandbox_corpora(
 ) -> dict[str, Path]:
     repo_root = Path(__file__).resolve().parents[2]
     output_root = tmp_path_factory.mktemp("sandbox_corpora") / "benchmarks" / "adaptive"
-    return generate_sandbox_corpora(
-        output_root=output_root,
-        release_corpus=repo_root / "benchmarks/adaptive/sandbox_release_tasks.json",
-    )
+    return generate_sandbox_corpora(output_root=output_root)
 
 
 def test_local_pr_fixture_revision_is_content_addressed(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[2]
-    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/pr_tasks.json")
+    corpus = adaptive_benchmark.build_adaptive_corpus("pr", repo_root=repo_root)
     repository = corpus.repositories["benchmarks/fixtures/adaptive_pr"]
 
     prepared = prepare_benchmark_repository(
@@ -432,7 +475,7 @@ def test_runner_reports_index_diagnostics_and_adaptive_usage(tmp_path: Path):
 
 def test_local_sandbox_release_corpus_loads_and_has_quality_coverage():
     repo_root = Path(__file__).resolve().parents[2]
-    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/sandbox_release_tasks.json")
+    corpus = adaptive_benchmark.build_adaptive_corpus("release", repo_root=repo_root)
     quality = corpus_quality(corpus)
 
     assert corpus.tier == "release"

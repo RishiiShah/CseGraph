@@ -39,9 +39,11 @@ from tools.adaptive_benchmark import (
     PyrightLspProvider,
     StrongBaselineAdapter,
     benchmark_workspace_hygiene,
+    build_adaptive_corpus,
     copy_benchmark_repository,
     corpus_completeness,
     corpus_quality,
+    corpus_to_payload,
     execute_benchmark_task,
     load_adaptive_corpus,
     prepare_benchmark_repository,
@@ -56,7 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--corpus",
-        default=str(REPO_ROOT / "benchmarks" / "adaptive" / "pr_tasks.json"),
+        default="pr",
+        help="Named source-driven corpus (pr, nightly, release) or a JSON path",
     )
     parser.add_argument("--repo-root", default=str(REPO_ROOT))
     parser.add_argument("--cache-dir", default=None)
@@ -92,8 +95,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fail-on-gates", action="store_true")
     args = parser.parse_args(argv)
 
-    corpus_path = Path(args.corpus).resolve()
-    corpus = load_adaptive_corpus(corpus_path)
+    repo_root = Path(args.repo_root).resolve()
+    corpus_path: Path | None = None
+    if args.corpus in {"pr", "nightly", "release"}:
+        corpus = build_adaptive_corpus(args.corpus, repo_root=repo_root)
+        corpus_digest = hashlib.sha256(
+            json.dumps(
+                corpus_to_payload(corpus),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+    else:
+        corpus_path = Path(args.corpus).resolve()
+        corpus = load_adaptive_corpus(corpus_path)
+        corpus_digest = _sha256(corpus_path)
     tasks = list(corpus.tasks)
     if args.limit is not None:
         tasks = tasks[: max(0, args.limit)]
@@ -103,7 +119,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.warm_runs < 1:
         parser.error("--warm-runs/--samples must be at least 1")
 
-    repo_root = Path(args.repo_root).resolve()
     cache_root = (
         Path(args.cache_dir).resolve()
         if args.cache_dir
@@ -205,13 +220,13 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": finished_at.isoformat(),
         "duration_ms": round((finished_at - started_at).total_seconds() * 1000, 3),
         "corpus": {
-            "path": str(corpus_path),
+            "path": str(corpus.path),
             "schema_version": corpus.schema_version,
             "version": corpus.version,
             "tier": corpus.tier,
             "status": corpus.status,
             "unsupported_reason": corpus.unsupported_reason,
-            "sha256": _sha256(corpus_path),
+            "sha256": corpus_digest,
             "completeness": completeness,
             "quality": quality,
             "limited_to": args.limit,

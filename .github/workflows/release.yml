@@ -101,7 +101,7 @@ jobs:
           PYTHONPATH: ${{ steps.previous_release.outputs.root }}
         run: |
           python tools/run_adaptive_retrieval_benchmark.py \
-            --corpus benchmarks/adaptive/nightly_tasks.json \
+            --corpus nightly \
             --modes cold,warm \
             --warm-runs 2 \
             --pyright required \
@@ -115,7 +115,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python tools/run_adaptive_retrieval_benchmark.py \
-            --corpus benchmarks/adaptive/nightly_tasks.json \
+            --corpus nightly \
             --modes cold,warm \
             --warm-runs 2 \
             --pyright required \

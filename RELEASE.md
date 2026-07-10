@@ -13,14 +13,14 @@ env/bin/python -m mypy csegraph tools
 env/bin/python -m compileall -q csegraph tools csegraph-vscode
 env/bin/csegraph index . --json
 env/bin/python tools/run_adaptive_retrieval_benchmark.py \
-  --corpus benchmarks/adaptive/pr_tasks.json \
+  --corpus pr \
   --modes cold,warm \
   --warm-runs 2 \
   --pyright required \
   --output benchmark_results/adaptive_pr.json \
   --fail-on-gates
 env/bin/python tools/run_adaptive_retrieval_benchmark.py \
-  --corpus benchmarks/adaptive/nightly_tasks.json \
+  --corpus nightly \
   --modes cold,warm \
   --warm-runs 2 \
   --pyright required \

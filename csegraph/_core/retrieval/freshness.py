@@ -898,25 +898,25 @@ def _cached_filesystem_changed_paths(
     if snapshot is None or snapshot.revision != index.index_revision():
         return None
 
-    for rel, previous in snapshot.directory_mtimes.items():
+    for rel, previous_directory_mtime in snapshot.directory_mtimes.items():
         path = repo if rel == "." else repo / rel
         try:
             directory_mtime = float(path.stat().st_mtime)
         except OSError:
             return None
-        if directory_mtime != previous:
+        if directory_mtime != previous_directory_mtime:
             return None
 
-    for rel, previous in snapshot.control_mtimes.items():
+    for rel, previous_control_mtime in snapshot.control_mtimes.items():
         path = repo / rel
         try:
             control_mtime: float | None = float(path.stat().st_mtime)
         except OSError:
             control_mtime = None
-        if control_mtime != previous:
+        if control_mtime != previous_control_mtime:
             return None
 
-    for rel, previous in snapshot.file_signatures.items():
+    for rel, previous_file_signature in snapshot.file_signatures.items():
         path = repo / rel
         try:
             file_stat = path.stat()
@@ -925,7 +925,7 @@ def _cached_filesystem_changed_paths(
         if not path.is_file() or path.is_symlink():
             return [path]
         file_signature = (int(file_stat.st_size), float(file_stat.st_mtime))
-        if file_signature != previous:
+        if file_signature != previous_file_signature:
             return [path]
     return []
 
