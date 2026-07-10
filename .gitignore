@@ -53,6 +53,8 @@ data/
 benchmark_results/
 sandbox/
 ref/
+benchmarks/adaptive/sandbox_stress_tasks.json
+benchmarks/adaptive/sandbox_broad_tasks.json
 
 # Unpacked wheel trees can shadow imports if left in the repo root
 csegraph-1.7.1/

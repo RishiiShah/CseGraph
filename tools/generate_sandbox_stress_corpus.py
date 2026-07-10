@@ -18,8 +18,6 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_CORPUS = REPO_ROOT / "benchmarks" / "adaptive" / "sandbox_release_tasks.json"
-STRESS_OUTPUT_CORPUS = REPO_ROOT / "benchmarks" / "adaptive" / "sandbox_stress_tasks.json"
-BROAD_OUTPUT_CORPUS = REPO_ROOT / "benchmarks" / "adaptive" / "sandbox_broad_tasks.json"
 CORPUS_VERSION = "2026.07.5"
 STRESS_TARGET_COUNTS = {
     "sandbox/micrograd": 20,
@@ -62,22 +60,34 @@ REPO_ALLOWED_PREFIXES = {
 
 
 def main() -> int:
-    release_payload = json.loads(RELEASE_CORPUS.read_text(encoding="utf-8"))
+    generate_sandbox_corpora()
+    return 0
+
+
+def generate_sandbox_corpora(
+    *,
+    output_root: Path = REPO_ROOT / "benchmarks" / "adaptive",
+    release_corpus: Path = RELEASE_CORPUS,
+) -> dict[str, Path]:
+    release_payload = json.loads(release_corpus.read_text(encoding="utf-8"))
+    output_root.mkdir(parents=True, exist_ok=True)
+    stress_output = output_root / "sandbox_stress_tasks.json"
+    broad_output = output_root / "sandbox_broad_tasks.json"
     _write_corpus(
         release_payload,
-        output=STRESS_OUTPUT_CORPUS,
+        output=stress_output,
         tier="perf",
         target_counts=STRESS_TARGET_COUNTS,
         stress_profile=True,
     )
     _write_corpus(
         release_payload,
-        output=BROAD_OUTPUT_CORPUS,
+        output=broad_output,
         tier="broad",
         target_counts=BROAD_TARGET_COUNTS,
         stress_profile=False,
     )
-    return 0
+    return {"stress": stress_output, "broad": broad_output}
 
 
 def _write_corpus(

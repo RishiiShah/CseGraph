@@ -22,6 +22,7 @@ from tools.adaptive_benchmark import (
     load_adaptive_corpus,
     prepare_benchmark_repository,
 )
+from tools.generate_sandbox_stress_corpus import generate_sandbox_corpora
 from tools.run_adaptive_retrieval_benchmark import (
     REPORT_SCHEMA_VERSION,
 )
@@ -184,6 +185,18 @@ def test_all_corpus_manifests_report_honest_completeness():
     assert sum(task.repo == "benchmarks/fixtures/adaptive_pr" for task in nightly.tasks) == 30
     assert sum(task.repo == "benchmarks/fixtures/adaptive_js_ts" for task in nightly.tasks) == 30
     assert corpus_completeness(nightly)["complete"] is True
+
+
+@pytest.fixture(scope="module")
+def generated_sandbox_corpora(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> dict[str, Path]:
+    repo_root = Path(__file__).resolve().parents[2]
+    output_root = tmp_path_factory.mktemp("sandbox_corpora") / "benchmarks" / "adaptive"
+    return generate_sandbox_corpora(
+        output_root=output_root,
+        release_corpus=repo_root / "benchmarks/adaptive/sandbox_release_tasks.json",
+    )
 
 
 def test_local_pr_fixture_revision_is_content_addressed(tmp_path: Path):
@@ -438,9 +451,10 @@ def test_local_sandbox_release_corpus_loads_and_has_quality_coverage():
     assert quality["passed"] is True
 
 
-def test_local_sandbox_stress_corpus_loads_and_has_perf_coverage():
-    repo_root = Path(__file__).resolve().parents[2]
-    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/sandbox_stress_tasks.json")
+def test_local_sandbox_stress_corpus_loads_and_has_perf_coverage(
+    generated_sandbox_corpora: dict[str, Path],
+):
+    corpus = load_adaptive_corpus(generated_sandbox_corpora["stress"])
     quality = corpus_quality(corpus)
 
     assert corpus.tier == "perf"
@@ -464,9 +478,10 @@ def test_local_sandbox_stress_corpus_loads_and_has_perf_coverage():
     assert quality["passed"] is True
 
 
-def test_local_sandbox_broad_corpus_covers_all_local_sandboxes():
-    repo_root = Path(__file__).resolve().parents[2]
-    corpus = load_adaptive_corpus(repo_root / "benchmarks/adaptive/sandbox_broad_tasks.json")
+def test_local_sandbox_broad_corpus_covers_all_local_sandboxes(
+    generated_sandbox_corpora: dict[str, Path],
+):
+    corpus = load_adaptive_corpus(generated_sandbox_corpora["broad"])
     quality = corpus_quality(corpus)
 
     expected_counts = {
