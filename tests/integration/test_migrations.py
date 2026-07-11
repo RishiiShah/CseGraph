@@ -329,7 +329,7 @@ def test_failed_rebuild_preserves_old_database(tmp_path: Path, monkeypatch: pyte
     def fail_write(*_args, **_kwargs):
         raise RuntimeError("injected rebuild failure")
 
-    monkeypatch.setattr("csegraph._core.index.services._write_parsed_files", fail_write)
+    monkeypatch.setattr("csegraph._core.index.writer._write_parsed_files", fail_write)
 
     with pytest.raises(RuntimeError, match="injected rebuild failure"):
         IndexService(db).index(repo)

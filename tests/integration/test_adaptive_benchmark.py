@@ -32,6 +32,57 @@ from tools.run_adaptive_retrieval_benchmark import (
 )
 
 
+def test_benchmark_facade_and_quality_module_share_quality_behavior():
+    from tools.benchmarks.quality import corpus_quality as focused_quality
+
+    corpus = adaptive_benchmark.load_adaptive_corpus(
+        {
+            "schema_version": "csegraph-adaptive-benchmark-v2",
+            "corpus_version": "test",
+            "tier": "pr",
+            "status": "ready",
+            "repositories": {},
+            "tasks": [],
+        }
+    )
+    assert adaptive_benchmark.corpus_quality(corpus) == focused_quality(corpus)
+
+
+def test_benchmark_facade_reexports_supported_operations():
+    import tools.adaptive_benchmark as adaptive_benchmark
+    from tools.benchmarks.execution import execute_benchmark_task
+    from tools.benchmarks.workspace import (
+        benchmark_workspace_hygiene,
+        copy_benchmark_repository,
+        prepare_benchmark_repository,
+    )
+
+    assert adaptive_benchmark.execute_benchmark_task is execute_benchmark_task
+    assert adaptive_benchmark.prepare_benchmark_repository is prepare_benchmark_repository
+    assert adaptive_benchmark.copy_benchmark_repository is copy_benchmark_repository
+    assert adaptive_benchmark.benchmark_workspace_hygiene is benchmark_workspace_hygiene
+
+
+def test_benchmark_schema_exposes_validation_boundary():
+    from tools.benchmarks.schema import load_corpus, validate_corpus
+
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus = load_corpus(
+        {
+            "schema_version": "csegraph-adaptive-benchmark-v2",
+            "corpus_version": "test",
+            "tier": "pr",
+            "status": "ready",
+            "repositories": {},
+            "tasks": [],
+        }
+    )
+
+    validate_corpus(corpus)
+    assert corpus.path == Path("<generated>")
+    assert repo_root.exists()
+
+
 def test_strong_baseline_uses_bounded_selective_reads(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -238,6 +289,23 @@ def generated_sandbox_corpora(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> dict[str, Path]:
     repo_root = Path(__file__).resolve().parents[2]
+    required_repositories = (
+        "celery",
+        "django",
+        "fastapi",
+        "flask",
+        "micrograd",
+        "nanoGPT",
+        "pandas",
+        "pytest",
+        "scikit-learn",
+        "transformers",
+    )
+    missing = [
+        name for name in required_repositories if not (repo_root / "sandbox" / name).is_dir()
+    ]
+    if missing:
+        pytest.skip("local sandbox repositories unavailable: " + ", ".join(missing))
     output_root = tmp_path_factory.mktemp("sandbox_corpora") / "benchmarks" / "adaptive"
     return generate_sandbox_corpora(output_root=output_root)
 
@@ -725,11 +793,11 @@ def test_lsp_locations_accepts_location_and_location_link():
 
 def test_pyright_provider_disables_version_mismatch(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
-        "tools.adaptive_benchmark.shutil.which",
+        "tools.benchmarks.baseline.shutil.which",
         lambda command: f"/bin/{command}",
     )
     monkeypatch.setattr(
-        "tools.adaptive_benchmark.subprocess.run",
+        "tools.benchmarks.baseline.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(
             args=args[0],
             returncode=0,

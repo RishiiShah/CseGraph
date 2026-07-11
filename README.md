@@ -140,10 +140,15 @@ product CLI or MCP operation. Benchmark evidence is tracked in
 
 ```bash
 python -m pip install -e ".[test,dev]"
-pytest -q
-ruff check .
-mypy
+python -m pytest -q
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy
 ```
+
+Local indexes, caches, build outputs, benchmark reports, cloned sandbox
+repositories, and editor dependencies are disposable. They are ignored by
+git and should be removed before sharing a clean checkout.
 
 ## Privacy
 

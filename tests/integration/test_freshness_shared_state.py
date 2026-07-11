@@ -13,12 +13,19 @@ from unittest.mock import patch
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.services import IndexService
 from csegraph._core.languages.base import sha256_text
-from csegraph._core.retrieval import freshness as freshness_module
-from csegraph._core.retrieval.freshness import (
-    FreshnessCoordinator,
+from csegraph._core.retrieval.freshness import coordinator as freshness_module
+from csegraph._core.retrieval.freshness import scan as scan_module
+from csegraph._core.retrieval.freshness.coordinator import FreshnessCoordinator
+from csegraph._core.retrieval.freshness.scan import (
     _detect_changed_paths,
     _filesystem_changed_paths,
 )
+
+
+def test_freshness_package_exports_only_public_coordinator_types():
+    import csegraph._core.retrieval.freshness as freshness
+
+    assert set(freshness.__all__) == {"FreshnessCoordinator", "FreshnessResult", "RefreshLease"}
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -85,7 +92,7 @@ def test_non_git_freshness_reuses_snapshot_and_detects_file_changes(
     app.write_text("def value():\n    return 1\n", encoding="utf-8")
     db = tmp_path / "index.db"
     IndexService(db).index(repo)
-    monkeypatch.setattr(freshness_module, "TINY_FRESHNESS_FILE_LIMIT", 0)
+    monkeypatch.setattr(scan_module, "TINY_FRESHNESS_FILE_LIMIT", 0)
 
     first = FreshnessCoordinator(db).ensure_current(repo)
     assert first.state == "current"
@@ -548,7 +555,7 @@ def test_git_freshness_uses_one_status_command_when_head_is_current(
         index.close()
 
     calls: list[list[str]] = []
-    real_run_git_bytes = freshness_module._run_git_bytes
+    real_run_git_bytes = scan_module._run_git_bytes
 
     def recording_run_git_bytes(repo_path: Path, args: list[str]) -> bytes | None:
         calls.append(args)
@@ -557,8 +564,8 @@ def test_git_freshness_uses_one_status_command_when_head_is_current(
     def fail_text_git(*args, **kwargs):
         raise AssertionError("readable Git metadata should avoid text Git subprocesses")
 
-    monkeypatch.setattr(freshness_module, "_run_git_bytes", recording_run_git_bytes)
-    monkeypatch.setattr(freshness_module, "_run_git", fail_text_git)
+    monkeypatch.setattr(scan_module, "_run_git_bytes", recording_run_git_bytes)
+    monkeypatch.setattr(scan_module, "_run_git", fail_text_git)
 
     index = ProjectIndex(db)
     try:
@@ -591,13 +598,13 @@ def test_git_freshness_empty_status_skips_ignore_and_hash_queries(
     finally:
         index.close()
 
-    monkeypatch.setattr(freshness_module, "_git_changed_paths", lambda *args: [])
+    monkeypatch.setattr(scan_module, "_git_changed_paths", lambda *args: [])
 
     def fail_broad_filtering(*args, **kwargs):
         raise AssertionError("empty Git status should not perform broad filtering")
 
-    monkeypatch.setattr(freshness_module, "load_ignore_filter", fail_broad_filtering)
-    monkeypatch.setattr(freshness_module, "_stored_file_hashes", fail_broad_filtering)
+    monkeypatch.setattr(scan_module, "load_ignore_filter", fail_broad_filtering)
+    monkeypatch.setattr(scan_module, "_stored_file_hashes", fail_broad_filtering)
 
     index = ProjectIndex(db)
     try:
@@ -618,12 +625,12 @@ def test_tiny_git_freshness_skips_git_change_detection_when_current(
         raise AssertionError("tiny current repos should not use Git change detection")
 
     monkeypatch.setattr(
-        freshness_module,
+        scan_module,
         "_git_changed_paths",
         fail_git_change_detection,
     )
     monkeypatch.setattr(
-        freshness_module,
+        scan_module,
         "_run_git",
         fail_git_change_detection,
     )
@@ -655,7 +662,7 @@ def test_tiny_git_freshness_hashes_same_size_preserved_mtime_edit(
         raise AssertionError("tiny same-size edits should be detected without Git")
 
     monkeypatch.setattr(
-        freshness_module,
+        scan_module,
         "_git_changed_paths",
         fail_git_change_detection,
     )
@@ -688,8 +695,8 @@ def test_tiny_git_freshness_treats_size_mismatch_as_changed_without_hashing(
     def fail_freshness_hash(*args, **kwargs):
         raise AssertionError("size mismatch proves content changed before hashing")
 
-    monkeypatch.setattr(freshness_module, "_git_changed_paths", fail_git_change_detection)
-    monkeypatch.setattr(freshness_module, "sha256_text", fail_freshness_hash)
+    monkeypatch.setattr(scan_module, "_git_changed_paths", fail_git_change_detection)
+    monkeypatch.setattr(scan_module, "sha256_text", fail_freshness_hash)
 
     result = FreshnessCoordinator(db).ensure_current(repo)
 
@@ -711,7 +718,7 @@ def test_tiny_git_freshness_uses_byte_budget_not_symbol_count(
     def fail_git_change_detection(*args, **kwargs):
         raise AssertionError("symbol count should not gate tiny freshness")
 
-    monkeypatch.setattr(freshness_module, "_git_changed_paths", fail_git_change_detection)
+    monkeypatch.setattr(scan_module, "_git_changed_paths", fail_git_change_detection)
 
     result = FreshnessCoordinator(db).ensure_current(repo)
 
@@ -733,8 +740,8 @@ def test_tiny_git_freshness_falls_back_when_indexed_bytes_exceed_budget(
     def fail_tiny_detector(*args, **kwargs):
         raise AssertionError("large indexed bytes should not use the tiny detector")
 
-    monkeypatch.setattr(freshness_module, "_tiny_filesystem_changed_paths", fail_tiny_detector)
-    monkeypatch.setattr(freshness_module, "_git_changed_paths", lambda *args, **kwargs: [])
+    monkeypatch.setattr(scan_module, "_tiny_filesystem_changed_paths", fail_tiny_detector)
+    monkeypatch.setattr(scan_module, "_git_changed_paths", lambda *args, **kwargs: [])
 
     index = ProjectIndex(db)
     try:
@@ -756,7 +763,7 @@ def test_tiny_git_freshness_detects_untracked_source_without_git_change_detectio
         raise AssertionError("tiny repos should find source additions without Git change detection")
 
     monkeypatch.setattr(
-        freshness_module,
+        scan_module,
         "_git_changed_paths",
         fail_git_change_detection,
     )
@@ -807,8 +814,8 @@ def test_tiny_git_freshness_checkpoints_committed_current_content_without_git_su
     def fail_git_subprocess(*args, **kwargs):
         raise AssertionError("tiny current repos should checkpoint without subprocess Git")
 
-    monkeypatch.setattr(freshness_module, "_git_changed_paths", fail_git_subprocess)
-    monkeypatch.setattr(freshness_module, "_run_git", fail_git_subprocess)
+    monkeypatch.setattr(scan_module, "_git_changed_paths", fail_git_subprocess)
+    monkeypatch.setattr(scan_module, "_run_git", fail_git_subprocess)
     monkeypatch.setattr(
         "csegraph._core.index.repository.git_head_state",
         fail_git_subprocess,
@@ -866,7 +873,7 @@ def test_failed_refresh_does_not_checkpoint_unindexed_commit(tmp_path: Path) -> 
     _git(repo, "commit", "-qm", "unindexed commit")
 
     with patch(
-        "csegraph._core.index.services._write_parsed_files",
+        "csegraph._core.index.writer._write_parsed_files",
         side_effect=RuntimeError("simulated writer failure"),
     ):
         result = FreshnessCoordinator(db).ensure_current(repo)

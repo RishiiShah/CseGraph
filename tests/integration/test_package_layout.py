@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import site
 import subprocess
 import sys
@@ -113,6 +114,26 @@ def test_one_distribution_package_layout_and_versions():
     assert (repo_root / "csegraph" / "_cli" / "__init__.py").exists()
     assert (repo_root / "csegraph-vscode" / "package.json").exists()
     assert not (repo_root / "csegraph._core").exists()
+
+
+def test_contributor_setup_uses_declared_extras_and_public_commands():
+    from csegraph._cli.main import PUBLIC_COMMANDS
+
+    repo_root = Path(__file__).resolve().parents[2]
+    project = _project_metadata(repo_root)
+    contributing = (repo_root / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    setup_groups = {
+        group.strip()
+        for raw_groups in re.findall(r"\.\[([^\]]+)\]", contributing)
+        for group in raw_groups.split(",")
+    }
+    declared_groups = set(project.get("optional-dependencies", {}))
+
+    assert setup_groups <= declared_groups
+
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    for command in PUBLIC_COMMANDS:
+        assert f"`csegraph {command}`" in readme
 
 
 def test_root_install_exposes_cli_sdk_and_private_modules(tmp_path):

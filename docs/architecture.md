@@ -14,6 +14,12 @@ repository
 The runtime does not execute indexed code. Normal operation stays on the local
 machine.
 
+Generated workspace state is not part of the product source. Local indexes and
+parse caches live under `.csegraph/`; build outputs, environments, dependency
+directories, benchmark reports, and sandbox clones are disposable and ignored
+by git. Benchmark definitions under `tools/benchmarks/` are source; generated
+benchmark reports are evidence outputs only.
+
 ## Public boundaries
 
 The CLI boundary contains exactly nine commands: `index`, `refresh`, `context`,
@@ -51,6 +57,14 @@ Refresh computes changed and deleted files against the current index, captures
 dependents from current relationships before replacement, and updates only the
 affected rows. File and symbol foreign keys cascade cleanup. A repository lease
 coordinates concurrent refresh attempts.
+
+The implementation keeps these responsibilities separate: `index/services.py`
+coordinates the public indexing operations, `index/ingestion.py` owns parsing
+and cache reads, `index/writer.py` owns parsed-file persistence and graph writes,
+`index/lookups.py` owns lazy lookup state, `index/refresh_plan.py` owns impact
+queries, and `index/resolution.py` owns import/call/edge resolution. Freshness
+coordination is similarly split into `retrieval/freshness/coordinator.py`,
+`lease.py`, and `scan.py`.
 
 ### Retrieval
 

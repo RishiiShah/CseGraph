@@ -14,10 +14,10 @@ cd CseGraph
 python -m venv env
 source env/bin/activate
 
-# Install the package, tests, development tools, benchmark tooling, and docs tooling.
+# Install the package, tests, development tools, and benchmark tooling.
 # Runtime language grammars are normal package dependencies in CseGraph 2.x.
 python -m pip install --upgrade pip
-python -m pip install -e ".[test,dev,benchmark,docs]"
+python -m pip install -e ".[test,dev,benchmark]"
 
 # Verify the setup
 python -m pytest tests/ -q
@@ -112,9 +112,10 @@ csegraph/
   _core/
     core/                     # Shared models and service contracts
     graph/                    # Focused graph and path queries
-    index/                    # Repository indexing pipeline
+    index/                    # Repository indexing facade and focused internals
+      writer.py              # Parsed-file persistence and graph writes
     languages/                # Parser registry and Tree-sitter grammars
-    retrieval/                # Adaptive context selection and budgeting
+    retrieval/                # Adaptive context, freshness, and budgeting
     server/                   # MCP server and tool handlers
     mcp_install.py            # Coding-agent configuration installer
     status.py                 # Index health and freshness reporting
@@ -123,7 +124,8 @@ docs/                         # User and architecture documentation
 tests/
   unit/                       # Focused unit tests
   integration/                # End-to-end and contract tests
-tools/                        # Maintainer and benchmark utilities
+tools/                        # Maintainer utilities and focused benchmark package
+  benchmarks/quality.py       # Benchmark corpus quality and completeness gates
 ```
 
 ## Adding Language Support
@@ -171,7 +173,7 @@ Keep documentation focused and in its intended location:
 - `README.md`: public overview, installation, quick start, and public surface
 - `CONTRIBUTING.md`: contributor workflow
 - `docs/architecture.md`: internal architecture and data flow
-- `docs/benchmarks.md`: index of benchmark evidence in `benchmark_results/`
+- `docs/benchmarks.md`: benchmark tiers and evidence-output workflow
 - `RELEASE.md`: release process
 
 ## Reporting Issues
@@ -204,6 +206,11 @@ the installer, or dependency directories. This includes:
 - `*.vsix`
 - `csegraph-vscode/node_modules/`
 - `csegraph-vscode/out/`
+
+Benchmark reports and cloned sandbox repositories are also disposable local
+outputs. Keep benchmark source definitions under `tools/benchmarks/`; write
+reports under `benchmark_results/` only when running a benchmark locally or in
+CI.
 
 ## License
 

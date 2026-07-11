@@ -36,9 +36,9 @@ def test_atomic_write_concurrent_readers(tmp_path: Path):
                 idx.close()
             time.sleep(0.01)
 
-    from csegraph._core.index.services import _write_parsed_files as real_write
+    from csegraph._core.index.writer import _write_parsed_files as real_write
 
-    with patch("csegraph._core.index.services._write_parsed_files") as mock_write:
+    with patch("csegraph._core.index.writer._write_parsed_files") as mock_write:
 
         def delayed_write(idx, root, files):
             time.sleep(0.05)
@@ -74,7 +74,7 @@ def test_atomic_write_rollback_on_failure(tmp_path: Path):
 
     # Inject a failure during writing
     with patch(
-        "csegraph._core.index.services._write_parsed_files", side_effect=Exception("Disk Error")
+        "csegraph._core.index.writer._write_parsed_files", side_effect=Exception("Disk Error")
     ):
         try:
             IndexService(db_path).index(repo)

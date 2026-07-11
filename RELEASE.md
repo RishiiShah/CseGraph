@@ -8,7 +8,7 @@ Run from the repository root:
 env/bin/python -m pip install -e ".[test,dev,benchmark]"
 env/bin/python -m pytest tests/ -q
 env/bin/python -m ruff format --check .
-env/bin/python -m ruff check csegraph tools tests
+env/bin/python -m ruff check .
 env/bin/python -m mypy csegraph tools
 env/bin/python -m compileall -q csegraph tools csegraph-vscode
 env/bin/csegraph index . --json

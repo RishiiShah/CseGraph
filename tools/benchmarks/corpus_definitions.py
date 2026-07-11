@@ -10,12 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from tools.adaptive_benchmark import (
-    TASK_SCHEMA_VERSION_V2,
-    AdaptiveBenchmarkCorpus,
-    _fixture_revision,
-    load_adaptive_corpus,
-)
+from tools.benchmarks.models import AdaptiveBenchmarkCorpus
+from tools.benchmarks.schema import TASK_SCHEMA_VERSION_V2, load_corpus
+from tools.benchmarks.workspace import _fixture_revision
 
 CORPUS_NAMES = ("pr", "nightly", "release")
 CORPUS_VERSIONS = {
@@ -2370,4 +2367,4 @@ def build_adaptive_corpus(name: str, *, repo_root: Path) -> AdaptiveBenchmarkCor
         },
         "tasks": [dict(task, commit=commits[task["repo"]]) for task in tasks],
     }
-    return load_adaptive_corpus(payload, path=Path(f"<generated:{normalized}>"))
+    return load_corpus(payload, path=Path(f"<generated:{normalized}>"))

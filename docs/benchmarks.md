@@ -22,10 +22,10 @@ reports status accuracy, target recall, slice precision, token use, index
 diagnostics, workspace hygiene, and latency. The runner writes
 `csegraph-adaptive-retrieval-report-v4` reports.
 
-The PR, nightly, and release task definitions live in the readable Python
-builders in `tools/benchmark_corpora.py`. The runner materializes them in
-memory; the perf/stress and broad corpora are generated locally from the
-release builder via `tools/generate_sandbox_stress_corpus.py` and are
+The PR, nightly, and release task definitions live in the readable source
+catalog at `tools/benchmarks/corpus_definitions.py`. The runner materializes
+them in memory; the perf/stress and broad corpora are generated locally from
+the release catalog via `tools/generate_sandbox_stress_corpus.py` and are
 intentionally ignored.
 
 Current corpus tiers:

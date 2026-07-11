@@ -5,9 +5,34 @@ import sqlite3
 
 import pytest
 
+from csegraph._core.index import lookups as index_lookups
+from csegraph._core.index import resolution as index_resolution
 from csegraph._core.index import services as index_services
+from csegraph._core.index import writer as index_writer
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.services import IndexService, RefreshService
+
+
+def test_include_roots_normalize_to_repository_relative_paths(tmp_path):
+    from csegraph._core.index.ingestion import _normalize_include_roots
+
+    repo = tmp_path.resolve()
+    assert _normalize_include_roots(repo, [repo / "src", "tests"]) == ("src", "tests")
+
+
+def test_index_resolution_exposes_target_resolution_behavior():
+    from csegraph._core.index.resolution import _resolve_call_target
+
+    result = _resolve_call_target(
+        "target",
+        "file::app.py",
+        {"target": ["symbol::app.py::function::target"]},
+        {"symbol::app.py::function::target": "file::app.py"},
+        {},
+        {},
+    )
+    assert result.target == "symbol::app.py::function::target"
+    assert result.status == "resolved"
 
 
 def _db_path(repo):
@@ -299,9 +324,9 @@ def test_resolver_lookups_load_only_requested_keys(tmp_path):
     index = ProjectIndex(db_path)
     try:
         index.conn.set_trace_callback(statements.append)
-        batch = index_services._WriteBatch()
-        index_services._load_symbol_lookup(index, batch)
-        module_lookup = index_services._module_to_file_id(index)
+        batch = index_writer._WriteBatch()
+        index_writer._load_symbol_lookup(index, batch)
+        module_lookup = index_resolution._module_to_file_id(index)
 
         qualified = batch.symbol_by_name.get("Greeter.greet", [])
         short = batch.symbol_by_name.get("greet", [])
@@ -327,8 +352,8 @@ def test_lazy_symbol_lookup_implements_mapping_semantics(tmp_path):
     IndexService(db_path).index(repo)
     index = ProjectIndex(db_path)
     try:
-        batch = index_services._WriteBatch()
-        index_services._load_symbol_lookup(index, batch)
+        batch = index_writer._WriteBatch()
+        index_writer._load_symbol_lookup(index, batch)
 
         assert "target" in batch.symbol_by_name
         assert "missing" not in batch.symbol_by_name
@@ -346,8 +371,8 @@ def test_symbol_insertion_does_not_query_lookup_per_symbol(tmp_path, monkeypatch
     )
     lookup_loads = 0
     loads_before_edge_insertion: list[int] = []
-    real_load = index_services._LazySymbolLookup._load
-    real_insert_edges = index_services._insert_edges
+    real_load = index_lookups._LazySymbolLookup._load
+    real_insert_edges = index_writer._insert_edges
 
     def recording_load(lookup, name):
         nonlocal lookup_loads
@@ -358,8 +383,8 @@ def test_symbol_insertion_does_not_query_lookup_per_symbol(tmp_path, monkeypatch
         loads_before_edge_insertion.append(lookup_loads)
         return real_insert_edges(index, parsed_files, structural_edges, batch)
 
-    monkeypatch.setattr(index_services._LazySymbolLookup, "_load", recording_load)
-    monkeypatch.setattr(index_services, "_insert_edges", recording_insert_edges)
+    monkeypatch.setattr(index_lookups._LazySymbolLookup, "_load", recording_load)
+    monkeypatch.setattr(index_writer, "_insert_edges", recording_insert_edges)
 
     IndexService(_db_path(repo)).index(repo)
 
@@ -380,8 +405,8 @@ def test_refresh_symbol_insertion_does_not_query_lookup_per_symbol(tmp_path, mon
     )
     lookup_loads = 0
     loads_before_edge_insertion: list[int] = []
-    real_load = index_services._LazySymbolLookup._load
-    real_insert_edges = index_services._insert_edges
+    real_load = index_lookups._LazySymbolLookup._load
+    real_insert_edges = index_writer._insert_edges
 
     def recording_load(lookup, name):
         nonlocal lookup_loads
@@ -392,8 +417,8 @@ def test_refresh_symbol_insertion_does_not_query_lookup_per_symbol(tmp_path, mon
         loads_before_edge_insertion.append(lookup_loads)
         return real_insert_edges(index, parsed_files, structural_edges, batch)
 
-    monkeypatch.setattr(index_services._LazySymbolLookup, "_load", recording_load)
-    monkeypatch.setattr(index_services, "_insert_edges", recording_insert_edges)
+    monkeypatch.setattr(index_lookups._LazySymbolLookup, "_load", recording_load)
+    monkeypatch.setattr(index_writer, "_insert_edges", recording_insert_edges)
 
     RefreshService(db_path).refresh(changed_paths=[source], dependents_limit=0)
 
@@ -608,13 +633,13 @@ def test_refresh_writes_changed_and_dependent_files_in_one_batch(tmp_path, monke
     db_path = _db_path(repo)
     IndexService(db_path).index(repo)
     calls: list[list[str]] = []
-    real_write = index_services._write_parsed_files
+    real_write = index_writer._write_parsed_files
 
     def recording_write(index, repo_root, parsed_files):
         calls.append([parsed.rel_path for parsed in parsed_files])
         return real_write(index, repo_root, parsed_files)
 
-    monkeypatch.setattr(index_services, "_write_parsed_files", recording_write)
+    monkeypatch.setattr(index_writer, "_write_parsed_files", recording_write)
     child.write_text("def helper(value):\n    return value + 2\n", encoding="utf-8")
 
     result = RefreshService(db_path).refresh(changed_paths=[child])
