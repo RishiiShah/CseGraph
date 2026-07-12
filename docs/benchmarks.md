@@ -1,149 +1,76 @@
-# Benchmark Evidence
+# Benchmarks
 
-This page tracks the adaptive retrieval benchmark evidence used for CseGraph
-performance work. The current benchmark compares CseGraph's adaptive retrieval
-against a bounded `rg`/selective-read baseline under the same token budget.
+CseGraph is tested on real repository questions: find a symbol, trace its
+callers or dependencies, and identify relevant tests. The comparison is a
+deterministic repository agent that searches and reads source files for the
+same request. It does not receive the expected answer.
 
-## Method
+Latest run: 2026-07-11, cold indexes, Pyright disabled.
 
-- MCP latency is measured as the client-side round trip around
-  `session.call_tool(...)`; token counting and report writing are excluded.
-- Token reduction is measured against the bounded baseline used by the adaptive
-  retrieval runner, not against a full-repository read.
-- The old full-repository footprint sweep was removed from this page because
-  its 99.xx% reductions were easy to misread as agent-realistic savings.
+## Sandbox results
 
-## Adaptive Retrieval Benchmark Tiers
+The sandbox contains 12 pinned public repositories, from a 5-file teaching
+project to Transformers. It ran 364 source-driven tasks. The table uses the
+code that was actually indexed during the run; token figures are medians per
+task.
 
-The adaptive retrieval runner is the current correctness-and-efficiency
-benchmark for agent context selection. It compares CseGraph's adaptive retrieval
-against a bounded `rg`/selective-read baseline under the same token budget, and
-reports status accuracy, target recall, slice precision, token use, index
-diagnostics, workspace hygiene, and latency. The runner writes
-`csegraph-adaptive-retrieval-report-v4` reports.
+Every sandbox repository reached 100% target/evidence recall, 100% precision,
+and 100% role recall for this corpus. “Context reduction” compares the median
+context selected by CseGraph with the comparison agent for the same tasks.
+Higher is less context sent to an agent.
 
-The PR, nightly, and release task definitions live in the readable source
-catalog at `tools/benchmarks/corpus_definitions.py`. The runner materializes
-them in memory; the perf/stress and broad corpora are generated locally from
-the release catalog via `tools/generate_sandbox_stress_corpus.py` and are
-intentionally ignored.
+| Repository | Files | Symbols | Tasks | CseGraph tokens | Comparison tokens | Context reduction |
+|---|---:|---:|---:|---:|---:|---:|
+| micrograd | 5 | 35 | 12 | 212.0 | 1,053.0 | 79.87% |
+| nanoGPT | 15 | 30 | 12 | 194.5 | 1,027.0 | 81.06% |
+| requests | 37 | 716 | 20 | 158.0 | 1,075.0 | 85.30% |
+| click | 76 | 1,283 | 20 | 303.0 | 1,118.0 | 72.90% |
+| Flask | 83 | 925 | 30 | 313.5 | 1,353.0 | 76.83% |
+| pytest | 270 | 6,061 | 30 | 284.0 | 1,529.5 | 81.43% |
+| Celery | 416 | 7,828 | 30 | 222.0 | 1,545.0 | 85.63% |
+| scikit-learn | 1,022 | 11,845 | 45 | 375.0 | 2,048.0 | 81.69% |
+| FastAPI | 1,133 | 5,201 | 30 | 237.5 | 1,384.0 | 82.84% |
+| pandas | 1,510 | 32,180 | 45 | 255.0 | 1,759.0 | 85.50% |
+| Django | 3,037 | 38,224 | 45 | 320.0 | 1,839.0 | 82.60% |
+| Transformers | 4,641 | 73,412 | 45 | 304.0 | 1,910.0 | 84.08% |
+| **All repositories** | **12,245** | **177,740** | **364** | **272.5** | **1,539.5** | **82.30%** |
 
-Current corpus tiers:
+The aggregate line is a median across all sandbox tasks. It should not be read
+as a promise that every task uses 82.30% less context: the per-repository rows
+show the actual range in this run.
 
-| Tier | Corpus | Purpose | Current scope |
-|---|---|---|---|
-| PR | `--corpus pr` | Fast regression gate for expected status, recall, precision, token budget, and quality mix | Local fixtures |
-| Nightly | `--corpus nightly` | Broader fixture regression with more task categories | Local fixtures |
-| Release | `--corpus release` | Hand-curated real-repo quality gate with ambiguous, targetless, structural, insufficient-budget, and test-evidence tasks | Local sandbox inputs |
-| Perf/stress | `tools/generate_sandbox_stress_corpus.py` | High-N stable latency/token averages on representative small/medium/large repos | Generated locally |
-| Broad | `tools/generate_sandbox_stress_corpus.py` | All-local-sandbox coverage for ecosystem shape and scale cliffs | Generated locally |
+## Release checks
 
-### Broad all-sandbox run
+These smaller suites catch regressions before the sandbox run. All configured
+gates passed in the latest run.
 
-Latest local broad run: `2026-07-10`, cold mode, Pyright off, 800-token budget.
-The report measured all 348 broad-corpus tasks across all 10 local sandbox
-repositories.
+| Suite | Tasks | Recall | Precision | Role recall | Context reduction |
+|---|---:|---:|---:|---:|---:|
+| PR | 22 | 100% | 100% | 100% | 67.31% |
+| Nightly | 60 | 100% | 100% | 100% | 63.72% |
+| Release | 30 | 100% | 100% | 100% | 65.67% |
 
-| Metric | Result |
-|---|---:|
-| Tasks measured | 348 / 348 |
-| Expected status accuracy | 100.0% |
-| Adaptive recall | 100.0% |
-| Adaptive precision | 100.0% |
-| Adaptive role recall | 100.0% |
-| Adaptive median tokens | 198.5 |
-| Baseline median tokens | 718.5 |
-| Adaptive / baseline token ratio | 27.63% |
-| Median token reduction | 72.37% |
+## What this does and does not show
 
-The broad corpus used a temporary pilot cap, not a principled final weighting.
-The cap existed only to make the first all-10 local run tractable while
-validating repository hygiene, indexing, report schema, and task correctness.
-It should not be used to compare large repos with small repos.
+The results show that CseGraph returned the expected source context for the
+listed tasks and revisions while keeping the context smaller than the
+comparison trace. They do not measure how well a particular language model
+implements a change, developer productivity, or behavior on repositories and
+requests that are not in these corpora.
 
-The readout is intentionally mixed:
+The task definitions, expected evidence, and repository revisions are versioned
+in the repository. The comparison trace sees the request and visible context;
+expected targets and evidence are kept only for scoring. Reports include each
+task result, so failures are not silently removed from the totals.
 
-- Retrieval quality passed: every broad task matched the expected status, target
-  recall, precision, and role recall.
-- Token efficiency is strong: the broad run reduced median context tokens by
-  72.37% versus the bounded baseline.
-- The latency gate did not pass: `engine_p95_overhead_below_100ms` failed,
-  driven mostly by `transformers`, with secondary cliffs in `pandas`, `django`,
-  and `scikit-learn`.
-- The broad tier is therefore useful as a perf/nightly signal, not as a PR
-  gate.
-- The broad tier is not the final benchmark shape because most repositories were
-  capped at 40 tasks regardless of size.
+## Reproduce the sandbox run
 
-### Corpus realism policy
+```bash
+python tools/bootstrap_benchmark_sandbox.py
+python tools/run_adaptive_retrieval_benchmark.py \
+  --corpus sandbox --modes cold --pyright off \
+  --output /tmp/csegraph-sandbox-agent.json --fail-on-gates
+```
 
-All benchmark tasks should be hard to fool and representative of how agents
-actually ask for context.
-
-Repository tasks should be tailored to each project, not only generated from
-generic symbol lookups. Generated exact-definition tasks are still useful for
-stable latency/token averages, but every serious release/perf corpus should also
-include repository-specific scenarios:
-
-- `micrograd`: autograd graph traversal, `Value.backward`, operation closures,
-  simple neural-network helpers, and small test-impact tasks.
-- `flask`: routing, blueprints, request/app contexts, CLI behavior, error
-  handling, and tests around dispatch.
-- `django`: URL resolving, shortcuts, model/query behavior, forms/admin, test
-  discovery, and cross-file framework flows.
-- `fastapi`: dependency injection, routing, OpenAPI/schema generation,
-  validation, and async/test-client paths.
-- `pytest`: collection, fixtures, assertion rewriting, hooks/plugins, and
-  regression tests under `testing/`.
-- `celery`: task registration, app finalization, worker/beat control, result
-  backends, routing, and integration-style tests.
-- `pandas`: dataframe/array operations, dtype dispatch, IO/parsing, groupby,
-  extension arrays, and targeted regression tests.
-- `scikit-learn`: estimators, validation utilities, datasets, metrics,
-  pipelines, and model-selection flows.
-- `transformers`: model/config loading, tokenizers, generation, pipelines,
-  CLI/serving, dependency gates, and tests that exercise large module layouts.
-- `nanoGPT`: training loop, batching, model configuration, optimizer setup, and
-  data preparation scripts.
-
-Task counts should also scale with repository size and complexity, with caps so
-large repositories do not dominate the aggregate. The report should keep both:
-
-- weighted aggregate metrics, where more tasks in larger repositories reflect
-  real surface area; and
-- macro-average metrics, where each repository gets one vote so `transformers`,
-  `pandas`, and `django` cannot hide regressions in smaller projects.
-
-There is no benchmark-quality reason for large repos to stop at 40 tasks. The
-current broad corpus used 40 as a first-pass execution cap only. Large repos
-should have more tasks because they expose more APIs, more architecture shapes,
-more duplicate names, more tests, and more performance cliffs. Small repos
-should have fewer but more scenario-specific tasks.
-
-The next specialized corpus should be size-weighted and repo-specific:
-
-| Repository | Approx. Python files | Approx. symbols | Current broad tasks | Target specialized tasks | Why |
-|---|---:|---:|---:|---:|---|
-| `micrograd` | 5 | 40 | 20 | 20-25 | Tiny repo; scenario variety matters more than count |
-| `nanoGPT` | 15 | 30 | 8 | 20-30 | Needs tailored training/data/model tasks instead of only unique-symbol tasks |
-| `flask` | 83 | 1,620 | 40 | 60-80 | Medium framework with routing, context, CLI, and tests |
-| `pytest` | 270 | 6,850 | 40 | 80-100 | Plugin/hook/collection behavior deserves more tailored coverage |
-| `celery` | 416 | 8,875 | 40 | 90-120 | Worker, beat, task registry, routing, and backend paths |
-| `fastapi` | 1,129 | 5,556 | 40 | 90-120 | Routing, dependency injection, validation, OpenAPI, async tests |
-| `scikit-learn` | 1,014 | 12,744 | 40 | 120-150 | Estimator/pipeline/dataset/model-selection flows |
-| `pandas` | 1,509 | 33,139 | 40 | 160-200 | Large API surface, dtype dispatch, IO, arrays, groupby, tests |
-| `django` | 2,924 | 43,431 | 40 | 180-220 | Large framework with many cross-file subsystem flows |
-| `transformers` | 4,559 | 73,598 | 40 | 220-300 | Largest repo and current p95 latency cliff |
-
-Specialized benchmark suites should be split by purpose:
-
-- `sandbox_broad`: all repos, capped, fast enough for regular perf/nightly
-  visibility.
-- `sandbox_specialist`: size-weighted, repo-tailored scenarios for release
-  quality.
-- `sandbox_mega`: expensive separate stress suites for `transformers`, `django`,
-  `pandas`, and `scikit-learn`, so large-repo latency cliffs cannot be hidden or
-  block smaller-repo feedback.
-- task-type suites for structural, test-impact, ambiguous, insufficient-budget,
-  and agent-edit cases, because those failure modes are different from exact
-  definition lookup.
+The command writes a JSON report with the per-task and per-repository values.
+Use `--corpus pr`, `nightly`, or `release` for the other suites.

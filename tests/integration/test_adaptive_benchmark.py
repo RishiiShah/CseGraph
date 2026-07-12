@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,10 @@ from tools.adaptive_benchmark import (
     load_adaptive_corpus,
     prepare_benchmark_repository,
 )
+from tools.benchmarks.agent import AgentScenarioPolicy, RepositoryAgent, RepositoryAgentProfile
+from tools.benchmarks.models import BenchmarkPermittedRange
+from tools.benchmarks.reporting import _diagnostic_measurement_budget, _evaluate_v2_result
+from tools.benchmarks.sandbox import SANDBOX_REPOSITORIES, validate_sandbox_manifest
 from tools.generate_sandbox_stress_corpus import generate_sandbox_corpora
 from tools.run_adaptive_retrieval_benchmark import (
     REPORT_SCHEMA_VERSION,
@@ -30,6 +35,311 @@ from tools.run_adaptive_retrieval_benchmark import (
 from tools.run_adaptive_retrieval_benchmark import (
     main as run_adaptive_benchmark,
 )
+
+
+def test_repository_agent_does_not_use_hidden_target_and_records_tool_trace(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "def greet(name):\n    return f'hello {name}'\n",
+        encoding="utf-8",
+    )
+    (repo / "secrets.py").write_text(
+        "def secret_target():\n    return 'hidden'\n",
+        encoding="utf-8",
+    )
+
+    result = StrongBaselineAdapter().retrieve(
+        repo,
+        "Explain the greet function",
+        target="secret_target",
+        token_budget=800,
+    )
+
+    assert result.slices
+    assert result.slices[0].path == "app.py"
+    searches = [event for event in result.usage["trace"] if event["action"] == "search"]
+    assert searches
+    assert all("secret_target" not in event["query"] for event in searches)
+    assert result.usage["query_count"] == len(searches)
+    assert result.usage["tool_calls"] >= result.usage["query_count"]
+
+
+def test_diagnostic_measurement_budget_scales_with_content_budget():
+    task = AdaptiveBenchmarkTask(
+        id="budgeted",
+        repo="sandbox/tiny",
+        commit="0" * 40,
+        category="cross-file",
+        task="Trace callers",
+    )
+
+    assert _diagnostic_measurement_budget(task, 1440) >= 2880
+
+
+def test_benchmark_precision_accepts_role_scoped_impact_context():
+    task = AdaptiveBenchmarkTask(
+        id="impact",
+        repo="fixture",
+        commit="0" * 40,
+        category="cross-file",
+        task="Trace callers for greet",
+        required_evidence=(),
+        permitted_ranges=(BenchmarkPermittedRange(path="app.py", start_line=1, end_line=3),),
+    )
+
+    result = {
+        "status": "ready",
+        "slices": [
+            {"path": "app.py", "lines": [1, 3], "role": "target"},
+            {"path": "caller.py", "lines": [8, 12], "role": "caller"},
+        ],
+    }
+
+    assert _evaluate_v2_result(task, result, adaptive=True)["precision"] == 1.0
+
+
+def test_repository_agent_uses_explicit_visible_editor_target(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "def greet(name):\n    return f'hello {name}'\n",
+        encoding="utf-8",
+    )
+
+    result = RepositoryAgent().retrieve(
+        repo,
+        "Explain the selected function",
+        visible_target="symbol::app.py::function::greet",
+        token_budget=800,
+    )
+
+    assert result.slices
+    assert result.slices[0].path == "app.py"
+    assert any(
+        "greet" in event["query"] for event in result.usage["trace"] if event["action"] == "search"
+    )
+
+
+def test_repository_agent_profile_controls_query_and_read_budgets():
+    tiny = RepositoryAgentProfile(
+        name="tiny",
+        source_globs=("*.py",),
+        query_budgets={"definition": 1},
+        read_budgets={"definition": 1},
+        read_windows=(20,),
+    )
+    large = RepositoryAgentProfile(
+        name="large",
+        source_globs=("*.py",),
+        query_budgets={"definition": 6},
+        read_budgets={"definition": 12},
+        read_windows=(24, 60, 120),
+    )
+    policy = AgentScenarioPolicy(category="definition")
+
+    assert tiny.query_budget(policy) == 1
+    assert tiny.read_budget(policy) == 1
+    assert large.query_budget(policy) == 6
+    assert large.read_budget(policy) == 12
+    assert RepositoryAgent is not None
+
+
+def test_repository_agent_reads_only_bounded_source_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "\n".join(["# filler"] * 1000 + ["def greet(value):", "    return value"]),
+        encoding="utf-8",
+    )
+    profile = RepositoryAgentProfile(
+        name="bounded",
+        source_globs=("*.py",),
+        query_budgets={"definition": 1},
+        read_budgets={"definition": 1},
+        read_windows=(12,),
+    )
+
+    def fail_on_whole_file_read(*_args, **_kwargs):
+        raise AssertionError("agent must stream bounded source windows")
+
+    monkeypatch.setattr(Path, "read_text", fail_on_whole_file_read)
+    result = RepositoryAgent().retrieve(
+        repo,
+        "Explain greet",
+        profile=profile,
+        token_budget=800,
+    )
+
+    assert result.slices
+    assert result.slices[0].lines[1] - result.slices[0].lines[0] + 1 <= 12
+
+
+def test_repository_agent_caps_search_results_per_repo_policy(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for index in range(12):
+        (repo / f"module_{index}.py").write_text(
+            "def common(value):\n    return value\n",
+            encoding="utf-8",
+        )
+    profile = RepositoryAgentProfile(
+        name="capped",
+        source_globs=("*.py",),
+        query_budgets={"definition": 1},
+        read_budgets={"definition": 2},
+        read_windows=(24,),
+        match_budgets={"definition": 2},
+    )
+
+    result = RepositoryAgent().retrieve(
+        repo,
+        "Explain common",
+        profile=profile,
+        token_budget=800,
+    )
+
+    search = next(event for event in result.usage["trace"] if event["action"] == "search")
+    assert search["result_limit"] == 2
+    assert search["match_count"] <= 2
+
+
+def test_sandbox_manifest_covers_open_source_repositories_at_multiple_scales():
+    validate_sandbox_manifest(SANDBOX_REPOSITORIES)
+
+    assert len(SANDBOX_REPOSITORIES) >= 12
+    assert {spec.size_tier for spec in SANDBOX_REPOSITORIES} >= {
+        "tiny",
+        "small",
+        "medium",
+        "large",
+    }
+    assert all(spec.license_id for spec in SANDBOX_REPOSITORIES)
+    assert all(spec.url.startswith("https://github.com/") for spec in SANDBOX_REPOSITORIES)
+    assert len({spec.path for spec in SANDBOX_REPOSITORIES}) == len(SANDBOX_REPOSITORIES)
+
+
+def test_named_corpus_targets_are_explicit_visible_editor_context():
+    corpus = adaptive_benchmark.build_adaptive_corpus("nightly", repo_root=Path.cwd())
+
+    assert all(
+        task.visible_target == task.target for task in corpus.tasks if task.target is not None
+    )
+
+
+def test_sandbox_bootstrap_dry_run_is_non_mutating(tmp_path: Path):
+    from tools.bootstrap_benchmark_sandbox import bootstrap_sandbox
+
+    report = bootstrap_sandbox(tmp_path, specs=SANDBOX_REPOSITORIES[:2], dry_run=True)
+
+    assert [item["status"] for item in report] == ["would_clone", "would_clone"]
+    assert not (tmp_path / "sandbox").exists()
+
+
+def test_sandbox_corpus_generates_repo_scenarios_without_oracle_targets(tmp_path: Path):
+    from tools.benchmarks.sandbox_corpus import build_sandbox_corpus
+
+    repository = tmp_path / "sandbox" / "tiny"
+    source = repository / "src"
+    source.mkdir(parents=True)
+    (source / "app.py").write_text(
+        "def alpha(value):\n    return value\n\ndef beta(value):\n    return alpha(value)\n",
+        encoding="utf-8",
+    )
+    spec = replace(
+        SANDBOX_REPOSITORIES[0],
+        name="tiny",
+        path="sandbox/tiny",
+        source_roots=("src",),
+        scenario_templates=(("definition", "Explain {name}"),),
+    )
+
+    corpus = build_sandbox_corpus(tmp_path, specs=(spec,))
+
+    assert corpus.tier == "sandbox"
+    assert corpus.tasks
+    assert all(task.target is None for task in corpus.tasks)
+    assert all(task.token_budget == spec.token_budgets["definition"] for task in corpus.tasks)
+    assert all(task.agent_profile == "sandbox/tiny" for task in corpus.tasks)
+
+
+def test_sandbox_corpus_excludes_nested_python_functions_not_indexed_as_symbols(tmp_path: Path):
+    from tools.benchmarks.sandbox_corpus import build_sandbox_corpus
+
+    repository = tmp_path / "sandbox" / "tiny"
+    source = repository / "src"
+    source.mkdir(parents=True)
+    (source / "app.py").write_text(
+        "def public_api():\n"
+        "    def nested_helper():\n"
+        "        return 1\n"
+        "    return nested_helper()\n"
+        "\n"
+        "for _ in range(1):\n"
+        "    def loop_helper():\n"
+        "        return 2\n",
+        encoding="utf-8",
+    )
+    spec = replace(
+        SANDBOX_REPOSITORIES[0],
+        name="tiny",
+        path="sandbox/tiny",
+        source_roots=("src",),
+        scenario_templates=(("definition", "Explain {name}"),),
+    )
+
+    corpus = build_sandbox_corpus(tmp_path, specs=(spec,))
+
+    assert {task.visible_target for task in corpus.tasks} == {
+        "symbol::src/app.py::function::public_api"
+    }
+
+
+def test_sandbox_corpus_expands_budget_for_large_target_symbols(tmp_path: Path):
+    from tools.benchmarks.sandbox_corpus import build_sandbox_corpus
+
+    repository = tmp_path / "sandbox" / "tiny"
+    source = repository / "src"
+    source.mkdir(parents=True)
+    body = "\n".join(f"    value_{line} = {line}" for line in range(120))
+    (source / "app.py").write_text(f"class Large:\n{body}\n", encoding="utf-8")
+    spec = replace(
+        SANDBOX_REPOSITORIES[0],
+        name="tiny",
+        path="sandbox/tiny",
+        source_roots=("src",),
+        scenario_templates=(("definition", "Explain {name}"),),
+    )
+
+    corpus = build_sandbox_corpus(tmp_path, specs=(spec,))
+
+    assert corpus.tasks[0].token_budget > spec.token_budgets["definition"]
+
+
+def test_sandbox_corpus_uses_the_last_definition_for_duplicate_symbol_ids(tmp_path: Path):
+    from tools.benchmarks.sandbox_corpus import build_sandbox_corpus
+
+    repository = tmp_path / "sandbox" / "tiny"
+    source = repository / "src"
+    source.mkdir(parents=True)
+    (source / "app.py").write_text(
+        "def duplicate():\n    return 1\n\ndef duplicate():\n    return 2\n",
+        encoding="utf-8",
+    )
+    spec = replace(
+        SANDBOX_REPOSITORIES[0],
+        name="tiny",
+        path="sandbox/tiny",
+        source_roots=("src",),
+        scenario_templates=(("definition", "Explain {name}"),),
+    )
+
+    corpus = build_sandbox_corpus(tmp_path, specs=(spec,))
+
+    assert corpus.tasks[0].expected_target is not None
+    assert corpus.tasks[0].expected_target.line == 4
 
 
 def test_benchmark_facade_and_quality_module_share_quality_behavior():
@@ -81,6 +391,41 @@ def test_benchmark_schema_exposes_validation_boundary():
     validate_corpus(corpus)
     assert corpus.path == Path("<generated>")
     assert repo_root.exists()
+
+
+def test_benchmark_task_preserves_agent_budget_and_visible_context():
+    from tools.benchmarks.schema import load_corpus
+
+    corpus = load_corpus(
+        {
+            "schema_version": "csegraph-adaptive-benchmark-v2",
+            "corpus_version": "test",
+            "tier": "pr",
+            "status": "ready",
+            "repositories": {},
+            "tasks": [
+                {
+                    "id": "budgeted",
+                    "repo": "fixture",
+                    "commit": "a" * 40,
+                    "category": "definition",
+                    "task": "Explain greet",
+                    "token_budget": 512,
+                    "visible_context": ["The editor selection is app.py"],
+                    "agent_profile": "tiny-python",
+                    "expected_target": {"path": "app.py", "line": 1},
+                    "required_evidence": [{"path": "app.py", "line": 1}],
+                    "permitted_ranges": [{"path": "app.py", "lines": [1, 2]}],
+                }
+            ],
+        }
+        | {"repositories": {"fixture": {"url": "fixture://local", "commit": "a" * 40}}}
+    )
+
+    task = corpus.tasks[0]
+    assert task.token_budget == 512
+    assert task.visible_context == ("The editor selection is app.py",)
+    assert task.agent_profile == "tiny-python"
 
 
 def test_strong_baseline_uses_bounded_selective_reads(tmp_path: Path):
@@ -770,7 +1115,9 @@ def test_strong_baseline_normalizes_explicit_symbol_ids(tmp_path: Path):
     assert result.slices[0].path == "model.py"
     assert result.discovery
     assert result.usage["tokens"] <= 800
-    assert result.usage["rg_calls"] == 1
+    assert result.usage["rg_calls"] >= 2
+    assert result.usage["query_count"] >= 1
+    assert result.usage["stop_reason"] in {"evidence_sufficient", "query_budget_exhausted"}
     assert result.usage["file_read_calls"] >= 1
 
 

@@ -62,7 +62,6 @@ from tools.benchmarks.workspace import (
 
 REPORT_SCHEMA_VERSION = "csegraph-adaptive-retrieval-report-v4"
 RUNNER_VERSION = "2.3"
-DIAGNOSTIC_BUDGET_SLACK = 1024
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,12 +69,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--corpus",
         default="pr",
-        help="Named source-driven corpus (pr, nightly, release) or a JSON path",
+        help="Named source-driven corpus (pr, nightly, release, sandbox) or a JSON path",
     )
     parser.add_argument("--repo-root", default=str(REPO_ROOT))
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--bootstrap-missing", action="store_true")
-    parser.add_argument("--budget", type=int, default=800)
+    parser.add_argument(
+        "--budget",
+        type=int,
+        default=None,
+        help="Override per-task token budgets for diagnostic comparisons",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
         "--modes",
@@ -108,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
 
     repo_root = Path(args.repo_root).resolve()
     corpus_path: Path | None = None
-    if args.corpus in {"pr", "nightly", "release"}:
+    if args.corpus in {"pr", "nightly", "release", "sandbox"}:
         corpus = build_adaptive_corpus(args.corpus, repo_root=repo_root)
         corpus_digest = hashlib.sha256(
             json.dumps(
@@ -197,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                     repo,
                     db,
                     baseline,
-                    budget=args.budget,
+                    budget=args.budget if args.budget is not None else task.token_budget,
                     modes=modes,
                     warm_runs=args.warm_runs,
                     index_ms=index_ms,
@@ -351,6 +355,8 @@ def _run_retrieval_task(
     return {
         "id": task.id,
         "status": "measured",
+        "request": task.task,
+        "visible_context": list(task.visible_context),
         "category": task.category,
         "execution_mode": task.execution_mode,
         "repo": task.repo,
@@ -402,14 +408,18 @@ def _measure_pair(
     budget: int,
     temperature: str,
 ) -> dict[str, Any]:
+    request = task.task
+    if task.visible_context:
+        request += "\n\nVisible context:\n" + "\n".join(task.visible_context)
     baseline_started = time.perf_counter()
     baseline_result = baseline.retrieve(
         repo,
-        task.task,
-        target=task.target,
+        request,
         task_kind=task.category,
+        visible_target=task.visible_target,
         token_budget=budget,
         temperature=temperature,
+        profile_key=task.agent_profile or task.repo,
     )
     baseline_observed_ms = (time.perf_counter() - baseline_started) * 1000
 
@@ -417,8 +427,8 @@ def _measure_pair(
     adaptive = service.retrieve(
         ContextRequest(
             repo=str(repo),
-            task=task.task,
-            target=task.target,
+            task=request,
+            target=task.visible_target,
             task_kind=_context_task_kind(task.category),
             token_budget=_diagnostic_measurement_budget(task, budget),
             diagnostic=True,
@@ -445,6 +455,7 @@ def _measure_pair(
     return {
         "baseline": {
             "status": "ready" if baseline_result.slices else "empty",
+            "budget": budget,
             "tokens": baseline_result.usage["tokens"],
             "measurement": baseline_result.usage.get("measurement"),
             "tool_observed_latency_ms": round(baseline_observed_ms, 3),
@@ -454,12 +465,17 @@ def _measure_pair(
             "rg_latency_ms": baseline_result.usage["rg_latency_ms"],
             "lsp_latency_ms": baseline_result.usage["lsp_latency_ms"],
             "tool_calls": baseline_result.usage["tool_calls"],
+            "query_count": baseline_result.usage.get("query_count", 0),
+            "file_read_calls": baseline_result.usage.get("file_read_calls", 0),
+            "target": baseline_result.target,
+            "trace": baseline_result.usage.get("trace", []),
             "paths": sorted({item.path for item in baseline_result.slices}),
             "slices": [asdict(item) for item in baseline_result.slices],
             "warnings": baseline_result.warnings,
         },
         "adaptive": {
             "status": adaptive_payload["status"],
+            "budget": budget,
             "tokens": adaptive_tokens,
             "diagnostic_tokens": adaptive_diagnostic_tokens,
             "diagnostic_budget": _diagnostic_measurement_budget(task, budget),
@@ -471,6 +487,8 @@ def _measure_pair(
                 max(0.0, adaptive_observed_ms - adaptive_engine_ms), 3
             ),
             "tool_calls": 1,
+            "query_count": int(adaptive_usage.get("query_count") or 1),
+            "file_read_calls": len(adaptive.slices),
             "cache": adaptive_usage.get("cache", "disabled"),
             "paths": sorted({item.path for item in adaptive.slices}),
             "target": adaptive_target,

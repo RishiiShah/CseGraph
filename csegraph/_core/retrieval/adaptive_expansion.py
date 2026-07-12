@@ -23,10 +23,10 @@ from csegraph._core.retrieval.token_budget import (
 )
 from csegraph._core.text.source_reader import read_source_lines
 
+from .adaptive_caps import HARD_MAX_CANDIDATES
 from .adaptive_constants import (
     _IMPACT_RELATIONS,
     ADAPTIVE_SCHEMA_VERSION,
-    MAX_CANDIDATES,
 )
 from .adaptive_discovery import (
     _binding_target_ids,
@@ -41,6 +41,9 @@ def _expand_one_hop(
     ranked: list[dict[str, Any]],
     target_id: str,
     intent: str,
+    *,
+    candidate_limit: int,
+    relationship_limit: int,
 ) -> tuple[list[dict[str, Any]], dict[str, str], list[dict[str, Any]]]:
     direct_edges = [
         dict(row)
@@ -62,9 +65,9 @@ def _expand_one_hop(
                 END,
                 source,
                 target
-            LIMIT 48
+            LIMIT ?
             """,
-            (target_id, target_id),
+            (target_id, target_id, relationship_limit),
         )
     ]
     inferred_edges = _inferred_occurrence_edges(index, target_id)
@@ -80,26 +83,36 @@ def _expand_one_hop(
         neighbor_ids.append(other)
         role = _relationship_role(edge, target_id)
         current = roles.get(other)
-        if current is None or _role_rank(role, intent) < _role_rank(current, intent):
+        if (
+            role == "test"
+            or current is None
+            or _role_rank(role, intent) < _role_rank(current, intent)
+        ):
             roles[other] = role
 
     neighbor_ids = list(dict.fromkeys(neighbor_ids))
     loaded = _load_candidate_rows(index, neighbor_ids)
+    for node_id, row in loaded.items():
+        if node_id == target_id:
+            continue
+        path = str(row.get("path") or "")
+        if bool(row.get("is_test")) or path.startswith("tests/") or "/tests/" in path:
+            roles[node_id] = "test"
     existing = {str(row["id"]): row for row in ranked}
     base_score = float(ranked[0].get("_score", 0.0)) if ranked else 1.0
     for position, node_id in enumerate(neighbor_ids):
-        row = loaded.get(node_id)
-        if row is None:
+        candidate_row = loaded.get(node_id)
+        if candidate_row is None:
             continue
         role = roles.get(node_id, "context")
         bonus = {"test": 8.0, "dependency": 7.0, "caller": 6.0}.get(role, 4.0)
         if intent == "debug" and role == "test":
             bonus += 4.0
         merged = dict(existing.get(node_id, {}))
-        merged.update(row)
-        row["_score"] = base_score - 10.0 + bonus - position * 0.01
-        row["_rank_position"] = len(ranked) + position
-        row["_rank_reasons"] = [
+        merged.update(candidate_row)
+        candidate_row["_score"] = base_score - 10.0 + bonus - position * 0.01
+        candidate_row["_rank_position"] = len(ranked) + position
+        candidate_row["_rank_reasons"] = [
             f"one-hop {role}",
             *(
                 ["single-candidate indirect reference"]
@@ -110,9 +123,9 @@ def _expand_one_hop(
                 else []
             ),
         ]
-        merged["_score"] = row["_score"]
-        merged["_rank_position"] = row["_rank_position"]
-        merged["_rank_reasons"] = row["_rank_reasons"]
+        merged["_score"] = candidate_row["_score"]
+        merged["_rank_position"] = candidate_row["_rank_position"]
+        merged["_rank_reasons"] = candidate_row["_rank_reasons"]
         merged["_scope_rank"] = 0
         merged["_graph_rank"] = 0
         merged["_penalty_rank"] = 0
@@ -122,12 +135,12 @@ def _expand_one_hop(
         key=lambda row: (
             0 if str(row["id"]) == target_id else 1,
             _role_rank(roles.get(str(row["id"]), "context"), intent),
-            int(row.get("_rank_position", MAX_CANDIDATES)),
+            int(row.get("_rank_position", HARD_MAX_CANDIDATES)),
             -float(row.get("_score", 0.0)),
             str(row["path"]),
         ),
     )
-    return _deduplicate_ranked_rows(expanded)[:MAX_CANDIDATES], roles, edges
+    return _deduplicate_ranked_rows(expanded)[:candidate_limit], roles, edges
 
 
 def _inferred_occurrence_edges(
@@ -147,11 +160,11 @@ def _inferred_occurrence_edges(
                resolution_strategy, candidate_targets
         FROM edge_occurrences
         WHERE source = ?
-          AND target IS NULL
-          AND relation IN ('calls', 'decorates', 'inherits', 'tested_by')
-        ORDER BY start_line, end_line, name
-        LIMIT 48
-        """,
+            AND target IS NULL
+              AND relation IN ('calls', 'decorates', 'inherits', 'tested_by')
+            ORDER BY start_line, end_line, name
+                LIMIT 48
+            """,
         (target_id,),
     ).fetchall()
     inferred: list[dict[str, Any]] = []
@@ -426,7 +439,7 @@ def _read_symbol_source(repo_root: str, row: dict[str, Any]) -> str | None:
 
 
 def _response_within_limits(response: ContextResponse, request: ContextRequest) -> bool:
-    return response_tokens(response) <= request.token_budget
+    return _content_response_tokens(response) <= request.token_budget
 
 
 def _required_target_budget(
@@ -436,10 +449,7 @@ def _required_target_budget(
 ) -> int:
     response.slices.append(target_slice)
     try:
-        return count_payload_tokens(
-            _response_payload_without_self_count(response),
-            DEFAULT_ENCODING,
-        )
+        return _content_response_tokens(response)
     finally:
         response.slices.pop()
 
@@ -448,6 +458,14 @@ def _response_payload_without_self_count(response: ContextResponse) -> dict[str,
     from csegraph._core.core.serializer import to_dict
 
     return to_dict(response)
+
+
+def _content_response_tokens(response: ContextResponse) -> int:
+    """Count context content without optional diagnostic metadata."""
+
+    payload = _response_payload_without_self_count(response)
+    payload.pop("diagnostics", None)
+    return count_payload_tokens(payload, DEFAULT_ENCODING)
 
 
 def _finalize_response(
@@ -532,6 +550,7 @@ def _ambiguous_response(
             "plan": plan.get("plan_mode"),
             "confidence": plan.get("confidence"),
             "score_margin": plan.get("margin"),
+            "caps": dict(plan.get("caps") or {}),
             "freshness": {
                 "state": freshness.state,
                 "revision": revision,

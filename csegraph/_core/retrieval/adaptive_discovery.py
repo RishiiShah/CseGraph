@@ -6,10 +6,10 @@ from typing import Any, Iterable
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.text.query_tokenizer import query_tokenizer
 
+from .adaptive_caps import HARD_MAX_CANDIDATES
 from .adaptive_constants import (
     _GENERATED_PATH_PARTS,
     _TEST_WORDS,
-    MAX_CANDIDATES,
 )
 from .adaptive_ranking import _candidate_sort_key, _deduplicate_ranked_rows
 
@@ -19,9 +19,11 @@ def _discover_candidates(
     task: str,
     target: str | None,
     *,
-    candidate_limit: int = MAX_CANDIDATES,
+    candidate_limit: int | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
-    candidate_limit = max(1, int(candidate_limit))
+    candidate_limit = (
+        HARD_MAX_CANDIDATES if candidate_limit is None else max(1, int(candidate_limit))
+    )
     candidate_scores: dict[str, float] = {}
     candidate_precedence: dict[str, int] = {}
     candidate_fts_rank: dict[str, int] = {}

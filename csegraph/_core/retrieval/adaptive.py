@@ -11,6 +11,7 @@ from csegraph._core.core.models import (
     ContextStatus,
 )
 from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.retrieval.adaptive_caps import derive_retrieval_caps
 from csegraph._core.retrieval.adaptive_discovery import (
     _discover_candidates,
     _load_candidate_rows,
@@ -30,6 +31,7 @@ from csegraph._core.retrieval.adaptive_ranking import (
     _candidate_evidence,
     _evidence_int,
     _prioritize_rows,
+    _select_context_rows,
     _slice_key,
     _target_confidence,
 )
@@ -45,8 +47,6 @@ from .adaptive_constants import (
     _EDIT_WORDS,
     _STRUCTURAL_WORDS,
     ADAPTIVE_SCHEMA_VERSION,
-    MAX_CANDIDATES,
-    MAX_SLICES,
     TARGET_CONFIDENCE_THRESHOLD,
     TARGET_MARGIN_THRESHOLD,
     TINY_REPO_FILE_LIMIT,
@@ -82,9 +82,27 @@ class ContextService:
                 fast_path = _tiny_target_candidates(index, request.target)
                 if fast_path is not None:
                     ranked, exact = fast_path
+            provisional_caps = derive_retrieval_caps(
+                request,
+                intent=intent,
+                plan_mode=plan_mode,
+                metadata=metadata,
+                exact_target=bool(request.target),
+            )
             if not ranked:
-                ranked, exact = _discover_candidates(index, request.task, request.target)
-            slice_limit = MAX_SLICES
+                ranked, exact = _discover_candidates(
+                    index,
+                    request.task,
+                    request.target,
+                    candidate_limit=provisional_caps.candidate_limit,
+                )
+            caps = derive_retrieval_caps(
+                request,
+                intent=intent,
+                plan_mode=plan_mode,
+                metadata=metadata,
+                exact_target=exact,
+            )
             confidence, margin = _target_confidence(ranked, exact=exact)
             resolved = bool(
                 ranked
@@ -107,11 +125,14 @@ class ContextService:
                         ranked,
                         target_id,
                         intent,
+                        candidate_limit=caps.candidate_limit,
+                        relationship_limit=caps.relationship_limit,
                     )
             plan: dict[str, Any] = {
-                "ranked_ids": [str(row["id"]) for row in ranked[:MAX_CANDIDATES]],
+                "ranked_ids": [str(row["id"]) for row in ranked[: caps.candidate_limit]],
                 "rank_evidence": {
-                    str(row["id"]): _candidate_evidence(row) for row in ranked[:MAX_CANDIDATES]
+                    str(row["id"]): _candidate_evidence(row)
+                    for row in ranked[: caps.candidate_limit]
                 },
                 "roles": roles,
                 "target_id": target_id,
@@ -121,6 +142,7 @@ class ContextService:
                 "resolved": resolved,
                 "plan_mode": plan_mode,
                 "relationships": relationships,
+                "caps": caps.as_dict(),
             }
             rows = _load_candidate_rows(index, plan.get("ranked_ids", []))
             ordered = [rows[node_id] for node_id in plan.get("ranked_ids", []) if node_id in rows]
@@ -136,7 +158,7 @@ class ContextService:
                     row["_fts_rank"] = _evidence_int(
                         evidence,
                         "fts_rank",
-                        MAX_CANDIDATES,
+                        caps.candidate_limit,
                     )
                     row["_scope_rank"] = _evidence_int(evidence, "scope_rank", 2)
                     row["_graph_rank"] = _evidence_int(evidence, "graph_rank", 1)
@@ -166,9 +188,14 @@ class ContextService:
             if plan.get("plan_mode") != "impact":
                 ordered = [target_row]
             else:
-                ordered = [
-                    row for row in ordered if str(row["id"]) == target_id or str(row["id"]) in roles
-                ]
+                ordered = _select_context_rows(
+                    ordered,
+                    target_id=target_id,
+                    roles=roles,
+                    intent=intent,
+                    task=request.task,
+                    limit=caps.slice_limit,
+                )
             response = ContextResponse(
                 schema_version=ADAPTIVE_SCHEMA_VERSION,
                 status=ContextStatus.READY,
@@ -209,6 +236,7 @@ class ContextService:
                         for row in ordered[:8]
                     ],
                     "relationships": list(plan.get("relationships") or []),
+                    "caps": caps.as_dict(),
                     "freshness": {
                         "state": freshness.state,
                         "revision": revision,
@@ -226,7 +254,7 @@ class ContextService:
             target_already_emitted = _slice_key(target_row) in emitted
             target_slice_required = request.source_mode != "never" and not target_already_emitted
             for row in ordered:
-                if len(response.slices) >= slice_limit:
+                if len(response.slices) >= caps.slice_limit:
                     break
                 if _slice_key(row) in emitted:
                     continue

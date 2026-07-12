@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from csegraph import ContextRequest, ContextService, ContextStatus, IndexService, to_dict
+from csegraph._core.retrieval.adaptive_caps import derive_retrieval_caps
+from csegraph._core.retrieval.adaptive_ranking import _select_context_rows
 from csegraph._core.retrieval.token_budget import count_payload_tokens
 
 
@@ -54,6 +56,127 @@ def test_diagnostics_are_opt_in_and_share_the_token_budget(tmp_path: Path):
     assert "diagnostics" in payload
     assert payload["diagnostics"]["target"]["name"] == "greet"
     assert count_payload_tokens(payload, "o200k_base") <= request.token_budget
+
+
+def test_diagnostics_do_not_reject_content_that_fits_the_budget(tmp_path: Path):
+    repo, db = _repo(tmp_path)
+    payload = to_dict(
+        ContextService(db).retrieve(
+            ContextRequest(
+                repo=str(repo),
+                task="Trace callers and tests for greet",
+                target="greet",
+                task_kind="review",
+                token_budget=800,
+                diagnostic=True,
+            )
+        )
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["slices"][0]["symbol"] == "greet"
+
+
+def test_retrieval_caps_scale_with_task_shape_and_repository_size():
+    definition = derive_retrieval_caps(
+        ContextRequest(task="Explain greet", target="greet", token_budget=800),
+        intent="understand",
+        plan_mode="lexical",
+        metadata={"file_count": "8", "symbol_count": "24"},
+        exact_target=True,
+    )
+    impact = derive_retrieval_caps(
+        ContextRequest(
+            task="Trace callers, tests, and dependencies for greet",
+            task_kind="review",
+            token_budget=2400,
+        ),
+        intent="review",
+        plan_mode="impact",
+        metadata={"file_count": "2400", "symbol_count": "120000"},
+        exact_target=False,
+    )
+
+    assert definition.slice_limit == 1
+    assert impact.slice_limit >= 5
+    assert impact.slice_limit > definition.slice_limit
+    assert impact.candidate_limit > definition.candidate_limit
+    assert impact.relationship_limit > definition.relationship_limit
+    assert impact.candidate_limit <= impact.hard_candidate_limit
+    assert impact.slice_limit <= impact.hard_slice_limit
+
+
+def test_diagnostics_expose_the_caps_used_for_the_request(tmp_path: Path):
+    repo, db = _repo(tmp_path)
+    payload = to_dict(
+        ContextService(db).retrieve(
+            ContextRequest(
+                repo=str(repo),
+                task="Trace callers and tests for greet",
+                target="greet",
+                task_kind="review",
+                token_budget=1600,
+                diagnostic=True,
+            )
+        )
+    )
+
+    caps = payload["diagnostics"]["caps"]
+    assert caps["slice_limit"] >= 2
+    assert caps["candidate_limit"] >= 1
+    assert len(payload.get("slices", [])) <= caps["slice_limit"]
+
+
+def test_context_selection_prioritizes_relationships_requested_by_the_task():
+    rows = [
+        {"id": "target", "path": "app.py", "start_line": 1, "_rank_position": 0},
+        {"id": "dependency", "path": "deps.py", "start_line": 2, "_rank_position": 1},
+        {"id": "caller", "path": "caller.py", "start_line": 3, "_rank_position": 2},
+        {"id": "test", "path": "tests/test_app.py", "start_line": 4, "_rank_position": 3},
+    ]
+    roles = {"target": "target", "dependency": "dependency", "caller": "caller", "test": "test"}
+
+    selected = _select_context_rows(
+        rows,
+        target_id="target",
+        roles=roles,
+        intent="review",
+        task="Find callers and tests for the target",
+        limit=4,
+    )
+
+    assert [row["id"] for row in selected] == ["target", "caller", "test"]
+
+
+def test_context_selection_keeps_multiple_requested_dependencies():
+    rows = [
+        {"id": "target", "path": "app.py", "start_line": 1, "_rank_position": 0},
+        {"id": "dependency-one", "path": "one.py", "start_line": 2, "_rank_position": 1},
+        {"id": "dependency-two", "path": "two.py", "start_line": 3, "_rank_position": 2},
+        {"id": "test", "path": "tests/test_app.py", "start_line": 4, "_rank_position": 3},
+    ]
+    roles = {
+        "target": "target",
+        "dependency-one": "dependency",
+        "dependency-two": "dependency",
+        "test": "test",
+    }
+
+    selected = _select_context_rows(
+        rows,
+        target_id="target",
+        roles=roles,
+        intent="edit",
+        task="Inspect dependencies and tests for the target",
+        limit=4,
+    )
+
+    assert [row["id"] for row in selected] == [
+        "target",
+        "dependency-one",
+        "dependency-two",
+        "test",
+    ]
 
 
 def test_source_mode_never_omits_source_material(tmp_path: Path):

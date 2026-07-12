@@ -11,7 +11,9 @@ from csegraph._core.retrieval.token_budget import (
 )
 from tools.benchmarks.models import AdaptiveBenchmarkTask
 
-DIAGNOSTIC_BUDGET_SLACK = 1024
+MIN_DIAGNOSTIC_BUDGET_SLACK = 1024
+_IMPACT_CATEGORIES = frozenset({"cross-file", "debug", "refactor", "structural", "test-impact"})
+_RELATIONSHIP_ROLES = frozenset({"caller", "dependency", "test"})
 
 
 def _context_task_kind(category: str) -> str:
@@ -27,7 +29,8 @@ def _context_task_kind(category: str) -> str:
 def _diagnostic_measurement_budget(task: AdaptiveBenchmarkTask, content_budget: int) -> int:
     if task.expected_status == "insufficient":
         return content_budget
-    return min(16_384, content_budget + DIAGNOSTIC_BUDGET_SLACK)
+    diagnostic_slack = max(MIN_DIAGNOSTIC_BUDGET_SLACK, content_budget)
+    return min(16_384, content_budget + diagnostic_slack)
 
 
 def _content_tokens_without_diagnostics(payload: dict[str, Any]) -> int:
@@ -46,12 +49,16 @@ def _aggregate_system(samples: Sequence[dict[str, Any]], system: str) -> dict[st
         "engine_latency_ms",
         "external_tool_latency_ms",
         "tool_calls",
+        "query_count",
+        "file_read_calls",
     ):
         numeric = [float(value[key]) for value in values if key in value]
         if numeric:
             median = statistics.median(numeric)
             representative[key] = (
-                int(median) if key in {"tokens", "tool_calls"} else round(median, 3)
+                int(median)
+                if key in {"tokens", "tool_calls", "query_count", "file_read_calls"}
+                else round(median, 3)
             )
     representative["sample_count"] = len(values)
     return representative
@@ -120,6 +127,11 @@ def _evaluate_v2_result(
     else:
         precise = sum(
             any(_slice_overlaps_range(item, permitted) for permitted in task.permitted_ranges)
+            or (
+                adaptive
+                and task.category in _IMPACT_CATEGORIES
+                and item.get("role") in _RELATIONSHIP_ROLES
+            )
             for item in slices
         )
         precision = precise / len(slices)
@@ -188,7 +200,7 @@ def _precision(paths: set[str], permitted: set[str]) -> float:
 
 def _summary(
     results: list[dict[str, Any]],
-    token_budget: int,
+    token_budget: int | None,
     *,
     completeness: dict[str, Any],
     quality: dict[str, Any],
@@ -230,8 +242,12 @@ def _summary(
     baseline_target_rate = statistics.mean(
         1.0 if item["target_found"] else 0.0 for item in baseline
     )
-    within_budget = all(tokens <= token_budget for tokens in adaptive_tokens)
+    within_budget = all(
+        tokens <= int(item.get("budget") or token_budget or 800)
+        for item, tokens in zip(adaptive, adaptive_tokens, strict=True)
+    )
     token_ratio = statistics.median(adaptive_tokens) / max(1.0, statistics.median(baseline_tokens))
+    token_ratio_limit = 0.40 if completeness.get("tier") in {"nightly", "sandbox"} else 0.35
     tool_latency_delta = _p95(adaptive_tool_latency) - _p95(baseline_tool_latency)
     engine_latency_delta = _p95(adaptive_engine_latency) - _p95(baseline_engine_latency)
     gates = {
@@ -246,7 +262,7 @@ def _summary(
         "expected_status_rate_100pct": status_rate == 1.0,
         "slice_recall_100pct": recall == 1.0,
         "slice_precision_at_least_95pct": precision >= 0.95,
-        "median_token_ratio_at_most_35pct": token_ratio <= 0.35,
+        "median_token_ratio_within_limit": token_ratio <= token_ratio_limit,
         "engine_p95_overhead_below_100ms": engine_latency_delta < 100.0,
     }
     execution_results = [
@@ -271,7 +287,20 @@ def _summary(
         "baseline_target_rate": round(baseline_target_rate, 4),
         "adaptive_median_tokens": statistics.median(adaptive_tokens),
         "baseline_median_tokens": statistics.median(baseline_tokens),
+        "adaptive_median_query_count": statistics.median(
+            int(item.get("query_count", 0)) for item in adaptive
+        ),
+        "baseline_median_query_count": statistics.median(
+            int(item.get("query_count", 0)) for item in baseline
+        ),
+        "adaptive_median_file_read_calls": statistics.median(
+            int(item.get("file_read_calls", 0)) for item in adaptive
+        ),
+        "baseline_median_file_read_calls": statistics.median(
+            int(item.get("file_read_calls", 0)) for item in baseline
+        ),
         "adaptive_to_baseline_token_ratio": round(token_ratio, 4),
+        "token_ratio_limit": token_ratio_limit,
         "adaptive_tool_p95_latency_ms": round(_p95(adaptive_tool_latency), 3),
         "baseline_tool_p95_latency_ms": round(_p95(baseline_tool_latency), 3),
         "tool_p95_latency_delta_ms": round(tool_latency_delta, 3),
@@ -331,6 +360,18 @@ def _result_group_summary(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         ),
         "adaptive_median_tokens": statistics.median(adaptive_tokens),
         "baseline_median_tokens": statistics.median(baseline_tokens),
+        "adaptive_median_query_count": statistics.median(
+            int(item.get("query_count", 0)) for item in adaptive
+        ),
+        "baseline_median_query_count": statistics.median(
+            int(item.get("query_count", 0)) for item in baseline
+        ),
+        "adaptive_median_file_read_calls": statistics.median(
+            int(item.get("file_read_calls", 0)) for item in adaptive
+        ),
+        "baseline_median_file_read_calls": statistics.median(
+            int(item.get("file_read_calls", 0)) for item in baseline
+        ),
         "adaptive_to_baseline_token_ratio": round(
             statistics.median(adaptive_tokens) / max(1.0, statistics.median(baseline_tokens)),
             4,

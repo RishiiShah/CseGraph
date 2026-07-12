@@ -542,18 +542,47 @@ class TreeSitterParser(BaseParser):
                     class_map,
                 )
             elif child.type in cfg.declaration_wrapper_types:
-                body = child.child_by_field_name("body")
-                target = body if body else child
-                self._extract_symbols(
-                    target,
-                    rel_path,
-                    lines,
-                    symbols,
-                    file_is_test,
-                    parent_class_id,
-                    class_name,
-                    class_map,
+                if child.type in {"block", "suite"}:
+                    self._extract_symbols(
+                        child,
+                        rel_path,
+                        lines,
+                        symbols,
+                        file_is_test,
+                        parent_class_id,
+                        class_name,
+                        class_map,
+                    )
+                    continue
+                targets: list[Node] = []
+                for field in ("body", "consequence", "alternative", "handler"):
+                    target = child.child_by_field_name(field)
+                    if target is not None:
+                        targets.append(target)
+                targets.extend(
+                    nested
+                    for nested in child.children
+                    if nested.type
+                    in {
+                        "block",
+                        "suite",
+                        "except_clause",
+                        "else_clause",
+                        "finally_clause",
+                    }
+                    and nested not in targets
                 )
+                for target in targets:
+                    self._extract_symbols(
+                        target,
+                        rel_path,
+                        lines,
+                        symbols,
+                        file_is_test,
+                        parent_class_id,
+                        class_name,
+                        class_map,
+                    )
             elif child.type in cfg.lambda_decl_types:
                 self._extract_arrow_functions(
                     child,

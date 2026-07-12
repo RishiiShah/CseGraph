@@ -37,6 +37,10 @@ class AdaptiveBenchmarkTask:
     category: str
     task: str
     target: str | None = None
+    visible_target: str | None = None
+    visible_context: tuple[str, ...] = ()
+    token_budget: int = 800
+    agent_profile: str | None = None
     expected_status: str = "ready"
     expected_target: BenchmarkTargetExpectation | None = None
     expected_candidates: tuple[BenchmarkTargetExpectation, ...] = ()

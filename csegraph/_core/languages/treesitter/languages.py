@@ -258,6 +258,18 @@ def make_python_config() -> LanguageConfig:
         function_types=frozenset({"function_definition"}),
         call_types=frozenset({"call"}),
         function_boundary_types=frozenset({"function_definition"}),
+        declaration_wrapper_types=frozenset(
+            {
+                "if_statement",
+                "elif_clause",
+                "else_clause",
+                "try_statement",
+                "except_clause",
+                "finally_clause",
+                "block",
+                "suite",
+            }
+        ),
         decorator_wrapper_type="decorated_definition",
         superclass_field="superclasses",
         heritage_ident_types=frozenset({"identifier", "type_identifier", "attribute"}),

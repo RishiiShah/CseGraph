@@ -72,9 +72,18 @@ def corpus_quality(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
         if not (
             (name == "agent_task_coverage" and corpus.tier != "pr")
             or (corpus.tier in {"perf", "broad"} and name == "exact_target_ratio_at_most_90pct")
+            or (
+                corpus.tier == "sandbox"
+                and name
+                in {
+                    "ambiguous_coverage",
+                    "required_test_evidence",
+                    "insufficient_budget_coverage",
+                }
+            )
         )
     )
-    enforced = corpus.tier in {"pr", "release", "perf", "broad"}
+    enforced = corpus.tier in {"pr", "release", "perf", "broad", "sandbox"}
     passed = not enforced or all(gates[name] for name in enforced_gate_names)
     return {
         "metrics": {
@@ -100,7 +109,14 @@ def corpus_quality(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
 
 
 def corpus_completeness(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
-    expected_counts = {"pr": 22, "nightly": 60, "release": 30, "perf": 220, "broad": 348}
+    expected_counts = {
+        "pr": 22,
+        "nightly": 60,
+        "release": 30,
+        "perf": 220,
+        "broad": 348,
+        "sandbox": 364,
+    }
     expected = expected_counts[corpus.tier]
     supported = [task for task in corpus.tasks if task.supported]
     invalid_tasks: list[str] = []

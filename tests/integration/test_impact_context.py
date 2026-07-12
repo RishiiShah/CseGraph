@@ -153,6 +153,25 @@ def test_dispatch_user_task_keeps_order_handlers_ahead_of_user_handlers(tmp_path
     )
 
 
+def test_test_impact_keeps_test_role_when_test_also_calls_target(tmp_path: Path):
+    repo, db = _dispatch_repo(tmp_path)
+    payload = to_dict(
+        ContextService(db).retrieve(
+            ContextRequest(
+                repo=str(repo),
+                task="Assess one-hop test impact using tests for dispatch",
+                target="dispatch",
+                task_kind="test-impact",
+            )
+        )
+    )
+
+    assert any(
+        slice_["path"] == "tests/test_router.py" and slice_["role"] == "test"
+        for slice_ in payload["slices"]
+    )
+
+
 def test_task_kind_validation(tmp_path: Path):
     repo, db = _repo(tmp_path)
     with pytest.raises(ValueError, match="task_kind"):

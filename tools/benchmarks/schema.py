@@ -50,7 +50,7 @@ def load_corpus(
             f"got {payload.get('schema_version')!r}"
         )
     tier = str(payload.get("tier") or "pr")
-    if tier not in {"pr", "nightly", "release", "perf", "broad"}:
+    if tier not in {"pr", "nightly", "release", "perf", "broad", "sandbox"}:
         raise ValueError(f"Unsupported benchmark tier {tier!r}")
     status = str(payload.get("status") or "ready")
     if status not in {"ready", "planned", "blocked"}:
@@ -110,6 +110,14 @@ def load_corpus(
             category=category,
             task=str(raw["task"]),
             target=str(raw["target"]) if raw.get("target") is not None else None,
+            visible_target=(
+                str(raw["visible_target"]) if raw.get("visible_target") is not None else None
+            ),
+            visible_context=tuple(str(value) for value in raw.get("visible_context", [])),
+            token_budget=int(raw.get("token_budget", 800)),
+            agent_profile=(
+                str(raw["agent_profile"]) if raw.get("agent_profile") is not None else None
+            ),
             expected_status=expected_status,
             expected_target=_parse_target_expectation(
                 raw.get("expected_target"),
@@ -157,6 +165,8 @@ def load_corpus(
             ),
             network_required=bool(raw.get("network_required", False)),
         )
+        if task.token_budget < 1:
+            raise ValueError(f"Task {task.id!r} token_budget must be positive")
         if len(task.commit) != 40:
             raise ValueError(f"Task {task.id!r} must pin a 40-character commit")
         if schema_version == TASK_SCHEMA_VERSION_V2:
@@ -222,6 +232,14 @@ def corpus_to_payload(corpus: AdaptiveBenchmarkCorpus) -> dict[str, Any]:
         }
         if task.target is not None:
             raw["target"] = task.target
+        if task.visible_target is not None:
+            raw["visible_target"] = task.visible_target
+        if task.visible_context:
+            raw["visible_context"] = list(task.visible_context)
+        if task.token_budget != 800:
+            raw["token_budget"] = task.token_budget
+        if task.agent_profile is not None:
+            raw["agent_profile"] = task.agent_profile
         if task.expected_target is not None:
             raw["expected_target"] = {
                 "path": task.expected_target.path,

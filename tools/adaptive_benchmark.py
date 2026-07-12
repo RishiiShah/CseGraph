@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.benchmarks.agent import AgentScenarioPolicy, RepositoryAgent, RepositoryAgentProfile
 from tools.benchmarks.baseline import PyrightLspProvider, StrongBaselineAdapter, _lsp_locations
 from tools.benchmarks.execution import execute_benchmark_task
 from tools.benchmarks.models import (
@@ -12,6 +13,7 @@ from tools.benchmarks.models import (
     BenchmarkRepository,
 )
 from tools.benchmarks.quality import corpus_completeness, corpus_quality
+from tools.benchmarks.sandbox import SANDBOX_REPOSITORIES, SandboxRepositorySpec
 from tools.benchmarks.schema import (
     corpus_to_payload,
     load_adaptive_corpus,
@@ -36,8 +38,13 @@ def build_adaptive_corpus(name: str, *, repo_root: Path) -> AdaptiveBenchmarkCor
 __all__ = [
     "AdaptiveBenchmarkCorpus",
     "AdaptiveBenchmarkTask",
+    "AgentScenarioPolicy",
     "BenchmarkRepository",
     "PyrightLspProvider",
+    "RepositoryAgent",
+    "RepositoryAgentProfile",
+    "SANDBOX_REPOSITORIES",
+    "SandboxRepositorySpec",
     "StrongBaselineAdapter",
     "benchmark_workspace_hygiene",
     "build_adaptive_corpus",

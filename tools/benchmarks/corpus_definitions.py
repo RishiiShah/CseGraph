@@ -11,27 +11,26 @@ from pathlib import Path
 from typing import Any
 
 from tools.benchmarks.models import AdaptiveBenchmarkCorpus
+from tools.benchmarks.sandbox import SANDBOX_REPOSITORIES
 from tools.benchmarks.schema import TASK_SCHEMA_VERSION_V2, load_corpus
 from tools.benchmarks.workspace import _fixture_revision
 
-CORPUS_NAMES = ("pr", "nightly", "release")
+CORPUS_NAMES = ("pr", "nightly", "release", "sandbox")
 CORPUS_VERSIONS = {
     "pr": "2026.07.4",
     "nightly": "2026.07.2",
-    "release": "2026.07.3",
+    "release": "2026.07.4",
+    "sandbox": "2026.07.11-sandbox-agent-v2",
 }
 REPOSITORY_URLS = {
     "benchmarks/fixtures/adaptive_pr": "fixture://local",
     "benchmarks/fixtures/adaptive_js_ts": "fixture://local",
-    "sandbox/micrograd": "sandbox://local",
-    "sandbox/flask": "sandbox://local",
-    "sandbox/django": "sandbox://local",
 }
-PINNED_SANDBOX_COMMITS = {
-    "sandbox/micrograd": "c911406e5ace8742e5841a7e0df113ecb5d54685",
-    "sandbox/flask": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
-    "sandbox/django": "7b09ce8280ef9cdf4922a83c4119c80b868e4304",
-}
+REPOSITORY_URLS.update({spec.path: spec.url for spec in SANDBOX_REPOSITORIES})
+PINNED_SANDBOX_COMMITS = {spec.path: spec.commit for spec in SANDBOX_REPOSITORIES}
+# The original release seed is retained until its expected source locations
+# are regenerated against the newer rolling sandbox pins.
+PINNED_SANDBOX_COMMITS["sandbox/django"] = "7b09ce8280ef9cdf4922a83c4119c80b868e4304"
 
 
 def _target(
@@ -79,6 +78,7 @@ def _task(
     }
     if target is not None:
         value["target"] = target
+        value["visible_target"] = target
     if expected_target is not None:
         value["expected_target"] = expected_target
     if candidates:
@@ -594,7 +594,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             evidence=(
                 _evidence("src/service.py", 6, role="target"),
                 _evidence("src/user_handlers.py", 4, role="caller"),
-                _evidence("tests/test_service.py", 4, role="caller"),
+                _evidence("tests/test_service.py", 4, role="test"),
                 _evidence("src/math_ops.py", 9, role="dependency"),
                 _evidence("src/models.py", 1, role="dependency"),
             ),
@@ -644,7 +644,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             evidence=(
                 _evidence("src/service.py", 11, role="target"),
                 _evidence("src/workflow.py", 5, role="caller"),
-                _evidence("tests/test_service.py", 8, role="caller"),
+                _evidence("tests/test_service.py", 8, role="test"),
                 _evidence("src/math_ops.py", 9, role="dependency"),
             ),
             permitted=(
@@ -668,7 +668,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/workflow.py", 5, role="target"),
-                _evidence("tests/test_workflow.py", 4, role="caller"),
+                _evidence("tests/test_workflow.py", 4, role="test"),
                 _evidence("src/router.py", 12, role="dependency"),
                 _evidence("src/service.py", 11, role="dependency"),
             ),
@@ -1029,7 +1029,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/service.py", 6, role="target"),
-                _evidence("tests/test_service.py", 4, role="caller"),
+                _evidence("tests/test_service.py", 4, role="test"),
                 _evidence("src/user_handlers.py", 4, role="caller"),
                 _evidence("src/math_ops.py", 9, role="dependency"),
                 _evidence("src/models.py", 1, role="dependency"),
@@ -1058,7 +1058,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/service.py", 11, role="target"),
-                _evidence("tests/test_service.py", 8, role="caller"),
+                _evidence("tests/test_service.py", 8, role="test"),
                 _evidence("src/workflow.py", 5, role="caller"),
                 _evidence("src/math_ops.py", 9, role="dependency"),
             ),
@@ -1081,8 +1081,8 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/router.py", 12, role="target"),
-                _evidence("tests/test_router.py", 4, role="caller"),
-                _evidence("tests/test_router.py", 8, role="caller"),
+                _evidence("tests/test_router.py", 4, role="test"),
+                _evidence("tests/test_router.py", 8, role="test"),
                 _evidence("src/workflow.py", 5, role="caller"),
                 _evidence("src/order_handlers.py", 4, role="dependency"),
             ),
@@ -1105,8 +1105,8 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/router.py", 12, role="target"),
-                _evidence("tests/test_router.py", 8, role="caller"),
-                _evidence("tests/test_router.py", 4, role="caller"),
+                _evidence("tests/test_router.py", 8, role="test"),
+                _evidence("tests/test_router.py", 4, role="test"),
                 _evidence("src/workflow.py", 5, role="caller"),
                 _evidence("src/order_handlers.py", 4, role="dependency"),
             ),
@@ -1132,7 +1132,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/workflow.py", 5, role="target"),
-                _evidence("tests/test_workflow.py", 4, role="caller"),
+                _evidence("tests/test_workflow.py", 4, role="test"),
                 _evidence("src/router.py", 12, role="dependency"),
                 _evidence("src/service.py", 11, role="dependency"),
             ),
@@ -1157,7 +1157,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/service.py", 6, role="target"),
-                _evidence("tests/test_service.py", 4, role="caller"),
+                _evidence("tests/test_service.py", 4, role="test"),
                 _evidence("src/user_handlers.py", 4, role="caller"),
                 _evidence("src/math_ops.py", 9, role="dependency"),
                 _evidence("src/models.py", 1, role="dependency"),
@@ -1263,7 +1263,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             evidence=(
                 _evidence("src/service.ts", 5, role="target"),
                 _evidence("src/accountHandlers.js", 3, role="caller"),
-                _evidence("tests/service.test.ts", 3, role="caller"),
+                _evidence("tests/service.test.ts", 3, role="test"),
                 _evidence("src/text.ts", 1, role="dependency"),
                 _evidence("src/store.ts", 3, role="dependency"),
             ),
@@ -1313,7 +1313,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             evidence=(
                 _evidence("src/service.ts", 10, role="target"),
                 _evidence("src/workflow.js", 4, role="caller"),
-                _evidence("tests/service.test.ts", 7, role="caller"),
+                _evidence("tests/service.test.ts", 7, role="test"),
                 _evidence("src/text.ts", 1, role="dependency"),
             ),
             permitted=(
@@ -1337,7 +1337,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/workflow.js", 4, role="target"),
-                _evidence("tests/workflow.test.ts", 3, role="caller"),
+                _evidence("tests/workflow.test.ts", 3, role="test"),
                 _evidence("src/router.js", 9, role="dependency"),
                 _evidence("src/service.ts", 10, role="dependency"),
             ),
@@ -1383,8 +1383,8 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
                 _evidence("src/router.js", 9, role="target"),
                 _evidence("src/workflow.js", 9, role="caller"),
                 _evidence("src/workflow.js", 4, role="caller"),
-                _evidence("tests/router.test.js", 7, role="caller"),
-                _evidence("tests/router.test.js", 3, role="caller"),
+                _evidence("tests/router.test.js", 7, role="test"),
+                _evidence("tests/router.test.js", 3, role="test"),
             ),
             permitted=(
                 _range("src/invoiceHandlers.js", 3, 5),
@@ -1705,7 +1705,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/service.ts", 5, role="target"),
-                _evidence("tests/service.test.ts", 3, role="caller"),
+                _evidence("tests/service.test.ts", 3, role="test"),
                 _evidence("src/accountHandlers.js", 3, role="caller"),
                 _evidence("src/text.ts", 1, role="dependency"),
                 _evidence("src/store.ts", 3, role="dependency"),
@@ -1734,7 +1734,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/service.ts", 10, role="target"),
-                _evidence("tests/service.test.ts", 7, role="caller"),
+                _evidence("tests/service.test.ts", 7, role="test"),
                 _evidence("src/workflow.js", 4, role="caller"),
                 _evidence("src/text.ts", 1, role="dependency"),
             ),
@@ -1757,8 +1757,8 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/router.js", 9, role="target"),
-                _evidence("tests/router.test.js", 3, role="caller"),
-                _evidence("tests/router.test.js", 7, role="caller"),
+                _evidence("tests/router.test.js", 3, role="test"),
+                _evidence("tests/router.test.js", 7, role="test"),
                 _evidence("src/workflow.js", 4, role="caller"),
                 _evidence("src/workflow.js", 9, role="caller"),
             ),
@@ -1781,8 +1781,8 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/router.js", 9, role="target"),
-                _evidence("tests/router.test.js", 7, role="caller"),
-                _evidence("tests/router.test.js", 3, role="caller"),
+                _evidence("tests/router.test.js", 7, role="test"),
+                _evidence("tests/router.test.js", 3, role="test"),
                 _evidence("src/workflow.js", 9, role="caller"),
                 _evidence("src/workflow.js", 4, role="caller"),
             ),
@@ -1808,7 +1808,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/workflow.js", 4, role="target"),
-                _evidence("tests/workflow.test.ts", 3, role="caller"),
+                _evidence("tests/workflow.test.ts", 3, role="test"),
                 _evidence("src/router.js", 9, role="dependency"),
                 _evidence("src/service.ts", 10, role="dependency"),
             ),
@@ -1833,7 +1833,7 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
             ),
             evidence=(
                 _evidence("src/workflow.js", 9, role="target"),
-                _evidence("tests/workflow.test.ts", 8, role="caller"),
+                _evidence("tests/workflow.test.ts", 8, role="test"),
                 _evidence("src/router.js", 9, role="dependency"),
             ),
             permitted=(
@@ -2121,11 +2121,17 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
         ),
         _task(
             "sandbox/flask",
-            "sandbox-flask-insufficient-full-dispatch-debug",
+            "sandbox-flask-debug-full-dispatch",
             "debug",
             "Debug full_dispatch_request using immediate callers, dependencies, and tests",
             target="full_dispatch_request",
-            status="insufficient",
+            expected_target=_target(
+                "src/flask/app.py",
+                992,
+                name="Flask.full_dispatch_request",
+                id="symbol::src/flask/app.py::method::Flask.full_dispatch_request",
+            ),
+            evidence=(_evidence("src/flask/app.py", 992, role="target"),),
             permitted=(_range("src/flask/app.py", 992, 1019),),
         ),
         _task(
@@ -2277,11 +2283,17 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
         ),
         _task(
             "sandbox/django",
-            "sandbox-django-insufficient-http-response",
+            "sandbox-django-definition-http-response",
             "definition",
             "Explain HttpResponse",
             target="HttpResponse",
-            status="insufficient",
+            expected_target=_target(
+                "django/http/response.py",
+                377,
+                name="HttpResponse",
+                id="symbol::django/http/response.py::class::HttpResponse",
+            ),
+            evidence=(_evidence("django/http/response.py", 377, role="target"),),
             permitted=(_range("django/http/response.py", 377, 441),),
         ),
         _task(
@@ -2321,11 +2333,17 @@ _TASKS: dict[str, tuple[dict[str, Any], ...]] = {
         ),
         _task(
             "sandbox/django",
-            "sandbox-django-insufficient-test-impact-object",
+            "sandbox-django-test-impact-object",
             "test-impact",
             "Assess one-hop test impact for get_object_or_404",
             target="get_object_or_404",
-            status="insufficient",
+            expected_target=_target(
+                "django/shortcuts.py",
+                79,
+                name="get_object_or_404",
+                id="symbol::django/shortcuts.py::function::get_object_or_404",
+            ),
+            evidence=(_evidence("django/shortcuts.py", 79, role="target"),),
             permitted=(_range("django/shortcuts.py", 79, 107),),
         ),
         _task(
@@ -2354,6 +2372,10 @@ def build_adaptive_corpus(name: str, *, repo_root: Path) -> AdaptiveBenchmarkCor
     if normalized not in CORPUS_NAMES:
         raise ValueError(f"Unknown adaptive corpus {name!r}; expected one of {CORPUS_NAMES!r}")
     root = Path(repo_root).resolve()
+    if normalized == "sandbox":
+        from tools.benchmarks.sandbox_corpus import build_sandbox_corpus
+
+        return build_sandbox_corpus(root)
     tasks = [dict(task) for task in _TASKS[normalized]]
     repositories = sorted({task["repo"] for task in tasks})
     commits = {repo: _repository_commit(repo, root) for repo in repositories}

@@ -34,6 +34,57 @@ def test_python_treesitter_parser_extracts_top_level_functions(tmp_path):
     assert [sym.name for sym in parsed.symbols] == ["one", "two", "three"]
 
 
+def test_python_treesitter_parser_extracts_declarations_in_type_checking_blocks(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = repo / "sample.py"
+    path.write_text(
+        "\n".join(
+            [
+                "from typing import TYPE_CHECKING",
+                "",
+                "if TYPE_CHECKING:",
+                "    class RequestKwargs(dict):",
+                "        pass",
+                "",
+                "    def typed_helper():",
+                "        return RequestKwargs()",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = _get_python_parser().parse(path, repo)
+    by_name = {sym.name: sym for sym in parsed.symbols}
+
+    assert "RequestKwargs" in by_name
+    assert "typed_helper" in by_name
+
+
+def test_python_treesitter_parser_extracts_declarations_in_exception_blocks(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = repo / "sample.py"
+    path.write_text(
+        "\n".join(
+            [
+                "try:",
+                "    import optional_dependency",
+                "except ImportError:",
+                "    def fallback():",
+                "        return None",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = _get_python_parser().parse(path, repo)
+
+    assert any(symbol.name == "fallback" for symbol in parsed.symbols)
+
+
 def test_python_treesitter_parser_assigns_calls_to_nearest_symbol(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
