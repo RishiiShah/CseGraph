@@ -21,10 +21,16 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_fake_cli(repo: Path) -> str:
-    cli = repo / "env" / "bin" / "csegraph"
+    """Create the console-script layout used by the current test host."""
+    cli = (
+        repo / "env" / "Scripts" / "csegraph.exe"
+        if sys.platform.startswith("win")
+        else repo / "env" / "bin" / "csegraph"
+    )
     cli.parent.mkdir(parents=True, exist_ok=True)
-    cli.write_text("#!/bin/sh\n", encoding="utf-8")
-    os.chmod(cli, 0o755)
+    cli.write_text("" if sys.platform.startswith("win") else "#!/bin/sh\n", encoding="utf-8")
+    if not sys.platform.startswith("win"):
+        os.chmod(cli, 0o755)
     return str(cli.resolve())
 
 

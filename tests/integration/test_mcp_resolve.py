@@ -10,12 +10,22 @@ import csegraph._core.mcp_resolve as mcp_resolve
 from csegraph._core.mcp_resolve import McpLauncherResolutionError, build_mcp_server_entry
 
 
-def test_build_entry_uses_project_venv_cli(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    cli = repo / "env" / "bin" / "csegraph"
+def _write_host_venv_cli(repo: Path) -> Path:
+    cli = (
+        repo / "env" / "Scripts" / "csegraph.exe"
+        if sys.platform.startswith("win")
+        else repo / "env" / "bin" / "csegraph"
+    )
     cli.parent.mkdir(parents=True)
-    cli.write_text("#!/bin/sh\n", encoding="utf-8")
-    os.chmod(cli, 0o755)
+    cli.write_text("" if sys.platform.startswith("win") else "#!/bin/sh\n", encoding="utf-8")
+    if not sys.platform.startswith("win"):
+        os.chmod(cli, 0o755)
+    return cli
+
+
+def test_build_entry_uses_host_project_venv_cli(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cli = _write_host_venv_cli(repo)
 
     entry = build_mcp_server_entry(repo)
 
@@ -77,10 +87,7 @@ def test_custom_command_is_not_rewritten(tmp_path: Path) -> None:
 
 def test_build_entry_can_include_host_platform(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
-    cli = repo / "env" / "bin" / "csegraph"
-    cli.parent.mkdir(parents=True)
-    cli.write_text("#!/bin/sh\n", encoding="utf-8")
-    os.chmod(cli, 0o755)
+    cli = _write_host_venv_cli(repo)
 
     entry = build_mcp_server_entry(repo, platform="codex")
 
