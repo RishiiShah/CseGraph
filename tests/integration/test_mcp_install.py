@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -12,6 +12,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
+import csegraph._core.mcp_install as mcp_install
 from csegraph._core.mcp_doctor import McpDoctorService
 from csegraph._core.mcp_install import McpInstallService
 
@@ -54,6 +55,18 @@ def _mcp_entry(repo: Path, platform: str) -> dict:
     if platform == "claude-code":
         return _read_json(repo / ".mcp.json")["mcpServers"]["csegraph"]
     return _read_json(repo / ".cursor" / "mcp.json")["mcpServers"]["csegraph"]
+
+
+def test_gitignore_entries_normalize_windows_paths(monkeypatch) -> None:
+    monkeypatch.setitem(
+        mcp_install._HOOK_CONFIGS["codex"],
+        "path",
+        PureWindowsPath(".codex") / "hooks.json",
+    )
+
+    entries = mcp_install._gitignore_entries("codex", instructions=False, hooks=True)
+
+    assert ".codex/hooks.json" in entries
 
 
 def test_cursor_install_merges_without_overwriting_unrelated_servers(tmp_path: Path) -> None:

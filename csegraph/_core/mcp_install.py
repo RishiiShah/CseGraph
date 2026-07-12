@@ -700,7 +700,9 @@ def _gitignore_entries(
 
     if hooks is not False:
         hook_platform = "auto" if hooks is True else platform
-        entries.extend(str(_HOOK_CONFIGS[name]["path"]) for name in _hook_platforms(hook_platform))
+        entries.extend(
+            _HOOK_CONFIGS[name]["path"].as_posix() for name in _hook_platforms(hook_platform)
+        )
 
     return tuple(dict.fromkeys(entries))
 
@@ -709,7 +711,7 @@ def _platform_config_gitignore_entries(platform: str) -> tuple[str, ...]:
     if platform == "auto":
         entries = [".codex/config.toml"]
         entries.extend(
-            str(target.path)
+            target.path.as_posix()
             for target in _PROJECT_JSON_TARGETS.values()
             if target.scope == "project"
         )
@@ -726,7 +728,7 @@ def _platform_config_gitignore_entries(platform: str) -> tuple[str, ...]:
         target = _PROJECT_JSON_TARGETS[platform]
         if target.scope == "global":
             return ()
-        return (str(target.path),)
+        return (target.path.as_posix(),)
     return ()
 
 
