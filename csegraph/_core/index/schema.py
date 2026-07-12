@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "csegraph-sqlite-v7"
-SCHEMA_USER_VERSION = 7
+SCHEMA_VERSION = "csegraph-sqlite-v12"
+SCHEMA_USER_VERSION = 12
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
@@ -9,28 +9,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS metadata (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS nodes (
-    id TEXT PRIMARY KEY,
-    parent_id TEXT,
-    type TEXT NOT NULL,
-    name TEXT NOT NULL,
-    path TEXT NOT NULL,
-    language TEXT NOT NULL,
-    sha256 TEXT,
-    signature TEXT,
-    docstring TEXT,
-    start_line INTEGER,
-    end_line INTEGER,
-    source_hash TEXT NOT NULL,
-    parse_status TEXT,
-    parse_error TEXT,
-    metadata TEXT,
-    is_test INTEGER NOT NULL DEFAULT 0,
-    community_id INTEGER,
-    updated_at REAL NOT NULL
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS files (
     id TEXT PRIMARY KEY,
@@ -38,81 +17,93 @@ CREATE TABLE IF NOT EXISTS files (
     name TEXT NOT NULL,
     language TEXT NOT NULL,
     sha256 TEXT NOT NULL,
-    source_hash TEXT NOT NULL,
-    parse_status TEXT,
+    parse_status TEXT NOT NULL,
     parse_error TEXT,
     size INTEGER NOT NULL DEFAULT 0,
     mtime REAL NOT NULL DEFAULT 0,
-    metadata TEXT,
     updated_at REAL NOT NULL
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS symbols (
     id TEXT PRIMARY KEY,
-    file_id TEXT NOT NULL,
-    parent_id TEXT,
+    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    parent_id TEXT REFERENCES symbols(id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
     name TEXT NOT NULL,
-    path TEXT NOT NULL,
-    language TEXT NOT NULL,
     signature TEXT,
     docstring TEXT,
-    start_line INTEGER,
-    end_line INTEGER,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
     source_hash TEXT NOT NULL,
-    metadata TEXT,
     is_test INTEGER NOT NULL DEFAULT 0,
     updated_at REAL NOT NULL
-);
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS module_lookup (
+    module_name TEXT NOT NULL,
+    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    PRIMARY KEY (module_name, file_id)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS symbol_lookup (
+    lookup_name TEXT NOT NULL,
+    symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+    PRIMARY KEY (lookup_name, symbol_id)
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS edges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
     target TEXT NOT NULL,
     relation TEXT NOT NULL,
-    metadata TEXT,
     confidence REAL NOT NULL DEFAULT 1.0,
     confidence_tier TEXT NOT NULL DEFAULT 'EXTRACTED',
-    UNIQUE(source, target, relation, metadata)
-);
-
-CREATE TABLE IF NOT EXISTS relationships (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,
-    target TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    metadata TEXT,
-    confidence REAL NOT NULL DEFAULT 1.0,
-    confidence_tier TEXT NOT NULL DEFAULT 'EXTRACTED',
-    UNIQUE(source, target, kind, metadata)
-);
-
-CREATE TABLE IF NOT EXISTS symbol_references (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_file_id TEXT NOT NULL,
-    enclosing_symbol_id TEXT,
-    target TEXT,
-    kind TEXT NOT NULL,
-    name TEXT NOT NULL,
-    start_line INTEGER,
-    end_line INTEGER,
-    source TEXT,
-    metadata TEXT
-);
+    PRIMARY KEY (source, target, relation)
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS imports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id TEXT NOT NULL,
-    path TEXT NOT NULL,
-    language TEXT NOT NULL,
+    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     import_name TEXT NOT NULL,
-    resolved_file_id TEXT,
-    start_line INTEGER,
-    end_line INTEGER,
+    resolved_file_id TEXT REFERENCES files(id) ON DELETE SET NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
     source TEXT NOT NULL,
-    metadata TEXT,
-    UNIQUE(file_id, import_name, start_line, end_line, source)
-);
+    PRIMARY KEY (file_id, import_name, start_line, end_line, source)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS import_bindings (
+    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    import_name TEXT NOT NULL,
+    local_name TEXT NOT NULL,
+    imported_name TEXT NOT NULL,
+    qualified_name TEXT,
+    binding_kind TEXT NOT NULL DEFAULT 'named',
+    resolved_file_id TEXT REFERENCES files(id) ON DELETE SET NULL,
+    resolved_symbol_id TEXT REFERENCES symbols(id) ON DELETE SET NULL,
+    resolution_status TEXT NOT NULL DEFAULT 'unresolved',
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (
+        file_id, import_name, local_name, imported_name,
+        start_line, end_line, source
+    )
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS edge_occurrences (
+    occurrence_key BLOB PRIMARY KEY,
+    source TEXT NOT NULL,
+    target TEXT,
+    relation TEXT NOT NULL,
+    source_file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    enclosing_symbol_id TEXT REFERENCES symbols(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    source_text TEXT NOT NULL,
+    resolution_status TEXT NOT NULL DEFAULT 'resolved',
+    resolution_strategy TEXT,
+    candidate_targets TEXT
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS summaries (
     node_id TEXT PRIMARY KEY,
@@ -120,6 +111,17 @@ CREATE TABLE IF NOT EXISTS summaries (
     summary TEXT NOT NULL,
     kind TEXT NOT NULL,
     updated_at REAL NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS lexical_documents (
+    rowid INTEGER PRIMARY KEY,
+    node_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    docstring TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source TEXT NOT NULL
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS lexical_index USING fts5(
@@ -129,62 +131,133 @@ CREATE VIRTUAL TABLE IF NOT EXISTS lexical_index USING fts5(
     signature,
     docstring,
     summary,
-    source
+    source,
+    content='lexical_documents',
+    content_rowid='rowid'
 );
 
-CREATE TABLE IF NOT EXISTS embedding_cache (
-    node_id TEXT PRIMARY KEY,
-    model TEXT NOT NULL,
-    source_hash TEXT NOT NULL,
-    vector BLOB NOT NULL,
-    updated_at REAL NOT NULL
-);
+CREATE TRIGGER IF NOT EXISTS lexical_documents_ai
+AFTER INSERT ON lexical_documents BEGIN
+    INSERT INTO lexical_index(
+        rowid, node_id, name, path, signature, docstring, summary, source
+    ) VALUES(
+        new.rowid, new.node_id, new.name, new.path, new.signature,
+        new.docstring, new.summary, new.source
+    );
+END;
 
-CREATE TABLE IF NOT EXISTS retrieval_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    query TEXT NOT NULL,
-    target TEXT,
-    profile TEXT NOT NULL,
-    dependency_completeness REAL NOT NULL,
-    entity_coverage REAL NOT NULL,
-    semantic_overlap REAL NOT NULL,
-    model_confidence REAL NOT NULL,
-    sufficient INTEGER NOT NULL,
-    created_at REAL NOT NULL
-);
+CREATE TRIGGER IF NOT EXISTS lexical_documents_ad
+AFTER DELETE ON lexical_documents BEGIN
+    INSERT INTO lexical_index(
+        lexical_index, rowid, node_id, name, path,
+        signature, docstring, summary, source
+    ) VALUES(
+        'delete', old.rowid, old.node_id, old.name, old.path,
+        old.signature, old.docstring, old.summary, old.source
+    );
+END;
 
-CREATE TABLE IF NOT EXISTS retrieval_context (
-    run_id INTEGER NOT NULL,
-    node_id TEXT NOT NULL,
-    rank INTEGER NOT NULL,
-    score REAL NOT NULL,
-    raw_code INTEGER NOT NULL,
-    evidence TEXT NOT NULL,
-    PRIMARY KEY(run_id, node_id)
-);
+CREATE TRIGGER IF NOT EXISTS lexical_documents_au
+AFTER UPDATE ON lexical_documents BEGIN
+    INSERT INTO lexical_index(
+        lexical_index, rowid, node_id, name, path,
+        signature, docstring, summary, source
+    ) VALUES(
+        'delete', old.rowid, old.node_id, old.name, old.path,
+        old.signature, old.docstring, old.summary, old.source
+    );
+    INSERT INTO lexical_index(
+        rowid, node_id, name, path, signature, docstring, summary, source
+    ) VALUES(
+        new.rowid, new.node_id, new.name, new.path, new.signature,
+        new.docstring, new.summary, new.source
+    );
+END;
 
-CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_type_name ON nodes(type, name);
-CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path);
-CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
-CREATE INDEX IF NOT EXISTS idx_nodes_is_test ON nodes(is_test) WHERE is_test = 1;
-CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
+CREATE TABLE IF NOT EXISTS refresh_leases (
+    repo_root TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    expires_at REAL NOT NULL
+) WITHOUT ROWID;
+
+CREATE VIEW IF NOT EXISTS entities AS
+SELECT
+    f.id AS id,
+    NULL AS parent_id,
+    'file' AS type,
+    'file' AS kind,
+    f.name AS name,
+    f.path AS path,
+    f.path AS file_path,
+    f.language AS language,
+    f.sha256 AS sha256,
+    NULL AS signature,
+    NULL AS docstring,
+    NULL AS start_line,
+    NULL AS end_line,
+    f.sha256 AS source_hash,
+    f.parse_status AS parse_status,
+    f.parse_error AS parse_error,
+    0 AS is_test,
+    f.updated_at AS updated_at
+FROM files AS f
+UNION ALL
+SELECT
+    s.id AS id,
+    COALESCE(s.parent_id, s.file_id) AS parent_id,
+    s.kind AS type,
+    s.kind AS kind,
+    s.name AS name,
+    f.path AS path,
+    f.path AS file_path,
+    f.language AS language,
+    NULL AS sha256,
+    s.signature AS signature,
+    s.docstring AS docstring,
+    s.start_line AS start_line,
+    s.end_line AS end_line,
+    s.source_hash AS source_hash,
+    NULL AS parse_status,
+    NULL AS parse_error,
+    s.is_test AS is_test,
+    s.updated_at AS updated_at
+FROM symbols AS s
+JOIN files AS f ON f.id = s.file_id;
+
+CREATE INDEX IF NOT EXISTS idx_files_name ON files(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
+CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_kind_name ON symbols(kind, name);
-CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
-CREATE INDEX IF NOT EXISTS idx_edges_source_relation ON edges(source, relation);
-CREATE INDEX IF NOT EXISTS idx_edges_target_relation ON edges(target, relation);
-CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
-CREATE INDEX IF NOT EXISTS idx_edges_confidence_tier ON edges(confidence_tier);
-CREATE INDEX IF NOT EXISTS idx_relationships_source_kind ON relationships(source, kind);
-CREATE INDEX IF NOT EXISTS idx_relationships_target_kind ON relationships(target, kind);
-CREATE INDEX IF NOT EXISTS idx_relationships_kind ON relationships(kind);
-CREATE INDEX IF NOT EXISTS idx_symbol_references_file ON symbol_references(source_file_id);
-CREATE INDEX IF NOT EXISTS idx_symbol_references_symbol ON symbol_references(enclosing_symbol_id);
-CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
-CREATE INDEX IF NOT EXISTS idx_imports_path ON imports(path);
-CREATE INDEX IF NOT EXISTS idx_imports_resolved_file ON imports(resolved_file_id);
+CREATE INDEX IF NOT EXISTS idx_symbols_is_test
+    ON symbols(is_test) WHERE is_test = 1;
+CREATE INDEX IF NOT EXISTS idx_module_lookup_file
+    ON module_lookup(file_id);
+CREATE INDEX IF NOT EXISTS idx_symbol_lookup_symbol
+    ON symbol_lookup(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_edges_target_relation
+    ON edges(target, relation);
+CREATE INDEX IF NOT EXISTS idx_edges_relation
+    ON edges(relation);
+CREATE INDEX IF NOT EXISTS idx_imports_resolved_file
+    ON imports(resolved_file_id);
+CREATE INDEX IF NOT EXISTS idx_import_bindings_file_local
+    ON import_bindings(file_id, local_name);
+CREATE INDEX IF NOT EXISTS idx_import_bindings_resolved_file
+    ON import_bindings(resolved_file_id);
+CREATE INDEX IF NOT EXISTS idx_import_bindings_resolved_symbol
+    ON import_bindings(resolved_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_source_relation
+    ON edge_occurrences(source, relation);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_target_relation
+    ON edge_occurrences(target, relation);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_source_file
+    ON edge_occurrences(source_file_id);
+CREATE INDEX IF NOT EXISTS idx_edge_occurrences_enclosing_symbol
+    ON edge_occurrences(enclosing_symbol_id)
+    WHERE enclosing_symbol_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_refresh_leases_expiry
+    ON refresh_leases(expires_at);
 """
 
 METADATA_UPSERT = """

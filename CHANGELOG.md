@@ -1,70 +1,50 @@
 # Changelog
 
-All notable changes to this project are documented here.
+All notable changes to CseGraph are recorded here.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
-## Unreleased
-
-## 1.8.0 - 2026-06-21
+## 2.0.0
 
 ### Added
 
-- Added dynamic `auto` profile selection for MCP, CLI context retrieval, and
-  editor defaults so small, medium, and large repositories get safer defaults.
-- Added package-health badges to the README.
-- Added a `py.typed` marker and `Typing :: Typed` classifier for PEP 561 type
-  checker support.
-- Added Python 3.13 and 3.14 package classifiers, and added Python 3.13 to the
-  CI matrix.
-- Added GitHub issue templates, a pull request template, and Dependabot updates
-  for GitHub Actions, Python, and VS Code extension dependencies.
-- Added optional developer tooling for Ruff, mypy, coverage, and pre-commit.
-- Added CI checks for Ruff and test coverage.
-- Added a SQLite schema migration framework for known older csegraph index
-  versions.
-- Added optional tree-sitter grammar extras so installs can stay small while
-  `csegraph[all]` preserves full language coverage.
-- Added structured diagnostic logging with global `--verbose` and `--quiet`
-  controls.
-- Added thread-backed async SDK facades for indexing, refreshing, context
-  retrieval, and graph queries.
-- Added a public parser plugin API for custom parser and tree-sitter language
-  registration.
-- Added a benchmark regression checker and dedicated CI job for context-quality
-  thresholds.
-- Added a MkDocs Material documentation site scaffold with strict CI build.
-- Added regression coverage for the interactive HTML graph explorer.
-- Added monorepo include-root support for indexing and refreshing selected
-  repo-local subtrees.
-- Added a minimal stdio LSP server with indexed document-symbol support.
+- Added the compact `csegraph-context-v5` response contract with
+  status-specific `slices`, `candidates`, `missing`, `next`, `warnings`, and
+  opt-in `diagnostics`.
+- Added the boolean `diagnostic` context argument. Diagnostic data shares the
+  same whole-response token budget as the rest of the response.
+- Added versioned compact graph and path responses:
+  `csegraph-graph-v2` and `csegraph-path-v2`.
+- Added typed `IndexRequiredError` recovery through the public Python facade.
+- Added atomic fresh-index replacement with integrity validation and
+  failure-safe preservation of the active index.
 
 ### Changed
 
-- Changed MCP install behavior so Codex config is repo-local at
-  `.codex/config.toml` instead of global user config.
-- Split MCP prompt rendering and tool schemas out of the server app module.
-- Changed `csegraph install --platform auto` to create repo-local MCP config for
-  Codex, Claude Code, Cursor, Gemini CLI, Kiro, and Copilot.
-- Changed `csegraph install --platform <client>` to perform full platform setup
-  by default, including platform guidance and supported lifecycle hooks.
-- Changed `csegraph install` to add generated local setup paths and `.csegraph/`
-  to `.gitignore` by default.
+- Locked the CLI to exactly `index`, `refresh`, `context`, `graph`, `path`,
+  `status`, `doctor`, `install`, and `serve`.
+- Locked MCP to exactly `csegraph_index`, `csegraph_refresh`,
+  `csegraph_minimal`, `csegraph_context`, `csegraph_graph`, and
+  `csegraph_path`.
+- Made every MCP input schema reject unknown properties.
+- Standardized continuations as `{tool, arguments?, reason?}`.
+- Made `csegraph_context` the direct entry point for ordinary tasks and
+  reserved `csegraph_minimal` for explicit health or orientation requests.
+- Limited source indexing to Python, JavaScript, and TypeScript.
+- Moved benchmark execution to repository-maintainer tools.
 
-## 1.7.1
+### Index compatibility
 
-### Added
+- Replaced the on-disk format with `csegraph-sqlite-v11`.
+- Removed schema migration. Every non-v11 index must be regenerated with
+  `csegraph index`.
+- Made `files` and `symbols` canonical and exposed their union through the
+  zero-storage `entities` SQL view.
+- Limited persisted data to retrieval, graph traversal, resolution, summaries,
+  freshness coordination, and index metadata.
 
-- Consolidated Python packaging into one distribution: `csegraph`.
-- Added context-quality benchmark corpus support for maintainer evaluation.
-- Added source-first package-layout guardrails and release-hardening workflows.
+### Release gates
 
-### Changed
-
-- Moved implementation internals under private namespaces: `csegraph._core`
-  and `csegraph._cli`.
-- Moved the VS Code extension to the root sibling project `csegraph-vscode/`.
-- Kept tracked source to one Python package and one sibling VS Code extension.
-- Aligned README, agent docs, architecture notes, and command reference with the
-  one-package layout.
-- Kept the public Python facade at `import csegraph`.
+- Required `pytest -q`, Ruff, and mypy to pass.
+- Added contract coverage for every context status, whole-response budgeting,
+  diagnostics, JSON/Markdown parity, continuation shape, graph/path output,
+  CLI help, MCP schemas, and the public Python facade.
+- Added indexing and retrieval coverage for Python, JavaScript, and TypeScript.

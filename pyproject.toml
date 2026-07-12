@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csegraph"
-version = "1.8.0"
+version = "2.0.0"
 description = "Repository context engine for coding agents with CLI, MCP server, and Python facade."
 readme = "README.md"
 authors = [
@@ -28,8 +28,6 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0.0,<2",
-    "watchfiles>=1.0.0,<2",
-    "tomlkit>=0.12.0,<1",
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
@@ -37,7 +35,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0.3", "setuptools>=68"]
+test = [
+    "pytest>=9.0.3",
+    "setuptools>=68",
+    "tomli>=2; python_version < '3.11'",
+]
 benchmark = ["tiktoken>=0.13,<1"]
 dev = [
     "coverage[toml]>=7.6",
@@ -45,55 +47,11 @@ dev = [
     "pre-commit>=4.0",
     "ruff>=0.8",
 ]
-docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
-embeddings = ["sentence-transformers>=1.7.1"]
-go = ["tree-sitter-go>=0.23"]
-rust = ["tree-sitter-rust>=0.23"]
-java = ["tree-sitter-java>=0.23"]
-c = ["tree-sitter-c>=0.23"]
-cpp = ["tree-sitter-cpp>=0.23"]
-ruby = ["tree-sitter-ruby>=0.23"]
-csharp = ["tree-sitter-c-sharp>=0.23"]
-kotlin = ["tree-sitter-kotlin>=0.23"]
-groovy = ["tree-sitter-groovy>=0.1.2"]
-scala = ["tree-sitter-scala>=0.23"]
-php = ["tree-sitter-php>=0.23"]
-swift = ["tree-sitter-swift>=0.7"]
-lua = ["tree-sitter-lua>=0.2"]
-zig = ["tree-sitter-zig>=0.1"]
-powershell = ["tree-sitter-powershell>=0.1"]
-elixir = ["tree-sitter-elixir>=0.3"]
-objc = ["tree-sitter-objc>=0.23"]
-julia = ["tree-sitter-julia>=0.23"]
-verilog = ["tree-sitter-verilog>=0.23"]
-fortran = ["tree-sitter-fortran>=0.6"]
-all = [
-    "tree-sitter-go>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-java>=0.23",
-    "tree-sitter-c>=0.23",
-    "tree-sitter-cpp>=0.23",
-    "tree-sitter-ruby>=0.23",
-    "tree-sitter-c-sharp>=0.23",
-    "tree-sitter-kotlin>=0.23",
-    "tree-sitter-groovy>=0.1.2",
-    "tree-sitter-scala>=0.23",
-    "tree-sitter-php>=0.23",
-    "tree-sitter-swift>=0.7",
-    "tree-sitter-lua>=0.2",
-    "tree-sitter-zig>=0.1",
-    "tree-sitter-powershell>=0.1",
-    "tree-sitter-elixir>=0.3",
-    "tree-sitter-objc>=0.23",
-    "tree-sitter-julia>=0.23",
-    "tree-sitter-verilog>=0.23",
-    "tree-sitter-fortran>=0.6",
-]
 
 [project.urls]
 Repository = "https://github.com/RishiiShah/CseGraph"
 Issues = "https://github.com/RishiiShah/CseGraph/issues"
-Documentation = "https://github.com/RishiiShah/CseGraph/tree/main/docs"
+Documentation = "https://github.com/RishiiShah/CseGraph#readme"
 Changelog = "https://github.com/RishiiShah/CseGraph/blob/main/CHANGELOG.md"
 
 [project.scripts]
@@ -104,11 +62,13 @@ include = ["csegraph*"]
 
 [tool.setuptools.package-data]
 "csegraph" = ["py.typed"]
-"csegraph._core.graph.templates" = ["*.html"]
 
 [tool.pytest.ini_options]
+addopts = []
 testpaths = ["tests/unit", "tests/integration"]
 pythonpath = ["."]
+markers = [
+]
 
 [tool.coverage.run]
 branch = true

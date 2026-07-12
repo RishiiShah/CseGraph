@@ -227,6 +227,18 @@ def test_module_name_from_relpath(parser):
     assert parser.module_name_from_relpath("lib/index.js") == "lib"
 
 
+def test_resolves_parent_import_from_dotted_test_filename(parser):
+    modules = {
+        "tests.service.test": "file::tests/service.test.ts",
+        "src.service": "file::src/service.ts",
+    }
+
+    assert (
+        parser.resolve_local_import("../src/service", modules, "tests.service.test")
+        == "file::src/service.ts"
+    )
+
+
 def test_resolve_local_import(parser):
     mapping = {
         "src.utils": "file::src/utils.ts",

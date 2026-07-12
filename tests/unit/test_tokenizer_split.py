@@ -4,7 +4,6 @@ import pytest
 
 from csegraph._core.languages.base import DefaultTokenizer
 from csegraph._core.languages.registry import UnsupportedLanguageError
-from csegraph._core.text.entities import extract_query_entities
 from csegraph._core.text.tokens import code_tokenize
 
 
@@ -31,28 +30,6 @@ def test_default_tokenizer_matches_code_tokenize():
     tokenizer = DefaultTokenizer()
     text = "BuildReportFromUser snake_case_name"
     assert tokenizer.tokenize(text) == code_tokenize(text)
-
-
-def test_extract_query_entities_matches_known_names():
-    entities = extract_query_entities("Implement build_report", ["build_report", "format_user"])
-    assert "build_report" in entities
-
-
-def test_extract_query_entities_substring_match():
-    entities = extract_query_entities(
-        "Implement build_report function", ["build_report", "format_user"]
-    )
-    assert "build_report" in entities
-
-
-def test_extract_query_entities_does_not_count_private_suffix_matches():
-    entities = extract_query_entities(
-        "Where does load_ignore_filter work?",
-        ["load_ignore_filter", "_filter"],
-    )
-
-    assert "load_ignore_filter" in entities
-    assert "_filter" not in entities
 
 
 def test_tokenizer_for_python_returns_default_tokenizer():

@@ -2,7 +2,7 @@
   "name": "csegraph-vscode",
   "displayName": "CseGraph",
   "description": "Code graph context for coding agents - index, refresh, inspect, and retrieve context from VS Code.",
-  "version": "1.8.0",
+  "version": "2.0.0",
   "publisher": "rishiishah",
   "icon": "media/icon.png",
   "author": "Rishabh Shah, Hitanshu Oza",
@@ -91,17 +91,6 @@
           "default": "csegraph",
           "description": "Path to the csegraph CLI executable."
         },
-        "csegraph.profile": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "small",
-            "medium",
-            "large"
-          ],
-          "default": "auto",
-          "description": "Retrieval profile for indexing and context. Auto resolves from repository size."
-        },
         "csegraph.logCommandOutput": {
           "type": "boolean",
           "default": true,
@@ -129,7 +118,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npx @vscode/vsce package --no-dependencies",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "npm run compile && node --test test/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

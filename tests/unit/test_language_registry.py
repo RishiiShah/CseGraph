@@ -133,32 +133,21 @@ def test_typescript_parser_registered():
 
 def test_all_supported_extensions_registered_on_import():
     from csegraph._core.languages import registry
-    from csegraph._core.languages.treesitter.languages import (
-        LANGUAGE_SPECS,
-        is_language_available,
-    )
 
-    expected = {
-        extension
-        for spec in LANGUAGE_SPECS
-        if is_language_available(spec.name)
-        for extension in spec.extensions
+    assert registry.supported_extensions() == {
+        ".py",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
     }
-    assert expected <= registry.supported_extensions()
 
 
-def test_available_language_factories_skip_missing_optional_grammar(monkeypatch):
+def test_language_factories_are_limited_to_python_and_typescript():
     from csegraph._core.languages.treesitter import languages
 
-    def fake_find_spec(module_name):
-        if module_name == "tree_sitter_go":
-            return None
-        return object()
+    names = [factory().name for factory in languages.LANGUAGE_FACTORIES]
 
-    monkeypatch.setattr(languages, "find_spec", fake_find_spec)
-
-    names = [factory().name for factory in languages.available_language_factories()]
-
-    assert "go" not in names
-    assert "python" in names
-    assert "typescript" in names
+    assert names == ["python", "typescript"]

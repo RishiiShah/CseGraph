@@ -1,26 +1,17 @@
 from __future__ import annotations
 
-import json
-import math
 import re
+import sqlite3
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from csegraph._core.core.models import IndexHealth, KeyEntity, MinimalResult, NextToolSuggestion
-from csegraph._core.corpus_health import (
-    assess_index_health,
-    collect_index_metrics,
-    index_age_hours,
-)
+from csegraph._core.core.models import KeyEntity, MinimalResult, NextToolSuggestion
 from csegraph._core.index.repository import ProjectIndex
-from csegraph._core.repo_state import git_head_state
-from csegraph._core.status import _build_warnings
+from csegraph._core.retrieval.freshness import FreshnessCoordinator
 
-_KEY_ENTITY_LIMIT = 5
+_KEY_ENTITY_LIMIT = 3
 _HUB_FLOOR = 50
 _HUB_PERCENTILE = 0.99
-_HUB_CACHE_MAX = 32
-_hub_cache: Dict[Tuple[str, int], Tuple[int, FrozenSet[str]]] = {}
 
 _INTENT_KEYWORDS: List[tuple[str, tuple[str, ...]]] = [
     ("review", ("review", "pr", "merge", "diff", "changes", "changeset")),
@@ -37,13 +28,12 @@ _INTENT_KEYWORDS: List[tuple[str, tuple[str, ...]]] = [
             "learn",
             "what is",
             "how does",
+            "improve",
+            "improvement",
+            "roadmap",
         ),
     ),
 ]
-
-
-def clear_hub_cache() -> None:
-    _hub_cache.clear()
 
 
 class MinimalService:
@@ -51,164 +41,164 @@ class MinimalService:
         self.db_path = str(Path(db_path))
 
     def first(
-        self, task: Optional[str] = None, inferred_intent: Optional[str] = None
+        self,
+        task: Optional[str] = None,
+        repo: str | Path | None = None,
     ) -> MinimalResult:
+        intent = _detect_intent(task)
+        if repo is not None:
+            freshness = FreshnessCoordinator(self.db_path).ensure_current(repo)
+            if freshness.status is not None:
+                suggestions = []
+                if freshness.next:
+                    suggestions.append(
+                        NextToolSuggestion(
+                            tool=str(freshness.next.get("tool") or "csegraph_index"),
+                            reason=str(
+                                freshness.next.get("reason") or "Make the repository index current."
+                            ),
+                            args=dict(freshness.next.get("arguments") or {}),
+                        )
+                    )
+                return MinimalResult(
+                    summary=f"Index state: {freshness.status}.",
+                    key_entities=[],
+                    next_tool_suggestions=suggestions[:1],
+                )
         index = ProjectIndex(self.db_path)
         try:
             index.initialize_schema()
-            metadata = index.metadata()
-            repo_root = metadata.get("root_dir", "")
-
-            from csegraph._core.retrieval.cache import CACHE
-
-            snapshot = CACHE.get_snapshot(index)
-
-            totals = _graph_totals(snapshot)
-            _, hubs = _cached_snapshot_hub_info(snapshot)
-            intent = inferred_intent if inferred_intent is not None else _detect_intent(task)
+            totals = _graph_totals(index.conn)
             key_entities = _top_entities(
-                snapshot,
+                index.conn,
                 _KEY_ENTITY_LIMIT,
-                exclude=hubs,
                 include_tests=_include_test_entities(intent, task),
             )
-            languages = _top_languages(snapshot)
+            languages = _top_languages(index.conn)
 
             summary = _format_summary(totals, languages)
-            metrics = collect_index_metrics(index.conn)
-            meta = metadata
-            current_branch, current_commit = (
-                git_head_state(repo_root)
-                if repo_root and Path(repo_root).exists()
-                else (None, None)
-            )
-            ext_warnings = _build_warnings(meta, repo_root, current_branch, current_commit)
-            age_h = index_age_hours(metadata_updated_at=meta.get("updated_at"), conn=index.conn)
-            health = assess_index_health(
-                metrics,
-                index_age_hours=age_h,
-                external_warnings=ext_warnings,
-            )
-            if health.verdict != "ok":
-                summary = health.summary + "\n" + summary
-            suggested_queries = (
-                _explore_suggested_queries(key_entities) if intent == "explore" else []
-            )
-            suggestions = _suggestions_for_intent(intent, task, health)
+            suggestions = _suggestions_for_intent(intent, task)
 
-            preview = MinimalResult(
-                command="minimal",
-                db_path=self.db_path,
-                repo_root=repo_root,
+            return MinimalResult(
                 summary=summary,
-                task=task,
-                task_intent=intent,
                 key_entities=key_entities,
                 next_tool_suggestions=suggestions,
-                estimated_tokens=0,
-                index_health=health,
-                suggested_queries=suggested_queries,
             )
-            preview.estimated_tokens = _estimate_tokens(preview)
-            return preview
         finally:
             index.close()
 
 
-def _graph_totals(snapshot: Any) -> Dict[str, int]:
-    files = len(snapshot.files)
-    symbols = len(snapshot.symbols_light)
-    nodes = len(snapshot.node_rows_light)
-    edges = sum(len(edges) for edges in snapshot.outgoing.values())
+def _graph_totals(conn: sqlite3.Connection) -> Dict[str, int]:
+    row = conn.execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM files) AS files,
+            (SELECT COUNT(*) FROM symbols) AS symbols,
+            (SELECT COUNT(*) FROM entities) AS nodes,
+            (SELECT COUNT(*) FROM edges) AS edges
+        """
+    ).fetchone()
+    assert row is not None
     return {
-        "files": files,
-        "symbols": symbols,
-        "nodes": nodes,
-        "edges": edges,
+        "files": int(row["files"]),
+        "symbols": int(row["symbols"]),
+        "nodes": int(row["nodes"]),
+        "edges": int(row["edges"]),
     }
 
 
-def _top_languages(snapshot: Any, limit: int = 3) -> List[str]:
-    counts: Dict[str, int] = {}
-    for node in snapshot.node_rows_light.values():
-        lang = node.get("language")
-        if lang:
-            counts[lang] = counts.get(lang, 0) + 1
-    return [lang for lang, _ in sorted(counts.items(), key=lambda x: x[1], reverse=True)[:limit]]
-
-
-def _cached_snapshot_hub_info(snapshot: Any) -> Tuple[int, set[str]]:
-    key = (snapshot.db_path, snapshot.data_version)
-    cached = _hub_cache.get(key)
-    if cached is not None:
-        return cached[0], set(cached[1])
-    if len(_hub_cache) >= _HUB_CACHE_MAX:
-        _hub_cache.clear()
-    threshold, hubs = _snapshot_hub_info(snapshot)
-    _hub_cache[key] = (threshold, frozenset(hubs))
-    return threshold, hubs
-
-
-def _snapshot_hub_info(snapshot: Any) -> Tuple[int, set[str]]:
-    degree: Dict[str, int] = {}
-    for edges in snapshot.outgoing.values():
-        for edge in edges:
-            source = edge["source"]
-            target = edge["target"]
-            degree[source] = degree.get(source, 0) + 1
-            degree[target] = degree.get(target, 0) + 1
-    if not degree:
-        return _HUB_FLOOR, set()
-
-    degrees = sorted(degree.values())
-    idx = max(0, math.ceil(_HUB_PERCENTILE * len(degrees)) - 1)
-    threshold = max(degrees[idx], _HUB_FLOOR)
-    hubs = {node_id for node_id, count in degree.items() if count >= threshold}
-    return threshold, hubs
+def _top_languages(conn: sqlite3.Connection, limit: int = 3) -> List[str]:
+    rows = conn.execute(
+        """
+        SELECT language, COUNT(*) AS entity_count
+        FROM entities
+        WHERE language <> ''
+        GROUP BY language
+        ORDER BY entity_count DESC, language ASC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [str(row["language"]) for row in rows]
 
 
 def _top_entities(
-    snapshot: Any,
+    conn: sqlite3.Connection,
     limit: int,
-    exclude: Optional[set[str]] = None,
     include_tests: bool = True,
 ) -> List[KeyEntity]:
-    exclude_ids = exclude or set()
-
-    candidates = []
-    for nid, node in snapshot.symbols_light.items():
-        if nid in exclude_ids:
-            continue
-        kind = node.get("kind") or node.get("type") or ""
-        if not include_tests:
-            if kind == "test" or node.get("is_test"):
-                continue
-            path = node.get("file_path") or ""
-            if path.startswith("tests/") or path.startswith("test/"):
-                continue
-
-        degree = len(snapshot.outgoing.get(nid, [])) + len(snapshot.incoming.get(nid, []))
-        candidates.append(
-            {
-                "id": nid,
-                "name": node.get("name") or nid,
-                "kind": kind,
-                "path": node.get("file_path") or "",
-                "degree": degree,
-            }
+    bounded_limit = min(max(0, int(limit)), _KEY_ENTITY_LIMIT)
+    if bounded_limit == 0:
+        return []
+    rows = conn.execute(
+        """
+        WITH degree_events(id) AS (
+            SELECT source FROM edges
+            UNION ALL
+            SELECT target FROM edges
+        ),
+        degrees AS (
+            SELECT id, COUNT(*) AS degree
+            FROM degree_events
+            GROUP BY id
+        ),
+        ranked_degrees AS (
+            SELECT
+                degree,
+                ROW_NUMBER() OVER (ORDER BY degree) AS position,
+                COUNT(*) OVER () AS total
+            FROM degrees
+        ),
+        percentile AS (
+            SELECT COALESCE(
+                MAX(
+                    CASE
+                        WHEN position = CAST((? * total) + 0.999999 AS INTEGER)
+                        THEN degree
+                    END
+                ),
+                0
+            ) AS degree
+            FROM ranked_degrees
+        ),
+        hub_threshold AS (
+            SELECT MAX(degree, ?) AS degree
+            FROM percentile
         )
-
-    candidates.sort(key=lambda x: (-x["degree"], x["name"]))
-
+        SELECT
+            s.id,
+            s.name,
+            s.kind,
+            f.path,
+            COALESCE(d.degree, 0) AS degree
+        FROM symbols AS s
+        JOIN files AS f ON f.id = s.file_id
+        LEFT JOIN degrees AS d ON d.id = s.id
+        CROSS JOIN hub_threshold AS h
+        WHERE COALESCE(d.degree, 0) < h.degree
+          AND (
+              ?
+              OR (
+                  s.kind <> 'test'
+                  AND s.is_test = 0
+                  AND f.path NOT LIKE 'tests/%'
+                  AND f.path NOT LIKE 'test/%'
+              )
+          )
+        ORDER BY degree DESC, s.name ASC, s.id ASC
+        LIMIT ?
+        """,
+        (_HUB_PERCENTILE, _HUB_FLOOR, int(include_tests), bounded_limit),
+    ).fetchall()
     return [
         KeyEntity(
-            id=c["id"],
-            name=c["name"],
-            kind=c["kind"],
-            path=c["path"],
-            degree=c["degree"],
+            id=str(row["id"]),
+            name=str(row["name"]),
+            kind=str(row["kind"]),
+            path=str(row["path"]),
+            degree=int(row["degree"]),
         )
-        for c in candidates[:limit]
+        for row in rows
     ]
 
 
@@ -228,15 +218,6 @@ def _format_summary(totals: Dict[str, int], languages: List[str]) -> str:
     )
 
 
-def _explore_suggested_queries(entities: List[KeyEntity], limit: int = 2) -> List[str]:
-    queries: List[str] = []
-    for entity in entities[:limit]:
-        name = entity.name or entity.id
-        path = entity.path or "this area"
-        queries.append(f"How does {name} connect to the rest of the codebase (see {path})?")
-    return queries
-
-
 def _detect_intent(task: Optional[str]) -> str:
     if not task:
         return "general"
@@ -251,22 +232,8 @@ def _detect_intent(task: Optional[str]) -> str:
 def _suggestions_for_intent(
     intent: str,
     task: Optional[str],
-    health: Optional[IndexHealth] = None,
 ) -> List[NextToolSuggestion]:
     task_arg = task or ""
-    if health and health.verdict in ("stale", "rebuild") and intent != "explore":
-        return [
-            NextToolSuggestion(
-                tool="csegraph_refresh" if health.verdict == "stale" else "csegraph_index",
-                reason=health.hints[0] if health.hints else health.summary,
-                args={},
-            ),
-            NextToolSuggestion(
-                tool="csegraph_context",
-                reason="After the index is current, fetch task context at detail_level=auto.",
-                args={"task": task_arg, "detail_level": "auto"},
-            ),
-        ]
     if intent == "review":
         return [
             NextToolSuggestion(
@@ -276,8 +243,8 @@ def _suggestions_for_intent(
             ),
             NextToolSuggestion(
                 tool="csegraph_context",
-                reason="Retrieve task-specific context with detail_level=auto.",
-                args={"task": task_arg, "detail_level": "auto"},
+                reason="Retrieve adaptive task-specific context.",
+                args={"task": task_arg},
             ),
         ]
     if intent == "debug":
@@ -285,12 +252,12 @@ def _suggestions_for_intent(
             NextToolSuggestion(
                 tool="csegraph_context",
                 reason="Pull task context; pass the failing symbol or file as target if known.",
-                args={"task": task_arg, "detail_level": "auto"},
+                args={"task": task_arg},
             ),
             NextToolSuggestion(
                 tool="csegraph_graph",
-                reason="Inspect the failing symbol's neighborhood (detail_level=standard) to map callers.",
-                args={"detail_level": "minimal"},
+                reason="Inspect the failing symbol's neighborhood to map callers.",
+                args={},
             ),
         ]
     if intent == "refactor":
@@ -298,40 +265,64 @@ def _suggestions_for_intent(
             NextToolSuggestion(
                 tool="csegraph_graph",
                 reason="Map dependencies and callers of the target before renaming or removing.",
-                args={"detail_level": "minimal"},
+                args={},
             ),
             NextToolSuggestion(
                 tool="csegraph_path",
                 reason="Check connectivity between two symbols when extracting or merging.",
-                args={"detail_level": "minimal"},
+                args={},
             ),
         ]
     if intent == "explore":
+        if _is_broad_context_task(task):
+            return [
+                NextToolSuggestion(
+                    tool="csegraph_context",
+                    reason=(
+                        "Retrieve task-specific subsystem context before choosing a narrow symbol."
+                    ),
+                    args={"task": task_arg},
+                ),
+                NextToolSuggestion(
+                    tool="csegraph_graph",
+                    reason=(
+                        "Inspect a high-degree key entity at depth 2 for an architecture sketch."
+                    ),
+                    args={"depth": 2},
+                ),
+            ]
         return [
             NextToolSuggestion(
                 tool="csegraph_graph",
                 reason="Inspect a high-degree key entity at depth 2 for an architecture sketch.",
-                args={"depth": 2, "detail_level": "minimal"},
+                args={"depth": 2},
             ),
             NextToolSuggestion(
                 tool="csegraph_context",
                 reason="Follow up with task-specific context once a subsystem is chosen.",
-                args={"task": task_arg, "detail_level": "auto"},
+                args={"task": task_arg},
             ),
         ]
     return [
         NextToolSuggestion(
             tool="csegraph_context",
-            reason="Start with task-specific context at detail_level=auto.",
-            args={"task": task_arg, "detail_level": "auto"},
+            reason="Start with adaptive task-specific context.",
+            args={"task": task_arg},
         ),
     ]
 
 
-def _estimate_tokens(result: MinimalResult) -> int:
-    from csegraph._core.core.serializer import to_dict
-
-    payload = to_dict(result)
-    payload.pop("estimated_tokens", None)
-    serialized = json.dumps(payload, separators=(",", ":"))
-    return max(1, math.ceil(len(serialized) / 2.7))
+def _is_broad_context_task(task: Optional[str]) -> bool:
+    lowered = (task or "").lower()
+    return any(
+        re.search(rf"\b{re.escape(keyword)}\b", lowered)
+        for keyword in (
+            "improve",
+            "improvement",
+            "improvements",
+            "roadmap",
+            "architecture",
+            "context engine",
+            "retrieval",
+        )
+    )

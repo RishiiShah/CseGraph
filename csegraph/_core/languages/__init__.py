@@ -1,7 +1,12 @@
-from csegraph._core.languages.base import DefaultTokenizer
-from csegraph._core.languages.registry import registry
-from csegraph._core.languages.treesitter.languages import available_language_factories
-from csegraph._core.languages.treesitter.parser import TreeSitterParser
+"""Python, JavaScript, and TypeScript indexing support."""
 
-for _factory in available_language_factories():
-    registry.register(TreeSitterParser(_factory()), DefaultTokenizer())
+
+def __getattr__(name: str):
+    if name == "registry":
+        from csegraph._core.languages.registry import registry
+
+        return registry
+    raise AttributeError(name)
+
+
+__all__ = ["registry"]

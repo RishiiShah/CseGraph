@@ -14,9 +14,10 @@ cd CseGraph
 python -m venv env
 source env/bin/activate
 
-# Install the package, tests, development tools, and all language grammars
+# Install the package, tests, development tools, and benchmark tooling.
+# Runtime language grammars are normal package dependencies in CseGraph 2.x.
 python -m pip install --upgrade pip
-python -m pip install -e ".[test,dev,all]"
+python -m pip install -e ".[test,dev,benchmark]"
 
 # Verify the setup
 python -m pytest tests/ -q
@@ -110,38 +111,41 @@ csegraph/
   _cli/                       # CLI parsing and terminal rendering
   _core/
     core/                     # Shared models and service contracts
-    graph/                    # SQLite graph storage and queries
-    index/                    # Repository indexing pipeline
+    graph/                    # Focused graph and path queries
+    index/                    # Repository indexing facade and focused internals
+      writer.py              # Parsed-file persistence and graph writes
     languages/                # Parser registry and Tree-sitter grammars
-    retrieval/                # Context selection and scoring
+    retrieval/                # Adaptive context, freshness, and budgeting
     server/                   # MCP server and tool handlers
     mcp_install.py            # Coding-agent configuration installer
-    watch.py                  # File watching and incremental refresh
+    status.py                 # Index health and freshness reporting
 csegraph-vscode/              # VS Code extension
 docs/                         # User and architecture documentation
 tests/
   unit/                       # Focused unit tests
   integration/                # End-to-end and contract tests
-tools/                        # Maintainer and benchmark utilities
+tools/                        # Maintainer utilities and focused benchmark package
+  benchmarks/quality.py       # Benchmark corpus quality and completeness gates
 ```
 
 ## Adding Language Support
 
-Built-in language support uses Tree-sitter grammar packages and declarative
-`LanguageSpec` entries.
+Built-in language support uses Tree-sitter grammar packages and private
+`LanguageSpec` entries. CseGraph 2.x intentionally ships only Python,
+JavaScript, and TypeScript support.
 
-1. Add the grammar package as an optional dependency in `pyproject.toml`.
+1. Add the grammar package as a runtime dependency in `pyproject.toml`.
 2. Add a `LanguageSpec` and factory in
    `csegraph/_core/languages/treesitter/languages.py`.
 3. Define extensions, symbol node types, call types, import extraction, and
    language-specific test conventions.
-4. Add parser coverage in `tests/unit/test_treesitter_languages.py`.
-5. Add registry or integration tests when the language changes discovery,
-   imports, or dependency resolution.
+4. Add parser and registry coverage under `tests/unit/`.
+5. Add integration tests when the language changes indexing, discovery,
+   imports, dependency resolution, or context retrieval.
 6. Update the language list in `README.md`.
 
-For external integrations that do not belong in the built-in registry, the
-public API also exposes `register_parser` and `register_tree_sitter_language`.
+Do not add a public parser plugin API unless the public contract, tests, and
+documentation are updated in the same change.
 
 ## VS Code Extension
 
@@ -164,19 +168,12 @@ in the Python package.
 
 ## Documentation
 
-Install the documentation dependencies and build the site:
+Keep documentation focused and in its intended location:
 
-```bash
-python -m pip install -e ".[docs]"
-python -m mkdocs build --strict
-```
-
-Keep documentation in its intended location:
-
-- `README.md`: public overview, installation, and quick start
+- `README.md`: public overview, installation, quick start, and public surface
 - `CONTRIBUTING.md`: contributor workflow
-- `docs/csegraph.md`: CLI, MCP, and SDK reference
 - `docs/architecture.md`: internal architecture and data flow
+- `docs/benchmarks.md`: benchmark tiers and evidence-output workflow
 - `RELEASE.md`: release process
 
 ## Reporting Issues
@@ -203,12 +200,17 @@ the installer, or dependency directories. This includes:
 
 - `.csegraph/`
 - `.scratch/`
-- `.codex/`, `.claude/`, `.cursor/`, `.gemini/`, `.kiro/`, `.vscode/`
+- `.agents/`, `.codex/`, `.claude/`, `.cursor/`, `.gemini/`, `.kiro/`, `.vscode/`
 - `.mcp.json`
 - `build/`, `dist/`, and `*.egg-info/`
 - `*.vsix`
 - `csegraph-vscode/node_modules/`
 - `csegraph-vscode/out/`
+
+Benchmark reports and cloned sandbox repositories are also disposable local
+outputs. Keep benchmark source definitions under `tools/benchmarks/`; write
+reports under `benchmark_results/` only when running a benchmark locally or in
+CI.
 
 ## License
 

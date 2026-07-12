@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - feature
+      - feature/**
 
 permissions:
   contents: read
@@ -76,30 +77,37 @@ jobs:
           PY
 
   python:
-    name: Python package and tests
+    name: Python 3.13 package and build
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-          - "3.14"
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
           cache: pip
 
       - name: Install test/build tooling
         run: python -m pip install --upgrade pip build
 
       - name: Install csegraph editable
-        run: python -m pip install -e ".[test,all]"
+        run: python -m pip install -e ".[test]"
+
+      - name: Verify base install does not require the optional tokenizer
+        run: |
+          python - <<'PY'
+          import importlib.metadata as metadata
+
+          from csegraph._core.retrieval.token_budget import token_measurement
+
+          try:
+              metadata.version("tiktoken")
+          except metadata.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError("base test installation unexpectedly installed tiktoken")
+          assert token_measurement("o200k_base") == "estimated"
+          PY
 
       - name: Assert single installed distribution and import surface
         run: |
@@ -111,7 +119,7 @@ jobs:
           assert project_dists == ["csegraph"], project_dists
           import csegraph
           from csegraph import ContextService
-          assert csegraph.__version__ == "1.8.0"
+          assert csegraph.__version__ == "2.0.0"
           assert ContextService is not None
           PY
 
@@ -124,13 +132,10 @@ jobs:
             tests/integration/test_mcp_install.py \
             tests/integration/test_mcp_server.py \
             tests/integration/test_mcp_surface_guardrails.py \
-            tests/integration/test_agent_workflow_benchmark.py \
-            tests/integration/test_target_disambiguation.py \
-            tests/integration/test_context_quality_corpus.py \
+            tests/integration/test_agent_contracts.py \
+            tests/integration/test_context_contract.py \
+            tests/integration/test_graph_path_contract.py \
             -q
-
-      - name: Run full test suite
-        run: python -m pytest tests/ -q
 
       - name: Compile Python sources
         run: python -m compileall -q csegraph tools csegraph-vscode
@@ -142,15 +147,12 @@ jobs:
           from pathlib import Path
           import zipfile
 
-          try:
-              import tomllib
-              project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
-          except ModuleNotFoundError:
-              import tomlkit
-              project = tomlkit.parse(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          import tomllib
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
           version = project["version"]
           wheels = sorted(Path("dist").glob("csegraph-*.whl"))
           assert len(wheels) == 1, wheels
+          assert wheels[0].stat().st_size <= 175 * 1024, wheels[0].stat().st_size
           with zipfile.ZipFile(wheels[0]) as wheel:
               names = wheel.namelist()
           assert any(name.startswith("csegraph/") for name in names)
@@ -159,6 +161,108 @@ jobs:
               for name in names
           )
           PY
+
+  python-compat:
+    name: Python compatibility (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.14"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install compatibility test dependencies
+        run: python -m pip install --upgrade pip -e ".[test]"
+
+      - name: Run compatibility smoke suite
+        run: |
+          python -m pytest \
+            tests/integration/test_versions.py \
+            tests/integration/test_package_layout.py \
+            tests/integration/test_migrations.py \
+            tests/integration/test_adaptive_context.py \
+            tests/integration/test_freshness_concurrency.py \
+            tests/integration/test_token_budget_modes.py \
+            -q
+
+  mcp-install-smoke:
+    name: MCP install smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install csegraph editable
+        run: python -m pip install --upgrade pip -e ".[test]"
+
+      - name: Run MCP install smoke tests
+        shell: bash
+        run: |
+          python -m pytest \
+            tests/integration/test_mcp_install.py \
+            tests/integration/test_mcp_resolve.py \
+            tests/integration/test_install_editor_smoke.py \
+            -q
+
+      - name: Exercise installed CLI install and doctor flow
+        shell: python
+        run: |
+          import json
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          cli = shutil.which("csegraph")
+          assert cli, "csegraph console script was not found on PATH"
+
+          repo = Path(tempfile.mkdtemp()) / "sample-repo"
+          repo.mkdir()
+          (repo / "app.py").write_text("def hello():\n    return 'hello'\n", encoding="utf-8")
+
+          install = subprocess.run(
+              [cli, "install", str(repo), "--platform", "codex", "--no-verify", "--json"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          install_payload = json.loads(install.stdout)
+          assert install_payload["next_steps"]
+          assert (repo / ".codex" / "config.toml").exists()
+
+          subprocess.run([cli, "index", str(repo), "--json"], check=True, capture_output=True, text=True)
+
+          doctor = subprocess.run(
+              [cli, "doctor", str(repo), "--platform", "codex", "--no-verify", "--json"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          doctor_payload = json.loads(doctor.stdout)
+          assert doctor_payload["config_present"] is True
+          assert doctor_payload["contract_valid"] is True
+          assert doctor_payload["launcher_present"] is True
 
   quality:
     name: Python quality checks
@@ -171,8 +275,11 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Install quality tooling
-        run: python -m pip install --upgrade pip -e ".[test,dev,all]"
+        run: python -m pip install --upgrade pip -e ".[test,dev]"
 
       - name: Run Ruff
         run: python -m ruff check .
@@ -199,28 +306,35 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      - name: Install benchmark dependencies
-        run: python -m pip install --upgrade pip -e ".[test,all]"
-
-      - name: Run context benchmark regression check
-        run: python tools/check_benchmark_regression.py --repo .
-
-  docs:
-    name: Documentation site
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-node@v6
         with:
-          python-version: "3.13"
-          cache: pip
+          node-version: "24"
 
-      - name: Install documentation tooling
-        run: python -m pip install --upgrade pip -e ".[docs]"
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
 
-      - name: Build documentation site
-        run: python -m mkdocs build --strict
+      - name: Install benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip -e ".[test,benchmark]"
+          npm install --global pyright@1.1.407
+
+      - name: Run adaptive retrieval PR gates
+        run: |
+          python tools/run_adaptive_retrieval_benchmark.py \
+            --corpus pr \
+            --modes cold,warm \
+            --warm-runs 1 \
+            --pyright required \
+            --output benchmark_results/adaptive_pr.json \
+            --fail-on-gates
+
+      - name: Upload adaptive benchmark report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaptive-pr-benchmark
+          path: benchmark_results/adaptive_pr.json
+          if-no-files-found: error
 
   vscode:
     name: VS Code extension

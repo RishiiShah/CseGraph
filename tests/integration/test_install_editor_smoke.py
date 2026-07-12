@@ -44,12 +44,16 @@ def test_vscode_extension_exposes_cli_command_setting():
     assert "csegraph.command" in props
 
 
-def test_vscode_extension_uses_profile_setting_for_cli_commands():
+def test_vscode_extension_uses_only_v2_cli_commands():
     source = _VSCODE_SRC.read_text(encoding="utf-8")
+    data = json.loads(_VSCODE_PKG.read_text(encoding="utf-8"))
+    props = data.get("contributes", {}).get("configuration", {}).get("properties", {})
 
-    assert 'get<string>("profile", "auto")' in source
-    assert '"--profile"' in source
-    assert "getProfileArgs" in source
+    assert 'run("graph", [symbol, "--depth", "1"])' in source
+    assert "--profile" not in source
+    assert "--postprocess" not in source
+    assert "--detail-level" not in source
+    assert "csegraph.profile" not in props
 
 
 def test_vscode_extension_redacts_command_args_when_output_logging_disabled():

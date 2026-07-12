@@ -6,8 +6,8 @@ Only the latest released minor line receives security fixes.
 
 | Version | Supported |
 |---|---|
-| 1.8.x | Yes |
-| < 1.8 | No |
+| 2.0.x | Yes |
+| < 2.0 | No |
 
 If an older release receives an extended support window, maintainers will
 announce it explicitly.
@@ -39,30 +39,37 @@ CseGraph is a local development tool. Its normal workflow:
 
 - Runs the MCP server over local stdio; it does not open an MCP network listener
 - Stores repository indexes in `.csegraph/index.db`
-- Stores registry, daemon PID, and daemon log data under `~/.csegraph/`
-- Reads source files from the selected repository
-- Writes indexes, exports, scratch data, and generated client configuration
-  inside the repository
+- Reads Python, JavaScript, and TypeScript source files from the selected
+  repository
+- Writes fresh indexes beside the active database before atomic replacement
+- May write repo-local `.scratch/csegraph/` helper paths when an explicit
+  database path or maintainer workflow uses that location
+- Writes generated MCP/client setup files only when `csegraph install` is run
 - Makes no network requests during normal indexing, refresh, retrieval, MCP, or
   VS Code operations
 
+`csegraph install` can create or update project-local MCP/client config such as
+`.codex/config.toml`, `.mcp.json`, `.cursor/mcp.json`,
+`.gemini/settings.json`, `.kiro/settings/mcp.json`,
+`.agents/mcp_config.json`, `.vscode/` files, instruction files, and optional
+agent refresh hooks under `.claude/settings.json` or `.codex/hooks.json`.
+`--platform antigravity-ide` is the explicit global-config exception.
+
 Repository contents are untrusted input. CseGraph can return source text,
-symbol names, documentation, and paths to a coding agent. Agents and users
+symbol names, import names, and paths to a coding agent. Agents and users
 should treat that content as data, not as trusted instructions.
 
 ### Mitigations
 
 | Vector | Mitigation |
 |---|---|
-| Path traversal | Source reads resolve paths and reject files outside the repository root. MCP database paths and export destinations are restricted to repository-local paths. |
+| Path traversal | Source reads resolve paths and reject files outside the repository root. Database paths are restricted to repository-local `.csegraph/` or `.scratch/csegraph/` locations. |
 | SQL injection | User-derived query values use SQLite parameters. Dynamically generated SQL is limited to internal placeholders and fixed schema identifiers. |
-| Subprocess injection | Git and daemon subprocesses use argument lists instead of `shell=True`, with timeouts where commands can block. |
-| Daemon file traversal | Registry aliases used for PID and log filenames are restricted to alphanumeric characters, `_`, `-`, and `.`; `..` is rejected. |
-| Accidental cloud egress | Non-local embedding endpoints are rejected unless `CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS=1` is explicitly set. |
-| Model code execution | Local `sentence-transformers` models are loaded with `trust_remote_code=False`. |
+| Subprocess injection | Internal subprocess calls use argument lists. Generated agent-hook commands quote arguments and suppress refresh failures. |
 | MCP surface expansion | The stdio server exposes an explicit allowlist of six core tools. Unknown tool names are rejected. |
-| Oversized MCP responses | MCP responses support a hard `max_bytes` ceiling and deterministic field truncation. |
-| Unsupported database schema | Unknown or incompatible CseGraph schemas are rejected unless an explicit reset path is used. |
+| MCP input bloat | Every MCP tool schema rejects unknown properties. |
+| Oversized context responses | Context, diagnostics, and continuations share one bounded response token budget. |
+| Unsupported database schema | Missing or incompatible CseGraph schemas are rejected with `index_required`; users must rebuild with `csegraph index`. |
 | Supply-chain publishing | PyPI releases use GitHub trusted publishing with short-lived OIDC credentials. Release artifacts are built, inspected, and uploaded by CI. |
 
 ### Trust Boundaries and Limitations
@@ -70,11 +77,8 @@ should treat that content as data, not as trusted instructions.
 - CseGraph does not remove prompt-injection text from source code. Coding agents
   must continue to treat repository content as untrusted.
 - A malicious local user who can modify the repository, its index, generated
-  client configuration, or `~/.csegraph/` state is outside CseGraph's trust
+  client configuration, or generated agent hooks is outside CseGraph's trust
   boundary.
-- Generated HTML graph and tree exports contain indexed repository metadata.
-  Treat exports from untrusted repositories as untrusted HTML and open them only
-  in an appropriately isolated browser context.
 - The MCP server is intended for local stdio clients. Do not wrap or expose it
   as an unauthenticated remote service.
 - The VS Code output panel can contain task text, symbol names, file paths, and
@@ -84,24 +88,21 @@ should treat that content as data, not as trusted instructions.
 
 CseGraph is local-first, with these opt-in or user-triggered exceptions:
 
-- **OpenAI-compatible embeddings:** A configured endpoint receives symbol names,
-  signatures, docstrings, symbol kinds, and file paths. Non-localhost endpoints
-  require `CSEGRAPH_ALLOW_CLOUD_EMBEDDINGS=1`.
-- **Local embedding model download:** Installing or first using
-  `sentence-transformers` may download model files from Hugging Face.
-- **HTML graph fonts:** Opening an exported interactive graph can request fonts
-  from Google Fonts. The graph data and visualization logic remain embedded in
-  the local HTML file.
 - **Package and extension installation:** Package managers and the VS Code
   Marketplace use their normal network services.
+- **Release and benchmark maintenance:** CI fetches tags, installs pinned
+  tooling, and can run maintainer benchmark workflows. Normal product indexing,
+  refresh, retrieval, and MCP serving do not require this access.
 
 ## Security Checks
 
 The CI pipeline runs:
 
-- The full Python test suite on Python 3.10 through 3.14
+- The full Python test suite with coverage on Python 3.13
+- Compatibility smoke tests on Python 3.10, 3.11, 3.12, and 3.14
 - Ruff lint and formatting checks
 - Mypy type checking
+- Adaptive retrieval benchmark gates
 - Coverage execution
 - Package layout and generated-artifact guardrails
 - Wheel and source-distribution inspection before release

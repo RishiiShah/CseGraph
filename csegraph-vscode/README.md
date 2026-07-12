@@ -2,7 +2,7 @@
 
 Lightweight VS Code extension for [CseGraph](https://github.com/RishiiShah/CseGraph) — a code graph context engine for coding agents. All graph logic stays in the CLI; the extension is a thin UI layer.
 
-Current extension release: `1.8.0`, aligned with the CseGraph CLI package.
+Current extension release: `2.0.0`, aligned with the CseGraph CLI package.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Current extension release: `1.8.0`, aligned with the CseGraph CLI package.
 ## Install
 
 Install the CLI first, then install the VS Code extension from the Marketplace.
-Build an index in the workspace before using status, context, or inspect
+Build an index in the workspace before using status, context, or graph
 commands.
 
 ### Marketplace
@@ -44,10 +44,10 @@ Open the command palette (`Ctrl+Shift+P`) and type "CseGraph":
 
 | Command | Description |
 |---------|-------------|
-| **Build Index** | Full index with postprocessing |
-| **Refresh Changed Files** | Incremental refresh (minimal postprocess) |
+| **Build Index** | Fresh v11 index |
+| **Refresh Changed Files** | Incremental refresh |
 | **Show Status** | Node/edge counts, warnings, staleness |
-| **Get Context for Task** | Describe a task, get relevant graph context |
+| **Get Context for Task** | Describe a task, get compact relevant context |
 | **Inspect Symbol** | Show callers, callees, and edges for a symbol |
 
 ## Keybindings
@@ -64,7 +64,7 @@ Open the command palette (`Ctrl+Shift+P`) and type "CseGraph":
 
 In the editor, right-click to access:
 
-- **Inspect Symbol** — inspects the selected text or word at cursor
+- **Inspect Symbol** — opens a depth-one graph neighborhood for the selected symbol
 
 
 ## Status Bar
@@ -79,14 +79,14 @@ Updates automatically after every command and auto-refresh.
 
 ## Auto-Refresh
 
-When enabled (default), saving a supported file (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.go`, `.rs`, `.java`, `.rb`, `.c`, `.cpp`, `.h`) triggers `csegraph refresh --postprocess minimal` after a configurable debounce.
+When enabled (default), saving a supported file (`.py`, `.ts`, `.tsx`, `.js`,
+`.jsx`) triggers `csegraph refresh` after a configurable debounce.
 
 ## Settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `csegraph.command` | string | `csegraph` | Path to the CLI executable |
-| `csegraph.profile` | enum | `auto` | Indexing profile (`auto`, `small`, `medium`, `large`) |
 | `csegraph.logCommandOutput` | boolean | `true` | Write raw CLI stdout/stderr to the CseGraph output panel |
 | `csegraph.autoRefresh` | boolean | `true` | Refresh index on file save |
 | `csegraph.refreshDebounce` | number | `2000` | Debounce interval in ms |

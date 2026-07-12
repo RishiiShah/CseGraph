@@ -19,6 +19,7 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
+site/
 .tox/
 build/
 dist/
@@ -47,10 +48,12 @@ data/
 
 # CseGraph runtime artifacts
 .csegraph/
+.csegraphinclude
 .scratch/
 benchmark_results/
 sandbox/
 ref/
+benchmarks/adaptive/*.json
 
 # Unpacked wheel trees can shadow imports if left in the repo root
 csegraph-1.7.1/
@@ -69,6 +72,7 @@ CODEX.md
 .gemini/
 .kiro/
 .mcp.json
+docs/superpowers/
 
-# Local maintainer scripts (not shipped; use tools/csegraph_dev.py)
+# Local maintainer scripts (not shipped; keep reusable tools under tools/)
 scripts/

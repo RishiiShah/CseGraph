@@ -33,6 +33,7 @@ Please include:
 - Whether the repository has an existing `.csegraph/index.db`.
 - A small reproduction repository or file snippet when possible.
 
-Generated local files such as `.csegraph/`, `.scratch/`, `.codex/`, `.claude/`,
-`.vscode/`, `.cursor/`, `.gemini/`, `.kiro/`, and `.mcp.json` should stay out
-of issues unless the exact contents are needed to diagnose the problem.
+Generated local files such as `.csegraph/`, `.scratch/`, `.agents/`,
+`.codex/`, `.claude/`, `.vscode/`, `.cursor/`, `.gemini/`, `.kiro/`, and
+`.mcp.json` should stay out of issues unless the exact contents are needed to
+diagnose the problem.
