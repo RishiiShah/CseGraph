@@ -405,6 +405,14 @@ def test_release_hardening_files_and_vscode_audit_override():
 
     ci_workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "      - feature/**" in ci_workflow
+    assert (
+        "      - name: Run MCP install smoke tests\n"
+        "        shell: bash\n"
+        "        run: |\n"
+        "          python -m pytest "
+        "\\"
+    ) in ci_workflow
+    assert ci_workflow.count("- name: Install ripgrep") == 2
 
     package_json = json.loads((repo_root / "csegraph-vscode" / "package.json").read_text())
     assert package_json["overrides"] == {"tmp": "^0.2.6"}
@@ -418,7 +426,12 @@ def test_release_hardening_files_and_vscode_audit_override():
 def test_release_workflow_uses_shared_nightly_corpus_and_v2_baseline():
     repo_root = Path(__file__).resolve().parents[2]
     workflow = (repo_root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    nightly = (repo_root / ".github" / "workflows" / "adaptive-nightly.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert "historical baseline" in workflow
     assert "historical_tags" in workflow
     assert "--corpus nightly" in workflow
+    assert "- name: Install ripgrep" in workflow
+    assert "- name: Install ripgrep" in nightly

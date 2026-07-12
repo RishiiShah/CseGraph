@@ -217,6 +217,7 @@ jobs:
         run: python -m pip install --upgrade pip -e ".[test]"
 
       - name: Run MCP install smoke tests
+        shell: bash
         run: |
           python -m pytest \
             tests/integration/test_mcp_install.py \
@@ -274,6 +275,9 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Install quality tooling
         run: python -m pip install --upgrade pip -e ".[test,dev]"
 
@@ -305,6 +309,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
 
       - name: Install benchmark dependencies
         run: |
