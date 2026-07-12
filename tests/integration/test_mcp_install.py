@@ -182,8 +182,10 @@ def test_auto_install_writes_repo_local_configs_for_all_supported_clients(tmp_pa
 
     codex_text = (repo / ".codex" / "config.toml").read_text(encoding="utf-8")
     assert "[mcp_servers.csegraph]" in codex_text
-    assert f'command = "{command}"' in codex_text
-    assert f'args = ["serve", "--repo", "{repo.resolve()}", "--platform", "codex"]' in codex_text
+    assert _mcp_entry(repo, "codex") == {
+        "command": command,
+        "args": _serve_args(repo, "codex"),
+    }
 
     claude = _read_json(repo / ".mcp.json")["mcpServers"]["csegraph"]
     assert claude == {
@@ -436,8 +438,10 @@ def test_codex_install_preserves_unrelated_toml_config(tmp_path: Path) -> None:
     assert "[mcp_servers.existing]" in text
     assert "[profiles.dev]" in text
     assert "[mcp_servers.csegraph]" in text
-    assert f'command = "{command}"' in text
-    assert f'args = ["serve", "--repo", "{repo.resolve()}", "--platform", "codex"]' in text
+    assert _mcp_entry(repo, "codex") == {
+        "command": command,
+        "args": _serve_args(repo, "codex"),
+    }
     assert result.installed[0].platform == "codex"
     assert result.installed[0].scope == "project"
     assert not (home / ".codex" / "config.toml").exists()
@@ -475,10 +479,10 @@ def test_codex_install_merges_existing_hooks_json(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    McpInstallService(repo, command="env/bin/csegraph").install(
+    McpInstallService(repo, command=command_path).install(
         platform="codex", hooks=True, dry_run=False
     )
-    McpInstallService(repo, command="env/bin/csegraph").install(
+    McpInstallService(repo, command=command_path).install(
         platform="codex", hooks=True, dry_run=False
     )
 
