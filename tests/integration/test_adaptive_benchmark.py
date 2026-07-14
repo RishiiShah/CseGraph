@@ -24,6 +24,7 @@ from tools.adaptive_benchmark import (
     load_adaptive_corpus,
     prepare_benchmark_repository,
 )
+from tools.benchmarks import agent as benchmark_agent
 from tools.benchmarks.agent import AgentScenarioPolicy, RepositoryAgent, RepositoryAgentProfile
 from tools.benchmarks.models import BenchmarkPermittedRange
 from tools.benchmarks.reporting import _diagnostic_measurement_budget, _evaluate_v2_result
@@ -35,6 +36,36 @@ from tools.run_adaptive_retrieval_benchmark import (
 from tools.run_adaptive_retrieval_benchmark import (
     main as run_adaptive_benchmark,
 )
+
+
+def test_bounded_ripgrep_search_sorts_paths_before_truncating(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    recorded: list[str] = []
+
+    class Process:
+        stdout: list[str] = []
+
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, *, timeout: float) -> None:
+            del timeout
+
+        def kill(self) -> None:
+            pass
+
+    def fake_popen(command: list[str], **_kwargs: object) -> Process:
+        recorded.extend(command)
+        return Process()
+
+    monkeypatch.setattr(benchmark_agent.subprocess, "Popen", fake_popen)
+
+    assert (
+        benchmark_agent._rg_matches(tmp_path, "match", roots=(), globs=("*.py",), result_limit=1)
+        == []
+    )
+    assert recorded[recorded.index("--sort") + 1] == "path"
 
 
 def test_repository_agent_does_not_use_hidden_target_and_records_tool_trace(tmp_path: Path):

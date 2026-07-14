@@ -2,6 +2,15 @@
 
 All notable changes to CseGraph are recorded here.
 
+## 2.0.1
+
+### Fixed
+
+- Made exact `tiktoken` counting a runtime dependency so normal installations
+  enforce token budgets exactly.
+- Made bounded ripgrep benchmark candidate collection stable by sorting paths
+  before truncation.
+
 ## 2.0.0
 
 ### Added

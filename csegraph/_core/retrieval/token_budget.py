@@ -13,7 +13,7 @@ DEFAULT_ENCODING = SUPPORTED_ENCODINGS[0]
 MIN_TOKEN_BUDGET = 256
 MAX_TOKEN_BUDGET = 16_384
 
-_CHARS_PER_TOKEN = 4
+_CHARS_PER_TOKEN = 3
 
 
 @lru_cache(maxsize=len(SUPPORTED_ENCODINGS))
@@ -29,7 +29,7 @@ def _load_encoding(name: str) -> Any | None:
 
 
 def token_estimator(encoding: str) -> str:
-    return "tiktoken" if _load_encoding(encoding) is not None else "chars/4 proxy"
+    return "tiktoken" if _load_encoding(encoding) is not None else "chars/3 proxy"
 
 
 def token_measurement(encoding: str) -> str:
@@ -38,7 +38,7 @@ def token_measurement(encoding: str) -> str:
 
 
 def _estimate_tokens(text: str) -> int:
-    """Estimate token count using the chars/4 heuristic."""
+    """Estimate token count conservatively when the optional tokenizer is unavailable."""
     return max(1, math.ceil(len(text) / _CHARS_PER_TOKEN))
 
 

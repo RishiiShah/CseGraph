@@ -566,6 +566,8 @@ def _rg_matches(
     command = [
         "rg",
         "--json",
+        "--sort",
+        "path",
         "--ignore-case",
         "--line-number",
         "--glob",

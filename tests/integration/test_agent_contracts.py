@@ -79,6 +79,7 @@ def test_runtime_dependencies_and_mcp_docs_match_contract():
     }
     assert names == {
         "mcp",
+        "tiktoken",
         "tree-sitter",
         "tree-sitter-python",
         "tree-sitter-javascript",

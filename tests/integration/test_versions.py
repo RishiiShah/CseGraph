@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 try:
@@ -9,7 +10,7 @@ import csegraph
 import csegraph._cli
 import csegraph._core
 
-EXPECTED_VERSION = "2.0.0"
+EXPECTED_VERSION = "2.0.1"
 
 
 def _project_version(path: Path) -> str:
@@ -29,3 +30,8 @@ def test_all_package_versions_match_module_versions():
     }
 
     assert set(versions.values()) == {EXPECTED_VERSION}
+
+    vscode_package = json.loads(
+        (repo_root / "csegraph-vscode" / "package.json").read_text(encoding="utf-8")
+    )
+    assert vscode_package["version"] == EXPECTED_VERSION

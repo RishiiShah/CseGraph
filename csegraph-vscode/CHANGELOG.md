@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.1
+
+- Aligned the extension release with CseGraph CLI 2.0.1.
+
 ## 2.0.0
 
 - Aligned index, refresh, context, graph, and status actions with the CseGraph

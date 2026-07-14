@@ -12,7 +12,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 
-CORE_RUNTIME_DEPENDENCIES = ["mcp>=1.0.0,<2"]
+CORE_RUNTIME_DEPENDENCIES = ["mcp>=1.0.0,<2", "tiktoken>=0.13,<1"]
 
 
 CORE_LANGUAGE_DEPENDENCIES = [
@@ -81,7 +81,7 @@ def test_one_distribution_package_layout_and_versions():
     root_project = pyproject["project"]
 
     assert root_project["name"] == "csegraph"
-    assert root_project["version"] == "2.0.0"
+    assert root_project["version"] == "2.0.1"
     assert root_project["readme"] == "README.md"
     assert root_project["requires-python"] == ">=3.10"
     assert root_project["dependencies"] == CORE_RUNTIME_DEPENDENCIES + CORE_LANGUAGE_DEPENDENCIES

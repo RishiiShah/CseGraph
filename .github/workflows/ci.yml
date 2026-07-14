@@ -93,20 +93,15 @@ jobs:
       - name: Install csegraph editable
         run: python -m pip install -e ".[test]"
 
-      - name: Verify base install does not require the optional tokenizer
+      - name: Verify base install provides exact token counting
         run: |
           python - <<'PY'
           import importlib.metadata as metadata
 
           from csegraph._core.retrieval.token_budget import token_measurement
 
-          try:
-              metadata.version("tiktoken")
-          except metadata.PackageNotFoundError:
-              pass
-          else:
-              raise AssertionError("base test installation unexpectedly installed tiktoken")
-          assert token_measurement("o200k_base") == "estimated"
+          assert metadata.version("tiktoken")
+          assert token_measurement("o200k_base") == "exact"
           PY
 
       - name: Assert single installed distribution and import surface
@@ -119,7 +114,7 @@ jobs:
           assert project_dists == ["csegraph"], project_dists
           import csegraph
           from csegraph import ContextService
-          assert csegraph.__version__ == "2.0.0"
+          assert csegraph.__version__ == "2.0.1"
           assert ContextService is not None
           PY
 
