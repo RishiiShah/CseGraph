@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ from csegraph._core.retrieval.adaptive_discovery import (
 from csegraph._core.retrieval.adaptive_expansion import (
     _ambiguous_response,
     _context_target,
-    _expand_one_hop,
+    _expand_impact,
     _finalize_response,
     _line_range,
     _read_symbol_source,
@@ -115,18 +116,22 @@ class ContextService:
                 )
             )
             target_id = str(ranked[0]["id"]) if resolved else ""
+            depth = (
+                1 if re.search(r"\b(?:one[- ]hop|1[- ]hop|immediate)\b", request.task, re.I) else 2
+            )
             relationships: list[dict[str, Any]] = []
             roles: dict[str, str] = {}
             if target_id:
                 roles[target_id] = "target"
-                if plan_mode == "impact":
-                    ranked, roles, relationships = _expand_one_hop(
+                if plan_mode in {"impact", "structural"}:
+                    ranked, roles, relationships = _expand_impact(
                         index,
                         ranked,
                         target_id,
                         intent,
                         candidate_limit=caps.candidate_limit,
                         relationship_limit=caps.relationship_limit,
+                        depth=depth,
                     )
             plan: dict[str, Any] = {
                 "ranked_ids": [str(row["id"]) for row in ranked[: caps.candidate_limit]],
@@ -162,6 +167,7 @@ class ContextService:
                     )
                     row["_scope_rank"] = _evidence_int(evidence, "scope_rank", 2)
                     row["_graph_rank"] = _evidence_int(evidence, "graph_rank", 1)
+                    row["_distance"] = _evidence_int(evidence, "distance", 0)
             target_id = str(plan.get("target_id") or "")
             resolved = bool(plan.get("resolved") and target_id in rows)
             confidence = float(plan.get("confidence") or 0.0)
@@ -185,7 +191,7 @@ class ContextService:
             target_row = rows[target_id]
             target = _context_target(target_row, confidence)
             ordered = _prioritize_rows(ordered, target_id, roles, intent)
-            if plan.get("plan_mode") != "impact":
+            if plan.get("plan_mode") == "lexical":
                 ordered = [target_row]
             else:
                 ordered = _select_context_rows(
@@ -207,9 +213,9 @@ class ContextService:
                     "tool": "csegraph_graph",
                     "arguments": {
                         "node": target_id,
-                        "depth": 1,
+                        "depth": depth,
                     },
-                    "reason": "The task asks for structural context; inspect the focused neighborhood.",
+                    "reason": "Task asks for structural context; inspect focused neighborhood.",
                 }
             if request.diagnostic:
                 response.diagnostics = {

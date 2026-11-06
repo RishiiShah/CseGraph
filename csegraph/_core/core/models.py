@@ -35,6 +35,8 @@ class RefreshResult:
     warnings: List[str] = field(default_factory=list)
     dependents_expanded: int = 0
     dependents_cap_hit: bool = False
+    impacted_files: List[str] = field(default_factory=list)
+    context: Optional["ContextResponse"] = None
     timings_ms: Dict[str, float] = field(default_factory=dict)
 
 

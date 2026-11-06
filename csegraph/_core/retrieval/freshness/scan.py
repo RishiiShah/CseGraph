@@ -27,6 +27,7 @@ from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.languages.base import EXCLUDED_DIRS, sha256_text
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 from csegraph._core.repo_state import git_tracked_paths
+from csegraph._core.text.compression import compact_json
 
 TINY_FRESHNESS_FILE_LIMIT = 256
 TINY_FRESHNESS_INDEXED_BYTES_LIMIT = 16 * 1024 * 1024
@@ -539,7 +540,7 @@ def _filter_indexed_content(
                 VALUES('indexed_untracked_paths', ?)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """,
-                (json.dumps(indexed_untracked, separators=(",", ":")),),
+                (compact_json(indexed_untracked),),
             )
             index.conn.commit()
         else:

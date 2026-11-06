@@ -68,13 +68,17 @@ def test_plain_refresh_uses_candidate_aware_coordinator(
     repo.mkdir()
     expected = object()
     calls: list[tuple[str, Path]] = []
+    context_options: list[tuple[str | None, int]] = []
 
     class RecordingCoordinator:
         def __init__(self, db_path: str) -> None:
             calls.append((db_path, Path()))
 
-        def explicit_refresh(self, repo_path: str) -> object:
+        def explicit_refresh(
+            self, repo_path: str, *, task: str | None, token_budget: int
+        ) -> object:
             calls[-1] = (calls[-1][0], Path(repo_path))
+            context_options.append((task, token_budget))
             return expected
 
     class FailingRefreshService:
@@ -89,12 +93,15 @@ def test_plain_refresh_uses_candidate_aware_coordinator(
         "csegraph._core.index.services.RefreshService",
         FailingRefreshService,
     )
-    args = _build_parser().parse_args(["refresh", str(repo), "--json"])
+    args = _build_parser().parse_args(
+        ["refresh", str(repo), "--task", "Inspect callers", "--token-budget", "512", "--json"]
+    )
 
     result = _dispatch(args)
 
     assert result is expected
     assert calls == [(str(repo / ".csegraph" / "index.db"), repo)]
+    assert context_options == [("Inspect callers", 512)]
 
 
 def test_refresh_with_membership_overrides_keeps_full_discovery(
@@ -145,5 +152,7 @@ def test_refresh_with_membership_overrides_keeps_full_discovery(
         {
             "exclude_patterns": ["*.generated.py"],
             "include_roots": ["src"],
+            "task": None,
+            "context_token_budget": 1600,
         }
     ]

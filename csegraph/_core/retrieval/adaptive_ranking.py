@@ -43,6 +43,7 @@ def _candidate_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "fts_rank": int(row.get("_fts_rank", HARD_MAX_CANDIDATES)),
         "scope_rank": int(row.get("_scope_rank", 2)),
         "graph_rank": int(row.get("_graph_rank", 1)),
+        "distance": int(row.get("_distance", 0)),
         "reasons": list(row.get("_rank_reasons") or []),
     }
 
@@ -116,6 +117,7 @@ def _prioritize_rows(
         key=lambda row: (
             0 if str(row["id"]) == target_id else 1,
             _role_rank(roles.get(str(row["id"]), "context"), intent),
+            int(row.get("_distance", 0)),
             int(row.get("_rank_position", HARD_MAX_CANDIDATES)),
             -float(row.get("_score", 0.0)),
             str(row["path"]),
@@ -181,7 +183,9 @@ def _select_context_rows(
         row for row in prioritized if roles.get(str(row.get("id")), "context") == "test"
     ]
     reserve_test_count = (
-        min(2, len(test_candidates)) if intent == "edit" and "test" not in requested_roles else 0
+        min(2, len(test_candidates), max(1, limit - 3))
+        if intent == "edit" and "test" not in requested_roles
+        else 0
     )
     if reserve_test_count:
         requested_roles.sort(key=lambda role: (0 if role == "dependency" else 1, role))
@@ -203,7 +207,8 @@ def _select_context_rows(
             or (role == "test" and "tests" in tokens)
             or (intent == "debug" and role == "test")
         )
-        take_count = len(candidates) if role_is_plural else 1
+        default_take = 2 if intent in {"edit", "debug", "review"} else 1
+        take_count = len(candidates) if role_is_plural else min(default_take, len(candidates))
         for candidate in candidates[:take_count]:
             selected.append(candidate)
             selected_ids.add(str(candidate.get("id")))
@@ -236,7 +241,7 @@ def _select_context_rows(
             ]
             if not candidates:
                 continue
-            take_count = len(candidates) if intent == "debug" else 1
+            take_count = len(candidates) if intent == "debug" else min(2, len(candidates))
             for candidate in candidates[:take_count]:
                 selected.append(candidate)
                 selected_ids.add(str(candidate.get("id")))

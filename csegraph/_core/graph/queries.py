@@ -12,6 +12,7 @@ from csegraph._core.core.models import (
     PathStep,
 )
 from csegraph._core.index.repository import ProjectIndex
+from csegraph._core.text.compression import terse_prose
 
 VALID_CONFIDENCE_TIERS = frozenset({"EXTRACTED", "INFERRED", "AMBIGUOUS"})
 
@@ -100,6 +101,7 @@ class GraphQueryService:
             )
             if truncated:
                 summary += " Result truncated to focused-query limits."
+            summary = terse_prose(summary)
 
             return GraphResult(
                 target=target,

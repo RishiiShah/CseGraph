@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import blake2b
@@ -11,6 +10,7 @@ from typing import Dict, List, Mapping, Optional, Sequence
 from csegraph._core.index.lookups import _LazyModuleLookup
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.languages.types import ParsedFile, ParsedImport, ParsedReference, ParsedSymbol
+from csegraph._core.text.compression import compact_json
 
 _EXTRACTED = "EXTRACTED"
 
@@ -207,7 +207,7 @@ def _edge_occurrence(
         source_text,
         resolution.status,
         resolution.strategy,
-        json.dumps(list(resolution.candidates), sort_keys=True),
+        compact_json(list(resolution.candidates)),
     )
 
 

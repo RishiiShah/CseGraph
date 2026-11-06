@@ -4,6 +4,8 @@ from dataclasses import fields, is_dataclass
 from enum import Enum
 from typing import Any, Dict
 
+from csegraph._core.text.compression import terse_prose
+
 
 def to_dict(value: Any) -> Any:
     from csegraph._core.core.models import (
@@ -37,10 +39,14 @@ def to_dict(value: Any) -> Any:
             item = getattr(value, key)
             if item is not None:
                 payload[key] = to_dict(item)
-        for key in ("candidates", "missing", "warnings"):
+        if isinstance(payload.get("next"), dict) and payload["next"].get("reason"):
+            payload["next"]["reason"] = terse_prose(payload["next"]["reason"])
+        for key in ("candidates", "missing"):
             item = getattr(value, key)
             if item:
                 payload[key] = to_dict(item)
+        if value.warnings:
+            payload["warnings"] = [terse_prose(warning) for warning in value.warnings]
         return payload
     if isinstance(value, GraphResult):
         payload = {
@@ -53,7 +59,7 @@ def to_dict(value: Any) -> Any:
         if value.depth != 1:
             payload["depth"] = value.depth
         if value.summary:
-            payload["summary"] = value.summary
+            payload["summary"] = terse_prose(value.summary)
         if value.total_nodes:
             payload["total_nodes"] = value.total_nodes
         if value.total_edges:
@@ -118,11 +124,11 @@ def to_dict(value: Any) -> Any:
         if value.args:
             payload["arguments"] = to_dict(value.args)
         if value.reason:
-            payload["reason"] = value.reason
+            payload["reason"] = terse_prose(value.reason)
         return payload
     if isinstance(value, MinimalResult):
         payload = {
-            "summary": value.summary,
+            "summary": terse_prose(value.summary),
             "entities": to_dict(value.key_entities[:3]),
         }
         if value.next_tool_suggestions:

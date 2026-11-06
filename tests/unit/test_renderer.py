@@ -57,4 +57,4 @@ def test_render_install_summary_shows_next_steps():
         {"installed": [{}], "skipped": [], "next_steps": ["Restart the client."]}
     )
     assert "1 configured" in output
-    assert "Restart the client." in output
+    assert "Restart client." in output

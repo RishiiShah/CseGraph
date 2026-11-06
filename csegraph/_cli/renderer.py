@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from csegraph._core.text.compression import terse_prose
+
 
 def render_json(payload: dict[str, Any], *, compact: bool) -> str:
     return json.dumps(
@@ -36,6 +38,13 @@ def render_refresh_summary(payload: dict[str, Any]) -> str:
             f"{len(payload.get('unchanged_files') or []):,} unchanged"
         )
     ]
+    impacted = payload.get("impacted_files") or []
+    if impacted:
+        lines.append(f"Impact: {len(impacted):,} files touched")
+    context = payload.get("context") or {}
+    slices = context.get("slices") or []
+    if slices:
+        lines.append(f"Context: {len(slices):,} slices pushed")
     _append_errors_and_warnings(lines, payload)
     return "\n".join(lines) + "\n"
 
@@ -53,7 +62,7 @@ def render_context_markdown(payload: dict[str, Any]) -> str:
     warnings = payload.get("warnings") or []
     if warnings:
         lines.extend(["## Warnings", ""])
-        lines.extend(f"- {warning}" for warning in warnings)
+        lines.extend(f"- {terse_prose(warning)}" for warning in warnings)
         lines.append("")
 
     candidates = payload.get("candidates") or []
@@ -94,7 +103,7 @@ def render_context_markdown(payload: dict[str, Any]) -> str:
         if next_action.get("arguments"):
             lines.append(f"- Arguments: `{json.dumps(next_action['arguments'], sort_keys=True)}`")
         if next_action.get("reason"):
-            lines.append(f"- Reason: {next_action['reason']}")
+            lines.append(f"- Reason: {terse_prose(next_action['reason'])}")
         lines.append("")
 
     if payload.get("diagnostics") is not None:
@@ -123,7 +132,7 @@ def render_status_summary(payload: dict[str, Any]) -> str:
         f"Languages: {languages}",
     ]
     for warning in payload.get("warnings") or []:
-        lines.append(f"WARNING: {warning}")
+        lines.append(f"WARNING: {terse_prose(warning)}")
     return "\n".join(lines) + "\n"
 
 
@@ -135,7 +144,7 @@ def render_install_summary(payload: dict[str, Any]) -> str:
     skipped = payload.get("skipped") or []
     lines = [f"MCP install: {len(installed)} configured, {len(skipped)} skipped"]
     for step in payload.get("next_steps") or []:
-        lines.append(f"- {step}")
+        lines.append(f"- {terse_prose(step)}")
     return "\n".join(lines) + "\n"
 
 
@@ -143,7 +152,7 @@ def _append_errors_and_warnings(lines: list[str], payload: dict[str, Any]) -> No
     for path, error in sorted((payload.get("parse_errors") or {}).items()):
         lines.append(f"ERROR {path}: {error}")
     for warning in payload.get("warnings") or []:
-        lines.append(f"WARNING: {warning}")
+        lines.append(f"WARNING: {terse_prose(warning)}")
 
 
 def _location(path: Any, line_range: Any) -> str:

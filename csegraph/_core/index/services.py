@@ -32,6 +32,11 @@ from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.languages.registry import UnsupportedLanguageError, registry
 from csegraph._core.languages.types import ParsedFile
 from csegraph._core.repo_state import git_untracked_paths
+from csegraph._core.retrieval.impact_context import (
+    IMPACT_CONTEXT_TOKEN_BUDGET,
+    build_impact_context,
+)
+from csegraph._core.retrieval.token_budget import validate_token_budget
 
 _STRUCTURAL_LANGUAGE = "non_code"
 _EXTRACTED = "EXTRACTED"
@@ -146,10 +151,16 @@ class RefreshService:
         changed_paths: Optional[Iterable[str | Path]] = None,
         dependents_limit: int = 50,
         *,
+        dependent_depth: int = 2,
+        include_context: bool = True,
+        task: Optional[str] = None,
+        context_token_budget: int = IMPACT_CONTEXT_TOKEN_BUDGET,
         exclude_patterns: Optional[Sequence[str]] = None,
         include_roots: Optional[Sequence[str | Path]] = None,
         lease_owner: Optional[str] = None,
     ) -> RefreshResult:
+        if include_context:
+            validate_token_budget(context_token_budget)
         cache_path = str(Path(self.db_path).with_name("parse_cache.db"))
         cache = ExtractionCache(cache_path)
         index = ProjectIndex(self.db_path)
@@ -293,15 +304,6 @@ class RefreshService:
                 *(file_node_id(rel_path) for rel_path in [*changed, *deleted]),
                 *old_symbol_ids,
             ]
-            pre_dependents: List[str] = []
-            pre_dependents_cap_hit = False
-            if old_node_ids and dependents_limit > 0:
-                pre_dependents, pre_dependents_cap_hit = _find_dependent_files(
-                    index,
-                    old_node_ids,
-                    set(changed) | set(deleted),
-                    dependents_limit,
-                )
 
             changed_symbols = [
                 symbol.node_id for parsed in parsed_changed for symbol in parsed.symbols
@@ -311,21 +313,14 @@ class RefreshService:
                 *changed_symbols,
             ]
 
-            # --- P5-4: bounded dependent expansion ---
             dependents_expanded = 0
-            dependents_cap_hit = pre_dependents_cap_hit
-            dep_files = list(pre_dependents)
-            if changed_node_ids and dependents_limit > 0:
-                remaining = max(0, dependents_limit - len(dep_files))
-                if remaining and not dependents_cap_hit:
-                    post_files, cap_hit = _find_dependent_files(
-                        index,
-                        changed_node_ids,
-                        set(changed) | set(deleted) | set(dep_files),
-                        remaining,
-                    )
-                    dep_files.extend(post_files)
-                    dependents_cap_hit = cap_hit
+            dep_files, dependents_cap_hit = _cascade_dependent_files(
+                index,
+                [*old_node_ids, *changed_node_ids],
+                set(changed) | set(deleted),
+                dependents_limit,
+                max(1, int(dependent_depth)),
+            )
 
             dep_parsed: List[ParsedFile] = []
             if dep_files:
@@ -341,6 +336,7 @@ class RefreshService:
                         except (UnsupportedLanguageError, ValueError):
                             continue
             timings_ms["dependent_expansion"] = _elapsed_ms(start)
+            impacted_files = sorted({*changed, *deleted, *dep_files})
 
             start = time.perf_counter()
             stats = {"symbols": 0, "edges": 0}
@@ -397,9 +393,32 @@ class RefreshService:
                     file_count=file_count,
                     symbol_count=symbol_count,
                 )
+                index.set_refresh_summary(changed, deleted, dep_files)
                 if lease_owner and index.lease_owner(str(repo_root)) != lease_owner:
                     raise RuntimeError("Lease ownership was lost before commit.")
                 index.bump_index_revision()
+            seed_roles: Dict[str, str] = {}
+            for symbol_id in [
+                *changed_symbols,
+                *(str(row["symbol_id"]) for row in _read_refresh_impact(index, changed)),
+            ]:
+                seed_roles[symbol_id] = "changed"
+            for symbol_id in (
+                str(row["symbol_id"]) for row in _read_refresh_impact(index, dep_files)
+            ):
+                seed_roles.setdefault(symbol_id, "impacted")
+            impacted_context = (
+                build_impact_context(
+                    index,
+                    str(repo_root),
+                    seed_roles,
+                    task=task,
+                    token_budget=context_token_budget,
+                    seed_roles=seed_roles,
+                )
+                if include_context
+                else None
+            )
             changed_symbols.extend(changed_symbols_deleted)
             return RefreshResult(
                 files_indexed=len(parsed_changed),
@@ -414,11 +433,54 @@ class RefreshService:
                 parse_errors=parse_errors,
                 dependents_expanded=dependents_expanded,
                 dependents_cap_hit=dependents_cap_hit,
+                impacted_files=impacted_files,
+                context=impacted_context,
                 timings_ms=timings_ms,
             )
         finally:
             index.close()
             cache.close()
+
+
+def _cascade_dependent_files(
+    index: ProjectIndex,
+    seed_node_ids: Sequence[str],
+    already_processed: set[str],
+    limit: int,
+    depth: int,
+) -> tuple[List[str], bool]:
+    """Walk dependent files to ``depth`` hops so cascades are not truncated."""
+
+    if not seed_node_ids or limit <= 0:
+        return [], False
+    collected: List[str] = []
+    visited = set(already_processed)
+    seen_nodes: set[str] = set()
+    frontier = [node_id for node_id in dict.fromkeys(seed_node_ids) if node_id]
+    cap_hit = False
+    for _ in range(max(1, depth)):
+        frontier = [node_id for node_id in frontier if node_id not in seen_nodes]
+        if not frontier:
+            break
+        seen_nodes.update(frontier)
+        remaining = limit - len(collected)
+        if remaining <= 0:
+            additional, _ = _find_dependent_files(index, frontier, visited, 1)
+            cap_hit = bool(additional)
+            break
+        files, cap_hit = _find_dependent_files(index, frontier, visited, remaining)
+        new_files = [path for path in files if path not in visited]
+        if not new_files:
+            break
+        collected.extend(new_files)
+        visited.update(new_files)
+        if cap_hit:
+            break
+        frontier = [
+            *(file_node_id(path) for path in new_files),
+            *(str(row["symbol_id"]) for row in _read_refresh_impact(index, new_files)),
+        ]
+    return collected[:limit], cap_hit
 
 
 def _target_lease_owned(db_path: Path, repo_root: str, owner: str) -> bool:

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from csegraph import ContextRequest, ContextService, IndexService, to_dict
+from csegraph._core.index.services import RefreshService
 
 
 def _repo(tmp_path: Path) -> tuple[Path, str]:
@@ -178,3 +179,84 @@ def test_task_kind_validation(tmp_path: Path):
         ContextService(db).retrieve(
             ContextRequest(repo=str(repo), task="Explain create", task_kind="invalid")
         )
+
+
+def test_second_hop_includes_inferred_dispatch_handlers(tmp_path: Path):
+    repo, db = _dispatch_repo(tmp_path)
+
+    payload = to_dict(
+        ContextService(db).retrieve(
+            ContextRequest(
+                repo=str(repo),
+                task="Trace dependencies of run",
+                target="run",
+                task_kind="review",
+                token_budget=4000,
+                diagnostic=True,
+            )
+        )
+    )
+
+    assert {item["path"] for item in payload["slices"]} >= {
+        "src/workflow.py",
+        "src/router.py",
+        "src/order_handlers.py",
+        "src/user_handlers.py",
+    }
+    assert any(
+        edge["relation"] == "registers" and edge["distance"] == 2 and edge["inferred"]
+        for edge in payload["diagnostics"]["relationships"]
+    )
+
+    workflow = repo / "src" / "workflow.py"
+    workflow.write_text(workflow.read_text() + "\n# changed\n")
+    refreshed = RefreshService(db).refresh(context_token_budget=4000)
+
+    assert refreshed.context is not None
+    assert {item.path for item in refreshed.context.slices} >= {
+        "src/workflow.py",
+        "src/router.py",
+        "src/order_handlers.py",
+        "src/user_handlers.py",
+    }
+
+
+def test_two_hop_expansion_shares_relationship_budget(tmp_path: Path):
+    from csegraph._core.index.repository import ProjectIndex
+    from csegraph._core.retrieval.adaptive_discovery import _load_candidate_rows
+    from csegraph._core.retrieval.adaptive_expansion import _expand_impact
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "leaves.py").write_text(
+        "\n".join(f"def leaf_{i}():\n    return {i}\n" for i in range(8))
+    )
+    calls = ", ".join(f"leaf_{i}()" for i in range(8))
+    (repo / "helpers.py").write_text(
+        "from leaves import *\n\n"
+        + "\n".join(f"def helper_{i}():\n    return ({calls})\n" for i in range(8))
+    )
+    (repo / "app.py").write_text(
+        "from helpers import *\n\ndef run():\n    return ("
+        + ", ".join(f"helper_{i}()" for i in range(8))
+        + ")\n"
+    )
+    db = str(repo / ".csegraph" / "index.db")
+    IndexService(db).index(repo)
+    index = ProjectIndex(db)
+    try:
+        target_id = "symbol::app.py::function::run"
+        _, _, relationships = _expand_impact(
+            index,
+            list(_load_candidate_rows(index, [target_id]).values()),
+            target_id,
+            "review",
+            candidate_limit=64,
+            relationship_limit=16,
+            depth=2,
+        )
+    finally:
+        index.close()
+
+    assert any(edge["distance"] == 2 for edge in relationships)
+    assert len(relationships) <= 16

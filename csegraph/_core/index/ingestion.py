@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 from csegraph._core.index.cache import ExtractionCache
 from csegraph._core.languages.types import ParsedFile, ParsedSymbol
+from csegraph._core.text.compression import compact_internal
 
 
 def _parse_with_cache(file_iter, repo_root: Path, cache: ExtractionCache) -> List[ParsedFile]:
@@ -49,13 +50,13 @@ def _elapsed_ms(start: float) -> float:
 
 def _file_summary(parsed: ParsedFile) -> str:
     names = ", ".join(symbol.name for symbol in parsed.symbols[:8]) or "no symbols"
-    return f"Module {parsed.rel_path} defines {names}."
+    return f"Module {parsed.rel_path} defines {names}"
 
 
 def _symbol_summary(symbol: ParsedSymbol) -> str:
     parts = [symbol.signature or f"{symbol.kind} {symbol.name}"]
     if symbol.docstring:
-        parts.append(symbol.docstring.split(".")[0].replace("\n", " ").strip())
+        parts.append(compact_internal(symbol.docstring.split(".")[0]))
     if symbol.bases:
         parts.append("inherits " + ", ".join(symbol.bases[:4]))
     if symbol.calls:

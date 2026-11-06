@@ -2,6 +2,40 @@
 
 All notable changes to CseGraph are recorded here.
 
+## Unreleased
+
+### Added
+
+- Added bidirectional two-hop cascade expansion to impact and structural
+  retrieval, including cascade distance in diagnostics.
+- Added pushed `context` slices and `impacted_files` to refresh results, so a
+  database update and its relevant retrieval happen in one call.
+- Added user-facing ATSE-1000 terse prose and internal ATE-1000 compaction.
+
+### Changed
+
+- Reduced exact-target ambiguity thresholds and increased default role
+  selection so retrieval returns cascading callers instead of a single match.
+
+### Fixed
+
+- Preserve pushed context for deletions, mixed changes, and concurrent refresh
+  reuse, including a revision published just before lease acquisition.
+- Preserve dependent context when symbols are removed or renamed inside a
+  surviving file or dependents connect only through file imports, including reused
+  refresh results.
+- Report dependent refresh overflow only when another dependent is omitted.
+- Continue dependent refresh through files containing only imports; expand
+  inferred dispatch and registration references at deeper retrieval hops.
+- Preserve direct relationship roles, honor explicit one-hop requests, and keep
+  requested dependencies alongside relevant tests within slice limits.
+- Skip oversized source slices without hiding smaller context; report missing
+  source and reject invalid refresh token budgets before writes.
+- Preserve quoted whitespace, code blocks, signatures, and symbol names during
+  ATSE/ATE compression.
+- Preserve stopword symbol names in path summaries, keep decorator roles
+  consistent across retrieval paths, and bound cumulative expansion relationships.
+
 ## 2.0.1
 
 ### Fixed

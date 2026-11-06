@@ -22,10 +22,26 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="csegraph_refresh",
-        description="Atomically refresh changed files in an existing repository index.",
+        description=(
+            "Atomically refresh changed files and return cascading impacted context, "
+            "so no follow-up context query is required."
+        ),
         inputSchema={
             "type": "object",
-            "properties": {"repo": _REPO},
+            "properties": {
+                "repo": _REPO,
+                "task": {
+                    "type": "string",
+                    "description": "Optional task used to prioritize pushed context.",
+                },
+                "token_budget": {
+                    "type": "integer",
+                    "minimum": 256,
+                    "maximum": 16384,
+                    "default": 1600,
+                    "description": "Maximum tokens for pushed context.",
+                },
+            },
             "required": ["repo"],
             "additionalProperties": False,
         },

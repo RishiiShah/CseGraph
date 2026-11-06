@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import sqlite3
 import time
 from pathlib import Path
@@ -16,6 +15,7 @@ from csegraph._core.index.schema import (
     SCHEMA_VERSION,
 )
 from csegraph._core.repo_state import git_head_state
+from csegraph._core.text.compression import compact_json
 
 _LEXICAL_TRIGGER_NAMES = (
     "lexical_documents_ai",
@@ -186,16 +186,34 @@ class ProjectIndex:
             "index_revision": existing.get("index_revision", "0"),
         }
         if include_roots is not None:
-            rows["include_roots"] = json.dumps(list(include_roots), sort_keys=True)
+            rows["include_roots"] = compact_json(list(include_roots))
         if indexed_untracked_paths is not None:
-            rows["indexed_untracked_paths"] = json.dumps(
-                sorted(set(indexed_untracked_paths)),
-                separators=(",", ":"),
-            )
+            rows["indexed_untracked_paths"] = compact_json(sorted(set(indexed_untracked_paths)))
         if file_count is not None:
             rows["file_count"] = str(int(file_count))
         if symbol_count is not None:
             rows["symbol_count"] = str(int(symbol_count))
+        self.conn.executemany(
+            """
+            INSERT INTO metadata(key, value)
+            VALUES(?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            sorted(rows.items()),
+        )
+        self._commit()
+
+    def set_refresh_summary(
+        self,
+        changed_files: Sequence[str],
+        deleted_files: Sequence[str],
+        dependent_files: Sequence[str],
+    ) -> None:
+        rows = {
+            "last_refresh_changed_files": compact_json(sorted(set(changed_files))),
+            "last_refresh_deleted_files": compact_json(sorted(set(deleted_files))),
+            "last_refresh_dependent_files": compact_json(sorted(set(dependent_files))),
+        }
         self.conn.executemany(
             """
             INSERT INTO metadata(key, value)

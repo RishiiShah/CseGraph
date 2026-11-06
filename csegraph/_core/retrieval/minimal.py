@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from csegraph._core.core.models import KeyEntity, MinimalResult, NextToolSuggestion
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.retrieval.freshness import FreshnessCoordinator
+from csegraph._core.text.compression import terse_prose
 
 _KEY_ENTITY_LIMIT = 3
 _HUB_FLOOR = 50
@@ -54,14 +55,14 @@ class MinimalService:
                     suggestions.append(
                         NextToolSuggestion(
                             tool=str(freshness.next.get("tool") or "csegraph_index"),
-                            reason=str(
+                            reason=terse_prose(
                                 freshness.next.get("reason") or "Make the repository index current."
                             ),
                             args=dict(freshness.next.get("arguments") or {}),
                         )
                     )
                 return MinimalResult(
-                    summary=f"Index state: {freshness.status}.",
+                    summary=terse_prose(f"Index state: {freshness.status}."),
                     key_entities=[],
                     next_tool_suggestions=suggestions[:1],
                 )
@@ -212,7 +213,7 @@ def _include_test_entities(intent: str, task: Optional[str]) -> bool:
 
 def _format_summary(totals: Dict[str, int], languages: List[str]) -> str:
     lang_part = f" languages: {', '.join(languages)}." if languages else ""
-    return (
+    return terse_prose(
         f"{totals['files']} files, {totals['symbols']} symbols, {totals['edges']} edges."
         + lang_part
     )

@@ -69,6 +69,14 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_repo(refresh, positional=True)
     refresh.add_argument("--exclude", action="append", default=None, metavar="PATTERN")
     refresh.add_argument("--include-root", action="append", default=None, metavar="PATH")
+    refresh.add_argument("--task", default=None, help="Task used to prioritize pushed context.")
+    refresh.add_argument(
+        "--token-budget",
+        type=int,
+        default=1600,
+        metavar="N",
+        help="Maximum tokens for pushed context.",
+    )
     _add_json(refresh)
 
     context = subparsers.add_parser("context", help="Retrieve compact adaptive context.")
@@ -169,13 +177,19 @@ def _dispatch(args: argparse.Namespace) -> Any:
         if args.exclude is None and args.include_root is None:
             from csegraph._core.retrieval.freshness import FreshnessCoordinator
 
-            return FreshnessCoordinator(db_path).explicit_refresh(repo)
+            return FreshnessCoordinator(db_path).explicit_refresh(
+                repo,
+                task=args.task,
+                token_budget=args.token_budget,
+            )
 
         from csegraph._core.index.services import RefreshService
 
         return RefreshService(db_path).refresh(
             exclude_patterns=args.exclude,
             include_roots=args.include_root,
+            task=args.task,
+            context_token_budget=args.token_budget,
         )
     if args.command == "context":
         from csegraph._core.core.models import ContextRequest

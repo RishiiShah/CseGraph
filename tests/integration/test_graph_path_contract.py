@@ -113,6 +113,20 @@ def test_path_not_found_omits_empty_and_default_fields(tmp_path: Path) -> None:
     }
 
 
+def test_path_summary_preserves_stopword_symbol_names(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("def the():\n    pass\n\ndef a():\n    return the()\n")
+    db_path = str(tmp_path / "index.db")
+    IndexService(db_path).index(repo)
+
+    result = GraphQueryService(db_path).shortest_path("a", "the")
+
+    assert result.found
+    assert result.summary == "a → the (1 hops)"
+    assert to_dict(result)["summary"] == result.summary
+
+
 def test_graph_path_have_no_detail_level_public_behavior(tmp_path: Path) -> None:
     _, db_path = _index_python_repo(tmp_path)
     service = GraphQueryService(db_path)

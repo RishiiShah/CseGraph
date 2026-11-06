@@ -66,7 +66,13 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         from csegraph._core.retrieval.freshness import FreshnessCoordinator
 
         repo = arguments["repo"]
-        return to_dict(FreshnessCoordinator(_db_path(repo)).explicit_refresh(repo))
+        return to_dict(
+            FreshnessCoordinator(_db_path(repo)).explicit_refresh(
+                repo,
+                task=arguments.get("task"),
+                token_budget=arguments.get("token_budget", 1600),
+            )
+        )
 
     if name == "csegraph_minimal":
         from csegraph._core.retrieval.minimal import MinimalService

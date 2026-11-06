@@ -67,18 +67,32 @@ Call `csegraph_context` directly for ordinary coding tasks. Use
 requests. Escalate to `csegraph_graph` or `csegraph_path` only when the compact
 response recommends that focused structural operation.
 
+`csegraph_refresh` pushes the changed and cascading-impacted slices in its own
+response (under `context`). Optional `task` prioritizes matching symbol names
+and paths; `token_budget` limits the nested context (default 1600 tokens).
+Deleted files and removed or renamed symbols return surviving dependents;
+concurrent callers reuse the
+published revision's context. Oversized slices are reported under `missing`
+when space permits; if no source fits, context has status `insufficient`.
+Unchanged refreshes and changes without surviving symbols can return null
+context. Impact retrieval expands both directions for two hops by default;
+explicit one-hop or immediate requests keep depth 1.
+
 The MCP server exposes exactly six tools:
 
 | Tool | Purpose |
 |---|---|
 | `csegraph_index` | Build a fresh repository index. |
-| `csegraph_refresh` | Refresh changed and deleted files. |
+| `csegraph_refresh` | Refresh changed files and return impacted context. |
 | `csegraph_minimal` | Return a small health or orientation summary. |
 | `csegraph_context` | Return compact task-specific code slices. |
 | `csegraph_graph` | Return a focused neighborhood. |
 | `csegraph_path` | Return a focused dependency path. |
 
 Every MCP input schema rejects unknown properties.
+
+User-facing prose follows [ATSE-1000](docs/standards/ATSE-1000.md); internal
+and stored text follows [ATE-1000](docs/standards/ATE-1000.md).
 
 ## Compact context v5
 

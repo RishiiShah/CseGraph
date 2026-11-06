@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
+from csegraph._core.retrieval.token_budget import count_payload_tokens
 from csegraph._core.server.app import _handle_tool, create_server
 from csegraph._core.server.tools import CORE_MCP_TOOL_NAMES, TOOLS
 
@@ -48,6 +50,44 @@ def test_index_and_context_dispatch_use_compact_v5(tmp_path: Path):
     assert indexed["files_indexed"] == 1
     assert set(context) == {"schema_version", "status", "slices"}
     assert context["schema_version"] == "csegraph-context-v5"
+
+
+def test_mcp_refresh_returns_changed_source_in_nested_v5_context(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "app.py"
+    source.write_text("def run():\n    return 1\n")
+    _handle_tool("csegraph_index", {"repo": str(repo)})
+    source.write_text("def run():\n    return 2\n")
+    handler = create_server().request_handlers[CallToolRequest]
+
+    result = asyncio.run(
+        handler(
+            CallToolRequest(
+                params=CallToolRequestParams(
+                    name="csegraph_refresh",
+                    arguments={"repo": str(repo), "task": "Inspect run", "token_budget": 256},
+                )
+            )
+        )
+    )
+
+    assert not result.root.isError
+    payload = json.loads(result.root.content[0].text)
+    assert payload["impacted_files"] == ["app.py"]
+    context = payload["context"]
+    assert set(context) == {"schema_version", "status", "slices"}
+    assert context["schema_version"] == "csegraph-context-v5"
+    assert context["slices"] == [
+        {
+            "path": "app.py",
+            "lines": [1, 2],
+            "symbol": "run",
+            "role": "changed",
+            "code": "def run():\n    return 2\n",
+        }
+    ]
+    assert count_payload_tokens(context, "o200k_base") <= 256
 
 
 def test_all_public_tool_handlers_dispatch_through_worker_threads(tmp_path: Path, monkeypatch):

@@ -36,7 +36,7 @@ from .adaptive_discovery import (
 from .adaptive_ranking import _deduplicate_ranked_rows, _role_rank
 
 
-def _expand_one_hop(
+def _expand_impact(
     index: ProjectIndex,
     ranked: list[dict[str, Any]],
     target_id: str,
@@ -44,8 +44,138 @@ def _expand_one_hop(
     *,
     candidate_limit: int,
     relationship_limit: int,
+    depth: int = 1,
 ) -> tuple[list[dict[str, Any]], dict[str, str], list[dict[str, Any]]]:
-    direct_edges = [
+    """Expand impact both directions, then continue through cascade hops."""
+
+    depth = max(1, min(int(depth), 3))
+    roles: dict[str, str] = {target_id: "target"}
+    distances: dict[str, int] = {target_id: 0}
+    order: list[str] = []
+    relationship_rows: list[dict[str, Any]] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    inferred_node_ids: set[str] = set()
+    frontier: list[str] = [target_id]
+    node_ceiling = max(candidate_limit, relationship_limit)
+
+    for level in range(1, depth + 1):
+        next_frontier: list[str] = []
+        for node_id in frontier:
+            edges = _adjacent_impact_edges(index, node_id, relationship_limit)
+            for edge in edges:
+                if edge.get("inferred"):
+                    inferred_node_ids.update(
+                        {str(edge.get("source") or ""), str(edge.get("target") or "")}
+                    )
+                outgoing = str(edge["source"]) == node_id
+                other = str(edge["target"] if outgoing else edge["source"])
+                if not other or other == node_id:
+                    continue
+                edge_key = (
+                    str(edge["source"]),
+                    str(edge["target"]),
+                    str(edge["relation"]),
+                )
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    relationship_rows.append({**edge, "distance": level, "via": node_id})
+                role = _relationship_role(edge, node_id)
+                for candidate, distance in _bridged_impact_nodes(
+                    index,
+                    other,
+                    level,
+                    node_ceiling,
+                ):
+                    if candidate == target_id:
+                        continue
+                    if distance > distances.get(candidate, distance):
+                        continue
+                    if candidate not in distances or distance < distances[candidate]:
+                        distances[candidate] = distance
+                        next_frontier.append(candidate)
+                        order.append(candidate)
+                    current = roles.get(candidate)
+                    if (
+                        role == "test"
+                        or current is None
+                        or _role_rank(role, intent) < _role_rank(current, intent)
+                    ):
+                        roles[candidate] = role
+                if len(distances) >= node_ceiling or len(seen_edges) >= relationship_limit:
+                    break
+            if len(distances) >= node_ceiling or len(seen_edges) >= relationship_limit:
+                break
+        frontier = list(dict.fromkeys(next_frontier))
+        if not frontier or len(distances) >= node_ceiling or len(seen_edges) >= relationship_limit:
+            break
+
+    neighbor_ids = list(dict.fromkeys(order))
+    neighbor_ids.sort(
+        key=lambda node_id: (
+            distances.get(node_id, depth + 1),
+            _role_rank(roles.get(node_id, "context"), intent),
+        )
+    )
+    loaded = _load_candidate_rows(index, neighbor_ids)
+    for node_id, row in loaded.items():
+        if node_id == target_id:
+            continue
+        path = str(row.get("path") or "")
+        if bool(row.get("is_test")) or path.startswith("tests/") or "/tests/" in path:
+            roles[node_id] = "test"
+    existing = {str(row["id"]): row for row in ranked}
+    base_score = float(ranked[0].get("_score", 0.0)) if ranked else 1.0
+    emitted_position = 0
+    for node_id in neighbor_ids:
+        candidate_row = loaded.get(node_id)
+        if candidate_row is None:
+            continue
+        distance = distances.get(node_id, depth + 1)
+        role = roles.get(node_id, "context")
+        bonus = {"test": 8.0, "dependency": 7.0, "caller": 6.0}.get(role, 4.0)
+        if intent == "debug" and role == "test":
+            bonus += 4.0
+        bonus -= max(0, distance - 1) * 2.5
+        merged = dict(existing.get(node_id, {}))
+        merged.update(candidate_row)
+        candidate_row["_score"] = base_score - 10.0 + bonus - emitted_position * 0.01
+        candidate_row["_rank_position"] = len(ranked) + emitted_position
+        candidate_row["_distance"] = distance
+        reasons = [
+            f"{'one-hop' if distance == 1 else 'cascade'} {role}",
+        ]
+        if node_id in inferred_node_ids:
+            reasons.append("single-candidate indirect reference")
+        candidate_row["_rank_reasons"] = reasons
+        merged["_score"] = candidate_row["_score"]
+        merged["_rank_position"] = candidate_row["_rank_position"]
+        merged["_distance"] = candidate_row["_distance"]
+        merged["_rank_reasons"] = candidate_row["_rank_reasons"]
+        merged["_scope_rank"] = 0
+        merged["_graph_rank"] = 0
+        merged["_penalty_rank"] = 0
+        existing[node_id] = merged
+        emitted_position += 1
+    expanded = sorted(
+        existing.values(),
+        key=lambda row: (
+            0 if str(row["id"]) == target_id else 1,
+            _role_rank(roles.get(str(row["id"]), "context"), intent),
+            int(row.get("_distance", 0)),
+            int(row.get("_rank_position", HARD_MAX_CANDIDATES)),
+            -float(row.get("_score", 0.0)),
+            str(row["path"]),
+        ),
+    )
+    return _deduplicate_ranked_rows(expanded)[:candidate_limit], roles, relationship_rows
+
+
+def _adjacent_impact_edges(
+    index: ProjectIndex,
+    node_id: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    persisted = [
         dict(row)
         for row in index.conn.execute(
             """
@@ -67,80 +197,41 @@ def _expand_one_hop(
                 target
             LIMIT ?
             """,
-            (target_id, target_id, relationship_limit),
+            (node_id, node_id, limit),
         )
     ]
-    inferred_edges = _inferred_occurrence_edges(index, target_id)
-    inferred_edges.extend(_literal_dispatch_edges(index, target_id))
-    edges = _deduplicate_relationships([*direct_edges, *inferred_edges])
-    neighbor_ids: list[str] = []
-    roles = {target_id: "target"}
-    for edge in edges:
-        outgoing = edge["source"] == target_id
-        other = str(edge["target"] if outgoing else edge["source"])
-        if not other or other == target_id:
-            continue
-        neighbor_ids.append(other)
-        role = _relationship_role(edge, target_id)
-        current = roles.get(other)
-        if (
-            role == "test"
-            or current is None
-            or _role_rank(role, intent) < _role_rank(current, intent)
-        ):
-            roles[other] = role
-
-    neighbor_ids = list(dict.fromkeys(neighbor_ids))
-    loaded = _load_candidate_rows(index, neighbor_ids)
-    for node_id, row in loaded.items():
-        if node_id == target_id:
-            continue
-        path = str(row.get("path") or "")
-        if bool(row.get("is_test")) or path.startswith("tests/") or "/tests/" in path:
-            roles[node_id] = "test"
-    existing = {str(row["id"]): row for row in ranked}
-    base_score = float(ranked[0].get("_score", 0.0)) if ranked else 1.0
-    for position, node_id in enumerate(neighbor_ids):
-        candidate_row = loaded.get(node_id)
-        if candidate_row is None:
-            continue
-        role = roles.get(node_id, "context")
-        bonus = {"test": 8.0, "dependency": 7.0, "caller": 6.0}.get(role, 4.0)
-        if intent == "debug" and role == "test":
-            bonus += 4.0
-        merged = dict(existing.get(node_id, {}))
-        merged.update(candidate_row)
-        candidate_row["_score"] = base_score - 10.0 + bonus - position * 0.01
-        candidate_row["_rank_position"] = len(ranked) + position
-        candidate_row["_rank_reasons"] = [
-            f"one-hop {role}",
-            *(
-                ["single-candidate indirect reference"]
-                if any(
-                    edge.get("inferred") and node_id in {str(edge["source"]), str(edge["target"])}
-                    for edge in inferred_edges
-                )
-                else []
-            ),
+    return _deduplicate_relationships(
+        [
+            *persisted,
+            *_inferred_occurrence_edges(index, node_id),
+            *_literal_dispatch_edges(index, node_id),
         ]
-        merged["_score"] = candidate_row["_score"]
-        merged["_rank_position"] = candidate_row["_rank_position"]
-        merged["_rank_reasons"] = candidate_row["_rank_reasons"]
-        merged["_scope_rank"] = 0
-        merged["_graph_rank"] = 0
-        merged["_penalty_rank"] = 0
-        existing[node_id] = merged
-    expanded = sorted(
-        existing.values(),
-        key=lambda row: (
-            0 if str(row["id"]) == target_id else 1,
-            _role_rank(roles.get(str(row["id"]), "context"), intent),
-            int(row.get("_rank_position", HARD_MAX_CANDIDATES)),
-            -float(row.get("_score", 0.0)),
-            str(row["path"]),
-        ),
-    )
-    return _deduplicate_ranked_rows(expanded)[:candidate_limit], roles, edges
+    )[:limit]
+
+
+def _bridged_impact_nodes(
+    index: ProjectIndex,
+    node_id: str,
+    distance: int,
+    limit: int,
+) -> list[tuple[str, int]]:
+    """Keep file-level import hops useful by bridging into their symbols."""
+
+    bridged: list[tuple[str, int]] = [(node_id, distance)]
+    if not node_id.startswith("file::"):
+        return bridged
+    rows = index.conn.execute(
+        """
+        SELECT id
+        FROM symbols
+        WHERE file_id = ?
+        ORDER BY start_line, id
+        LIMIT ?
+        """,
+        (node_id, max(1, min(8, limit))),
+    ).fetchall()
+    bridged.extend((str(row["id"]), distance) for row in rows)
+    return bridged
 
 
 def _inferred_occurrence_edges(

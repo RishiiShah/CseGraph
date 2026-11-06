@@ -55,8 +55,40 @@ backup or migration artifact.
 
 Refresh computes changed and deleted files against the current index, captures
 dependents from current relationships before replacement, and updates only the
-affected rows. File and symbol foreign keys cascade cleanup. A repository lease
-coordinates concurrent refresh attempts.
+affected rows. Dependent discovery follows dependent files for two hops by
+default, so a change at C also surfaces the C <- B <- A cascade. File and symbol
+foreign keys cascade cleanup. A repository lease coordinates concurrent refresh
+attempts.
+
+Explicit refresh returns pushed `context` slices for changed symbols and
+cascading dependents in the same tool call. Deleted files and removed or renamed
+symbols seed surviving dependents, including when unrelated files also change.
+Concurrent callers reconstruct
+context from the published revision's file lists in a read snapshot. No-op
+refreshes preserve those lists until the next changed revision.
+Symbols in dependent files unreachable from changed-symbol relationships become
+fallback `impacted` seeds after ordinary expansion, preserving discovered direct
+roles and covering file-level imports. Reused results report zero indexing/cache
+work counters while retaining the published changed/deleted file lists and
+rebuilding context for the caller's task and budget.
+
+Optional `task` prioritizes matching names and paths within each role;
+`token_budget` bounds the serialized nested context, not refresh counters and
+metadata. It defaults to 1600 and accepts integers from 256 through 16384.
+`impacted_files` is the sorted union of changed, deleted, and discovered dependent
+paths. Context roles are `changed`, `impacted` (dependent seeds), `caller`,
+`dependency`, `cascade`, and `test`.
+Oversized symbols do not block smaller slices. Oversized source is
+reported in `missing` when that metadata fits; if no source fits, status is
+`insufficient`. No-op refreshes and changes without surviving indexed symbols
+can return null context. Automatic freshness refresh skips context construction
+because the enclosing context operation already builds its own response.
+
+Dependent refresh processes at most 50 files by default and reports
+`dependents_cap_hit` if discovery exceeds that allowance. Pushed context stops
+expanding at 160 discovered nodes or 400 adjacent-edge results and bridges at most
+eight symbols per imported file. Changed/dependent seed sets can exceed the node
+expansion ceiling; the token budget still limits the returned context.
 
 The implementation keeps these responsibilities separate: `index/services.py`
 coordinates the public indexing operations, `index/ingestion.py` owns parsing
@@ -69,9 +101,21 @@ coordination is similarly split into `retrieval/freshness/coordinator.py`,
 ### Retrieval
 
 `csegraph_context` combines lexical candidates, symbol resolution, import
-bindings, summaries, one-hop graph evidence, and unresolved occurrence
-evidence. Projections and result sets are bounded. The normal path returns
-whole-symbol slices without loading the complete graph.
+bindings, summaries, bidirectional impact evidence, and unresolved occurrence
+evidence. Impact and structural plans expand two hops by default and report
+cascade distance in diagnostics. Explicit one-hop or immediate requests use
+depth 1. Inferred occurrences and literal dispatch/registration references are
+considered at every hop without persisting inferred edges. Longer paths do not
+overwrite a direct relationship's role. Candidate and relationship allowances
+apply across the traversal; relationship expansion has a hard ceiling of 128.
+Retrieval does not load the complete graph.
+
+With default `source_mode="auto"`, context returns source only for the target;
+non-edit impact requests return its first source line. Other target slices contain
+the whole symbol. `source_mode="always"` requests whole-symbol source for every
+selected slice; `"never"` emits empty code. These rules apply to
+`csegraph_context`; pushed refresh context attempts whole-symbol source for every
+selected symbol.
 
 `csegraph_minimal` uses aggregate SQL and direct top-entity selection for
 explicit health or orientation requests. `csegraph_graph` and
@@ -127,6 +171,11 @@ omit internal locations, empty fields, and default values.
 
 Every continuation is `{tool, arguments?, reason?}`.
 
+User-facing prose follows [ATSE-1000](standards/ATSE-1000.md) and is compressed
+without touching code, identifiers, or structured fields. Stored and internal
+text follows [ATE-1000](standards/ATE-1000.md) and is compacted before
+persistence.
+
 ## Performance invariants
 
 - Importing `csegraph` remains lazy.
@@ -134,5 +183,5 @@ Every continuation is `{tool, arguments?, reason?}`.
 - SQL reads use narrow projections and bounded result sets.
 - Diagnostic data remains within the requested whole-response token budget.
 - Fresh indexing validates before atomic replacement.
-- Runtime dependencies are limited to MCP, tree-sitter, and the Python,
+- Runtime dependencies are limited to MCP, tiktoken, tree-sitter, and the Python,
   JavaScript, and TypeScript tree-sitter grammars.

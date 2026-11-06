@@ -5,7 +5,8 @@ callers or dependencies, and identify relevant tests. The comparison is a
 deterministic repository agent that searches and reads source files for the
 same request. It does not receive the expected answer.
 
-Latest run: 2026-07-11, cold indexes, Pyright disabled.
+PR and nightly checks rerun: 2026-11-06, cold indexes, Pyright disabled.
+Sandbox and release figures below retain the 2026-07-11 run.
 
 ## Sandbox results
 
@@ -42,11 +43,13 @@ show the actual range in this run.
 ## Release checks
 
 These smaller suites catch regressions before the sandbox run. All configured
-gates passed in the latest run.
+gates passed. The November PR/nightly runs include two-hop retrieval, broader
+role selection, and ATSE/ATE compression; release and sandbox have not been
+rerun for those changes.
 
 | Suite | Tasks | Recall | Precision | Role recall | Context reduction |
 |---|---:|---:|---:|---:|---:|
-| PR | 22 | 100% | 100% | 100% | 67.31% |
+| PR | 22 | 100% | 100% | 100% | 65.93% |
 | Nightly | 60 | 100% | 100% | 100% | 63.72% |
 | Release | 30 | 100% | 100% | 100% | 65.67% |
 

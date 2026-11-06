@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import sqlite3
 import threading
 import time
@@ -11,6 +12,7 @@ from typing import Any, Callable, TypeVar
 
 from csegraph._core.core.errors import IndexRequiredError
 from csegraph._core.core.models import RefreshResult
+from csegraph._core.index.refresh_plan import _read_refresh_impact
 from csegraph._core.index.repository import ProjectIndex
 from csegraph._core.index.services import IndexService, RefreshService
 from csegraph._core.languages.registry import registry
@@ -20,6 +22,11 @@ from csegraph._core.retrieval.freshness.scan import (
     _detect_changed_paths,
     _git_head_state,
 )
+from csegraph._core.retrieval.impact_context import (
+    IMPACT_CONTEXT_TOKEN_BUDGET,
+    build_impact_context,
+)
+from csegraph._core.retrieval.token_budget import validate_token_budget
 
 AUTO_INDEX_FILE_LIMIT = 500
 AUTO_REFRESH_TIMEOUT_SECONDS = 5.0
@@ -44,8 +51,47 @@ class FreshnessResult:
 def _reused_refresh_result(
     db_path: str,
     repo_path: Path,
+    *,
+    task: str | None = None,
+    token_budget: int = IMPACT_CONTEXT_TOKEN_BUDGET,
 ) -> RefreshResult:
-    del db_path, repo_path
+    changed_files: list[str] = []
+    deleted_files: list[str] = []
+    dependent_files: list[str] = []
+    impacted_context = None
+    index = ProjectIndex(db_path)
+    try:
+        try:
+            index.initialize_schema()
+            index.conn.execute("BEGIN")
+            metadata = index.metadata()
+        except Exception:
+            metadata = {}
+        changed_files = _metadata_list(metadata.get("last_refresh_changed_files"))
+        deleted_files = _metadata_list(metadata.get("last_refresh_deleted_files"))
+        dependent_files = _metadata_list(metadata.get("last_refresh_dependent_files"))
+        repo_root = str(metadata.get("root_dir") or repo_path)
+        seed_roles: dict[str, str] = {}
+        for symbol_id in (
+            str(row["symbol_id"]) for row in _read_refresh_impact(index, changed_files)
+        ):
+            seed_roles[symbol_id] = "changed"
+        for symbol_id in (
+            str(row["symbol_id"]) for row in _read_refresh_impact(index, dependent_files)
+        ):
+            seed_roles.setdefault(symbol_id, "impacted")
+        if seed_roles:
+            impacted_context = build_impact_context(
+                index,
+                repo_root,
+                seed_roles,
+                task=task,
+                token_budget=token_budget,
+                seed_roles=seed_roles,
+            )
+    finally:
+        index.close()
+
     return RefreshResult(
         files_indexed=0,
         symbols_indexed=0,
@@ -53,12 +99,26 @@ def _reused_refresh_result(
         cache_hits=0,
         cache_misses=0,
         unchanged_files=[],
-        changed_files=[],
-        deleted_files=[],
+        changed_files=changed_files,
+        deleted_files=deleted_files,
+        impacted_files=sorted({*changed_files, *deleted_files, *dependent_files}),
+        context=impacted_context,
         parse_errors={},
         warnings=["Reused the revision published by another refresh process."],
         timings_ms={},
     )
+
+
+def _metadata_list(value: Any) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if isinstance(item, str)]
 
 
 class FreshnessCoordinator:
@@ -166,7 +226,14 @@ class FreshnessCoordinator:
             )
         return result
 
-    def explicit_refresh(self, repo: str | Path) -> Any:
+    def explicit_refresh(
+        self,
+        repo: str | Path,
+        *,
+        task: str | None = None,
+        token_budget: int = IMPACT_CONTEXT_TOKEN_BUDGET,
+    ) -> Any:
+        validate_token_budget(token_budget)
         repo_path = Path(repo).resolve()
 
         index = ProjectIndex(self.db_path)
@@ -188,7 +255,12 @@ class FreshnessCoordinator:
                 timeout=self.lease_seconds,
             )
             if result.state == "current":
-                return _reused_refresh_result(self.db_path, repo_path)
+                return _reused_refresh_result(
+                    self.db_path,
+                    repo_path,
+                    task=task,
+                    token_budget=token_budget,
+                )
             if not self._acquire_lease(str(repo_path), owner):
                 raise RuntimeError("Another refresh is still in progress.")
 
@@ -196,8 +268,17 @@ class FreshnessCoordinator:
         try:
             metadata = index.metadata()
             changed_paths = _detect_changed_paths(index, repo_path, metadata)
+            published_revision = index.index_revision()
         finally:
             index.close()
+
+        if not changed_paths and published_revision > revision:
+            try:
+                return _reused_refresh_result(
+                    self.db_path, repo_path, task=task, token_budget=token_budget
+                )
+            finally:
+                self._release_lease(str(repo_path), owner)
 
         future = _REFRESH_EXECUTOR.submit(
             self._refresh_and_release,
@@ -205,6 +286,8 @@ class FreshnessCoordinator:
             owner,
             changed_paths,
             True,
+            task,
+            token_budget,
         )
         return future.result()
 
@@ -316,11 +399,16 @@ class FreshnessCoordinator:
         owner: str,
         changed_paths: list[Path] | None,
         return_full_result: bool = False,
+        task: str | None = None,
+        token_budget: int = IMPACT_CONTEXT_TOKEN_BUDGET,
     ) -> Any:
         def operation() -> Any:
             result = RefreshService(self.db_path).refresh(
                 changed_paths=changed_paths,
                 lease_owner=owner,
+                include_context=return_full_result,
+                task=task,
+                context_token_budget=token_budget,
             )
             index = ProjectIndex(self.db_path)
             try:
